@@ -8,6 +8,7 @@ Item {
     property color color: Theme.text
     property real size: 24
     property real stroke: 2
+    property string metal: ""            // "gold" / "green": a metallic gradient along the lines
     width: size
     height: size
     Image {
@@ -16,7 +17,7 @@ Item {
         readonly property int px: Math.max(32, Math.ceil(ic.size * Math.max(1, Screen.devicePixelRatio) * 2))
         sourceSize: Qt.size(px, px)
         mipmap: true
-        source: Theme.svgUrl(ic.name, ic.color, ic.stroke, px)   // the size is in the picture too, so a size change always redraws it
+        source: Theme.svgUrl(ic.name, ic.color, ic.stroke, px, ic.metal)   // the size is in the picture too, so a size change always redraws it
         smooth: true
         cache: true
     }

@@ -31,3 +31,19 @@ if __name__ == "__main__":
     ribbon("hh_wave1.png", (70, 240, 120), 9, 120, 2, 0.22, 3)     # bright emerald green
     ribbon("hh_wave2.png", (232, 194, 90), 5, 70, 3, 0.30, 1)      # a thin gold thread
     print("written to", OUT)
+
+
+def glow_png(name="hh_glow.png", w=512, h=192, rgb=(70, 240, 120)):
+    """A soft coloured light blob, for glows that need no shader."""
+    img = Image.new("L", (w, h), 0)
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            dx, dy = (x - w / 2) / (w / 2), (y - h / 2) / (h / 2)
+            px[x, y] = int(255 * math.exp(-3.2 * (dx * dx + dy * dy)))
+    rgba = Image.merge("RGBA", tuple(Image.new("L", (w, h), c) for c in rgb) + (img,))
+    rgba.save(OUT / name, optimize=True)
+
+
+glow_png()
+glow_png("hh_glow_gold.png", rgb=(232, 194, 90))

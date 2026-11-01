@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl
 
-from . import webapps
+from . import emulators, webapps
 
 VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
@@ -58,7 +58,40 @@ def _systems(games, store) -> list:
     out = []
     for sid, (name, lst) in sorted(by.items(), key=lambda kv: kv[1][0].lower()):
         lst.sort(key=lambda g: g.title.lower())
-        out.append({"key": sid, "title": name, "icon": "console:" + sid, "kind": "list", "items": [item(g, store) for g in lst]})
+        out.append({"key": sid, "title": name, "icon": kind_icon(sid), "kind": "list", "items": [item(g, store) for g in lst]})
+    return out
+
+
+# an original generic picture for each kind of machine (never a maker's logo or a look-alike of one)
+KIND = {"pad": ("atari2600", "atari5200", "atari7800", "atarijaguar", "nes", "snes", "n64", "genesis", "mastersystem", "pce", "3do"),
+        "handheld": ("atarilynx", "gb", "gba", "nds", "n3ds", "gamegear", "psp", "wonderswan", "ngp", "vb", "switch"),
+        "disc": ("gamecube", "wii", "wiiu", "segacd", "saturn", "dreamcast", "ps1", "ps2", "ps3", "xbox"),
+        "arcade": ("neogeo", "arcade"),
+        "computer": ("dos", "scummvm", "amiga", "c64", "msx", "zxspectrum", "amstradcpc")}
+CART = ("atari2600", "atari5200", "atari7800", "nes", "snes", "n64", "genesis", "mastersystem")
+
+
+def kind_icon(sid: str) -> str:
+    if sid in CART:
+        return "g_cart"
+    for k, ids in KIND.items():
+        if sid in ids:
+            return "g_" + k
+    return "g_pad"
+
+
+def hub(games, store=None) -> list:
+    """Every system CodeAque supports, in its usual order, each with the games found for it (most are empty at first)."""
+    by: dict = {}
+    for g in games:
+        if is_retro(g):
+            by.setdefault(g.platform, []).append(g)
+    out = []
+    for sd in emulators.SYSTEMS:
+        lst = sorted(by.get(sd.id, []), key=lambda g: g.title.lower())
+        short = sd.name.replace("Nintendo ", "").replace(" / Color", "").replace(" (MAME)", "").replace("Sega ", "")
+        out.append({"key": sd.id, "title": short, "full": sd.name, "icon": kind_icon(sd.id), "kind": "list",
+                    "items": [item(g, store) for g in lst]})
     return out
 
 
@@ -79,7 +112,7 @@ def categories(games, store=None) -> list:
         elif key == "cloud":
             tiles = [_launch_tile(g, "c_cloud") for g in cloud]
         elif key == "emulators":
-            tiles = systems
+            tiles = hub(games, store)
         elif key == "streams":
             tiles = [_launch_tile(g, "stream") for g in video]
         elif key == "media":

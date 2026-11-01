@@ -52,4 +52,7 @@ def weak_gpu() -> bool:
     env = os.environ.get("CODEAQUE_WEAK_GPU", "")
     if env in ("0", "1"):
         return env == "1"
+    if os.environ.get("QT_QUICK_BACKEND", "") in ("software", "softwarecontext") or \
+            os.environ.get("QT_QPA_PLATFORM", "") in ("offscreen", "minimal"):
+        return True            # Qt's software drawing: no shaders at all, so blur / glow / metal text cannot be drawn
     return is_weak(renderer())

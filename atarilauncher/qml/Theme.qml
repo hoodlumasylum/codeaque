@@ -31,6 +31,12 @@ QtObject {
         "starfill": "<path fill='@C' d='M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1L3.2 9.6l6.1-.8z' />",
         "clock": "<circle cx='12' cy='12' r='9' /><path d='M12 7v5.5l3.5 2' />",
         "pad": "<path d='M7 8h10a5 5 0 0 1 5 5v2a3 3 0 0 1-5.2 2L15 15H9l-1.8 2A3 3 0 0 1 2 15v-2a5 5 0 0 1 5-5z' /><path d='M7 10.5v3M5.5 12h3' /><circle cx='16.5' cy='11' r='.9' fill='@C' /><circle cx='18.5' cy='13' r='.9' fill='@C' />",
+        "g_pad": "<path d='M7.5 8h9a4.5 4.5 0 0 1 4.3 3.2l1 3.6a2.6 2.6 0 0 1-4.4 2.4L15.6 15H8.4l-1.8 2.2a2.6 2.6 0 0 1-4.4-2.4l1-3.6A4.5 4.5 0 0 1 7.5 8z' /><path d='M6.5 11.5h3M8 10v3' /><circle cx='15.6' cy='10.8' r='.9' fill='@C' /><circle cx='17.4' cy='12.6' r='.9' fill='@C' />",
+        "g_handheld": "<rect x='6.5' y='2.5' width='11' height='19' rx='2.2' /><rect x='8.5' y='4.8' width='7' height='6.4' rx='.8' /><path d='M8.6 15.6h2.8M10 14.2V17' /><circle cx='14.4' cy='16.4' r='.85' fill='@C' /><circle cx='15.8' cy='14.8' r='.85' fill='@C' />",
+        "g_disc": "<circle cx='12' cy='12' r='9' /><circle cx='12' cy='12' r='2.4' /><path d='M12 3a9 9 0 0 1 8.2 5.3M12 6.2a5.8 5.8 0 0 1 5.3 3.4' stroke-width='1.2' />",
+        "g_cart": "<path d='M5 3.5h14v13.5l-2 3.5H7L5 17z' /><rect x='8' y='6' width='8' height='6' rx='.8' /><path d='M8.5 17.5h1M11 17.5h1M13.5 17.5h1' />",
+        "g_arcade": "<path d='M7 2.5h10l-1 4h-8z' /><path d='M6.5 6.5h11v15h-11z' /><rect x='8.5' y='8.5' width='7' height='5' rx='.6' /><path d='M9 17h3M10.5 15.5v3' /><circle cx='14.6' cy='16.6' r='.9' fill='@C' />",
+        "g_computer": "<rect x='3' y='4' width='18' height='12' rx='1.6' /><path d='M9 20h6M12 16v4' /><path d='M6 8h5M6 11h8' stroke-width='1.2' />",
         "invader": "<path d='M7 4l2 2.5h6L17 4' /><rect x='5' y='6.5' width='14' height='9' rx='2' /><circle cx='9.3' cy='10.5' r='1.2' fill='@C' /><circle cx='14.7' cy='10.5' r='1.2' fill='@C' /><path d='M5 13H2.5v3M19 13h2.5v3M8 15.5l-1.5 3.5M16 15.5l1.5 3.5M10 18h4' />",
         "stream": "<circle cx='12' cy='12' r='2.6' /><path d='M10.9 10.7v2.6l2.2-1.3z' fill='@C' /><path d='M7.2 7.2a6.8 6.8 0 0 0 0 9.6M16.8 7.2a6.8 6.8 0 0 1 0 9.6M4.4 4.4a10.7 10.7 0 0 0 0 15.2M19.6 4.4a10.7 10.7 0 0 1 0 15.2' />",
         "film": "<rect x='3' y='4.5' width='18' height='15' rx='1.8' /><path d='M7 4.5v15M17 4.5v15M3 9h4M3 15h4M17 9h4M17 15h4' /><path d='M10.4 9.6v4.8l4-2.4z' fill='@C' />",
@@ -129,15 +135,23 @@ QtObject {
     readonly property color emerald: "#0f6b4f"
     readonly property color emeraldDark: "#062a1f"
 
-    function svg(name, color, stroke, px) {
+    // metal: "" | "gold" | "green" - a vertical metallic gradient along the lines instead of one flat colour
+    function svg(name, color, stroke, px, metal) {
         var body = icons[name] !== undefined ? icons[name] : icons["pad"]
-        var c = String(color)
+        var c = String(color), defs = ""
+        if (metal === "gold" || metal === "green") {
+            var st = metal === "gold" ? ["#fff3c4", "#e8c25a", "#9b6d1c", "#f6dc8a"] : ["#e6ffd0", "#5cf07c", "#178a36", "#a8ff9a"]
+            defs = "<defs><linearGradient id='m' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='" + st[0]
+                 + "'/><stop offset='.45' stop-color='" + st[1] + "'/><stop offset='.7' stop-color='" + st[2]
+                 + "'/><stop offset='1' stop-color='" + st[3] + "'/></linearGradient></defs>"
+            c = "url(#m)"
+        }
         body = body.replace(/@C/g, c)
         return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'" + (px ? " width='" + px + "' height='" + px + "'" : "")
              + " fill='none' stroke='" + c
-             + "' stroke-width='" + stroke + "' stroke-linecap='round' stroke-linejoin='round'>" + body + "</svg>"
+             + "' stroke-width='" + stroke + "' stroke-linecap='round' stroke-linejoin='round'>" + defs + body + "</svg>"
     }
-    function svgUrl(name, color, stroke, px) {
-        return "data:image/svg+xml;utf8," + encodeURIComponent(svg(name, color, stroke, px))
+    function svgUrl(name, color, stroke, px, metal) {
+        return "data:image/svg+xml;utf8," + encodeURIComponent(svg(name, color, stroke, px, metal))
     }
 }

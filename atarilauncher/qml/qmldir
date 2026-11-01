@@ -23,3 +23,4 @@ Backdrop 1.0 Backdrop.qml
 Glass 1.0 Glass.qml
 HandheldScreen 1.0 HandheldScreen.qml
 HandButton 1.0 HandButton.qml
+ChromeText 1.0 ChromeText.qml
