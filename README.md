@@ -31,6 +31,15 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.7.0 — Handheld Edition (untested on real hardware)
+
+- New Handheld mode for small 1280x720 gamepad devices (made with the Anbernic Win600 in mind).
+- Big, gamepad-only menu: Games, Cloud, Emulators, Streams, Media, Music, Downloads, Settings. PC launchers are hidden.
+- Emulators hub with all supported systems, original icons, no logos. Nothing is bundled: bring your own games and BIOS files.
+- Soft new sounds and a flowing wave background that follows Reduce effects (AUTO turns them down on weak chips).
+- Switch on: Settings > Handheld mode, or start once with `--handheld`. To boot straight into it, turn Handheld mode on and use `install.sh --autostart`. Leave with Settings > Leave Handheld.
+- Not yet tried on a real Win600.
+
 ## What's new in 0.6.1
 
 **Updating:** in-app update (Settings) as usual.
