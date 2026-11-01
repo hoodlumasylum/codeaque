@@ -1,0 +1,56 @@
+# CodeAque Launcher for Android handhelds (RG3566 and similar)
+
+Android stays the system underneath. CodeAque is just the **home screen** on top: the same black,
+green-wave, gold-and-emerald look as the Handheld Edition, with big tiles that open the apps you
+already have.
+
+> **Untested on a real RG3566.** It was checked on an Android 11 emulator (1280x720 and 640x480)
+> with a keyboard standing in for the pad.
+
+## Install
+
+1. On the handheld: *Settings > Security* (or *Apps > Special access*) > allow **Install unknown apps**
+   for your file manager or browser.
+2. Download `codeaque-launcher.apk` from the v0.8.0 release (or copy it over on a USB stick / SD card) and open it. Tap **Install**.
+3. Press the **Home** button. Android asks which home app to use: pick **CodeAque**, then **Always**.
+   (Later: CodeAque > Settings > Home app to switch back.)
+
+From a PC with adb instead: `adb install codeaque-launcher.apk`.
+
+## Using it
+
+| Pad | Touch | Does |
+|---|---|---|
+| D-pad / left stick | tap | move |
+| L1 / R1 | tap a category | change category |
+| A | tap the selected tile | open |
+| B | | back to the category row |
+| Y (or Select) | | Settings |
+
+* Tiles open the installed app. If it is missing, the tile says **GET** and A opens its Play Store page.
+* Cloud tiles (Xbox Cloud Gaming, GeForce NOW, Amazon Luna, Boosteroid) say **WEB** when their app is
+  missing: they open the official site in your browser instead.
+* **Retro** opens RetroArch (and PPSSPP, DuckStation, Dolphin, Mupen64Plus FZ, Flycast, DraStic if installed).
+  No BIOS, ROMs, games or keys are included — bring your own.
+* **Apps > All apps** lists every installed app by name.
+* **Settings > Effects**: Auto (30 fps waves, the default), On (60 fps) or Off (still background, saves battery).
+
+## Build it yourself
+
+Needs JDK 17+ and the Android SDK (platform 34, build-tools 34):
+
+```
+cd android
+ANDROID_HOME=/path/to/sdk ./build.sh        # -> android/dist/codeaque-launcher.apk
+./build.sh test                             # plain-Java checks of the tile list
+```
+
+Android Studio / Gradle (`gradle assembleDebug`) works too. Release builds are signed with a
+debug-style key unless you set `CODEAQUE_KEYSTORE`, `CODEAQUE_KS_PASS` and `CODEAQUE_KS_ALIAS`.
+
+## What is untested
+
+* Real RG3566 hardware: its pad's key codes, the 5in screen, speed, battery reading, and whether its
+  Android build lets you change the home app (some vendor builds hide that choice).
+* The package names of some apps (Amazon Luna, Boosteroid, DraStic) may differ by region or store.
+* Because the APK is signed with a debug-style key, updating needs the same key; uninstall first if Android refuses.

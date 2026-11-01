@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.8.0 — Win600 installer and Android launcher (untested on real hardware)
+
+- **Anbernic Win600:** one command installs CodeAque, every supported emulator, sets them up for the
+  1280x720 screen and the built-in pad, turns on Handheld mode and starts at login:
+  `bash scripts/install-win600.sh`. Step-by-step guide (Live USB, boot keys, install): [docs/win600.md](docs/win600.md).
+- **CodeAque Launcher for Android** (RG3566 and similar): a light home-screen app in the Handheld look
+  that opens your installed apps, offers the Play Store page for missing ones, and opens RetroArch for
+  retro. `codeaque-launcher.apk` is on the release. Guide: [docs/android.md](docs/android.md). Source: `android/`.
+- Nothing is bundled: no BIOS, firmware, keys, ROMs or games.
+
 ## What's new in 0.7.0 — Handheld Edition (untested on real hardware)
 
 - New Handheld mode for small 1280x720 gamepad devices (made with the Anbernic Win600 in mind).

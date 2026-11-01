@@ -1,0 +1,2 @@
+// For Android Studio users. The release APK is built with ./build.sh (SDK tools only, no downloads).
+plugins { id 'com.android.application' version '8.5.2' apply false }
