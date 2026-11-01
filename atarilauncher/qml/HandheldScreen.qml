@@ -199,7 +199,7 @@ FocusScope {
                 readonly property bool on: index === hh.cat
                 width: catRow.step; height: catRow.height
                 x: index * catRow.step
-                scale: on ? 1.18 : 0.92
+                scale: on ? 1.12 : 0.92
                 Behavior on scale { enabled: hh.anim; NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
                 Item {
                     id: ciIcon
@@ -305,17 +305,17 @@ FocusScope {
         Row {     // gold winged ankh  CODEAQUE  winged ankh
             id: hubTitle
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 206 * hh.s
+            y: 212 * hh.s
             spacing: 16 * hh.s
             Image { source: Qt.resolvedUrl("../assets/hh_ankh_gold.svg"); width: 110 * hh.s; height: 44 * hh.s
                     sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); anchors.verticalCenter: parent.verticalCenter }
-            ChromeText { text: "CODEAQUE"; metal: "gold"; px: 44 * hh.s; spacing: 7 * hh.s; glowColor: "#e8c25a"; glow: 0.5
+            ChromeText { text: "CODEAQUE"; metal: "gold"; px: 40 * hh.s; spacing: 7 * hh.s; glowColor: "#e8c25a"; glow: 0.5
                          anchors.verticalCenter: parent.verticalCenter }
             Image { source: Qt.resolvedUrl("../assets/hh_ankh_gold.svg"); width: 110 * hh.s; height: 44 * hh.s
                     sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); anchors.verticalCenter: parent.verticalCenter }
         }
         Text { id: hubSub; anchors.horizontalCenter: parent.horizontalCenter; anchors.top: hubTitle.bottom; anchors.topMargin: 0
-               text: "RETRO EMULATORS HUB"; color: "#f1e6c4"; font.pixelSize: 17 * hh.s; font.letterSpacing: 6 * hh.s; font.weight: Font.DemiBold }
+               text: "RETRO EMULATORS HUB"; color: "#f1e6c4"; font.pixelSize: 15 * hh.s; font.letterSpacing: 6 * hh.s; font.weight: Font.DemiBold }
         Text { id: hubTag; anchors.horizontalCenter: parent.horizontalCenter; anchors.top: hubSub.bottom; anchors.topMargin: 2 * hh.s
                text: "PLAY  \u2022  EMULATE  \u2022  PRESERVE  \u2022  STREAM"; color: "#9fd8ad"; font.pixelSize: 11.5 * hh.s; font.letterSpacing: 3 * hh.s }
         Grid {
@@ -323,7 +323,7 @@ FocusScope {
             readonly property int cols: 11
             readonly property real tw: (hh.width - 60 * hh.s - (cols - 1) * spacing) / cols
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: hubTag.bottom; anchors.topMargin: 14 * hh.s
+            anchors.top: hubTag.bottom; anchors.topMargin: 12 * hh.s
             columns: cols
             spacing: 8 * hh.s
             Repeater {
@@ -334,7 +334,7 @@ FocusScope {
                     required property int index
                     readonly property bool on: index === hh.ti && hh.zone !== "cats"
                     readonly property bool has: modelData.items.length > 0
-                    width: hubGrid.tw; height: 74 * hh.s
+                    width: hubGrid.tw; height: 70 * hh.s
                     z: on ? 2 : 0
                     scale: on ? 1.1 : 1
                     Behavior on scale { enabled: hh.anim; NumberAnimation { duration: 190; easing.type: Easing.OutCubic } }
@@ -380,11 +380,11 @@ FocusScope {
         }
         Text {   // what the chosen system is, and what you need
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: hubGrid.bottom; anchors.topMargin: 10 * hh.s
+            anchors.top: hubGrid.bottom; anchors.topMargin: 6 * hh.s
             visible: hh.zone !== "list" && hh.tile !== null
             text: hh.tile ? (hh.tile.full + "  -  " + (hh.tile.items.length ? hh.tile.items.length + " game" + (hh.tile.items.length === 1 ? "" : "s")
                                                     : "no games yet: add your own with Settings > Add games")) : ""
-            color: "#e8ecdf"; font.pixelSize: 17 * hh.s
+            color: "#e8ecdf"; font.pixelSize: 16 * hh.s
         }
     }
 

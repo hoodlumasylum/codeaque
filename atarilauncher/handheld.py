@@ -89,7 +89,10 @@ def hub(games, store=None) -> list:
     out = []
     for sd in emulators.SYSTEMS:
         lst = sorted(by.get(sd.id, []), key=lambda g: g.title.lower())
-        short = sd.name.replace("Nintendo ", "").replace(" / Color", "").replace(" (MAME)", "").replace("Sega ", "")
+        short = sd.name.replace(" / Color", "").replace(" (MAME)", "")
+        for pre in ("Nintendo ", "Sega "):
+            if short.startswith(pre) and len(short) - len(pre) > 3:
+                short = short[len(pre):]
         out.append({"key": sd.id, "title": short, "full": sd.name, "icon": kind_icon(sd.id), "kind": "list",
                     "items": [item(g, store) for g in lst]})
     return out
