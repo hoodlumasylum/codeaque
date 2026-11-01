@@ -66,6 +66,7 @@ class Config:
     steam_bigpicture: bool = True  # the Steam tile opens Steam full screen in Big Picture (controller-friendly) mode
     reduce_animations: bool = False  # Settings > Reduce animations: no moving background, bobbing or fades
     reduce_effects: str = "auto"   # Settings > Reduce effects: "auto" (on for weak graphics chips), "on" or "off" - blur, shadows, big backdrop
+    handheld: bool = False         # Settings > Handheld mode: the small-screen home with only Cloud Gaming and Retro (also --handheld)
     pad_reminder: bool = True      # Settings > Show pad reminder: the small "pad not connected" note on the home screen
     first_run: bool = False
     path: Path | None = None
@@ -126,6 +127,7 @@ def load_config(path: Path | None = None) -> Config:
         re_ = str(ui.get("reduce_effects", "auto")).lower()
         cfg.reduce_effects = re_ if re_ in ("auto", "on", "off") else "auto"
         cfg.pad_reminder = bool(ui.get("pad_reminder", True))
+        cfg.handheld = bool(ui.get("handheld", False))
         cfg.esc_exit = bool(ui.get("esc_exit", True))
         cfg.fullscreen_games = bool(ui.get("fullscreen_games", True))
         cfg.picture_shape = str(ui.get("picture_shape", "fill"))
@@ -221,6 +223,8 @@ def dump_config(cfg: Config) -> str:
         "# auto = blur and shadows are turned off by themselves on weak graphics chips; on = always off; off = always on.",
         "reduce_effects = \"" + cfg.reduce_effects + "\"",
         "pad_reminder = " + ("true" if cfg.pad_reminder else "false"),
+        "# Handheld mode: CodeAque starts in the small-screen home with only Cloud Gaming and Retro.",
+        "handheld = " + ("true" if cfg.handheld else "false"),
         "# Esc twice (or hold Esc 1 s, Ctrl+Esc, gamepad Guide+B) closes Netflix / YouTube / Kodi and returns to CodeAque.",
         "esc_exit = " + ("true" if cfg.esc_exit else "false"),
         "fullscreen_games = " + ("true" if cfg.fullscreen_games else "false"),

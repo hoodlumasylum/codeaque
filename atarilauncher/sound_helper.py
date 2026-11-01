@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 SFX = Path(__file__).resolve().parent / "assets" / "sfx"
-NAMES = ("tick", "select", "back", "fav", "launch", "error", "start", "intro")
+NAMES = ("tick", "select", "back", "fav", "launch", "error", "start", "intro", "hhmove", "hhcat", "hhselect", "hhback")
 MUSIC_LEVEL = 0.35         # the ambient loop is always quieter than the effects
 MIN_GAP = 0.03             # seconds: a held-down key cannot machine-gun the speakers
 

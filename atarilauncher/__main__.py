@@ -11,6 +11,7 @@ def parse_args(argv=None):
     ap = argparse.ArgumentParser(prog="atari", description="CodeAque - a console-style game launcher")
     ap.add_argument("--windowed", action="store_true", help="run in a normal window instead of full screen")
     ap.add_argument("--fullscreen", action="store_true", help="force full screen")
+    ap.add_argument("--handheld", action="store_true", help="start in Handheld mode (Cloud Gaming + Retro only) this time")
     ap.add_argument("--demo", action="store_true", help="show made-up demo games (used for screenshots)")
     ap.add_argument("--screenshot", metavar="PNG", help="save a screenshot after start-up and exit")
     ap.add_argument("--screenshot-keys", default="", help="comma-separated actions to press before the shot "
@@ -58,6 +59,8 @@ def main(argv=None) -> int:
         backend.cfg.fullscreen = False
     if args.fullscreen:
         backend.cfg.fullscreen = True
+    if args.handheld:
+        backend.set_handheld_once()
 
     engine = QQmlApplicationEngine()
     errors: list[str] = []

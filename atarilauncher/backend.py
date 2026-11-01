@@ -5279,6 +5279,29 @@ class Backend(QObject):
         self.uiPrefsChanged.emit()
 
     @Property(bool, notify=uiPrefsChanged)
+    def handheld(self):
+        """Handheld mode: the small-screen home (Cloud Gaming + Retro only). Settings toggle, or --handheld for one start."""
+        return bool(self.cfg.handheld or getattr(self, "_handheld_once", False))
+
+    @Slot(bool)
+    def setHandheld(self, on: bool) -> None:
+        self._handheld_once = False
+        if self.cfg.handheld != bool(on):
+            self.cfg.handheld = bool(on)
+            self._save_prefs()
+        self.uiPrefsChanged.emit()
+
+    def set_handheld_once(self) -> None:
+        """--handheld on the command line: handheld for this start only (the Settings choice is not changed)."""
+        self._handheld_once = True
+        self.uiPrefsChanged.emit()
+
+    @Property("QVariantList", notify=statsChanged)
+    def handheldSections(self):
+        from . import handheld as _hh
+        return _hh.sections(self._all, self.store)
+
+    @Property(bool, notify=uiPrefsChanged)
     def padReminderOn(self):
         return self.cfg.pad_reminder
 
@@ -5805,6 +5828,9 @@ class Backend(QObject):
         rows.append({"kind": "effects", "title": "Reduce effects", "value": _fxv,
                      "detail": "Turns off the see-through blur, soft shadows and the big blurred picture behind the home screen. "
                                "AUTO = on by itself for weak graphics chips. Press to step AUTO / ON / OFF."})
+        rows.append({"kind": "handheld", "title": "Handheld mode", "value": "ON" if self.cfg.handheld else "OFF",
+                     "detail": "A home made for small handheld screens: only Cloud Gaming and Retro, big text, all by controller. "
+                               "CodeAque then starts in it every time. Turn it off here, or with Y > Leave handheld mode."})
         rows.append({"kind": "padreminder", "title": "Show pad reminder", "value": "ON" if self.cfg.pad_reminder else "OFF",
                      "detail": "A small note on the home screen when a pad that was connected before drops. "
                                "Remove and re-pair stays in Settings > Controllers."})

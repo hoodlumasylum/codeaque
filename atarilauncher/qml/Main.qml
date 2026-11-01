@@ -619,6 +619,7 @@ Window {
         else if (r.kind === "escexit") { backend.toggleEscExit(); refreshSetup(true) }
         else if (r.kind === "anim") { backend.toggleAnimations(); refreshSetup(true) }
         else if (r.kind === "effects") { backend.cycleEffects(); refreshSetup(true) }
+        else if (r.kind === "handheld") { backend.setHandheld(!backend.handheld); refreshSetup(true) }
         else if (r.kind === "padreminder") { backend.togglePadReminder(); refreshSetup(true) }
         else if (r.kind === "covers") { backend.downloadCoversNow(); refreshSetup(true) }
         else if (r.kind === "coversauto") { backend.toggleCoversAuto(); refreshSetup(true) }
@@ -761,7 +762,7 @@ Window {
             objectName: "homeBackdrop"
             anchors.fill: parent
             visible: win.mode === "library" || win.mode === "search" || win.mode === "menu" || win.mode === "sort"
-            source: win.cur && win.cur.wideArt ? win.cur.wideArt : (win.cur && win.cur.art ? win.cur.art : "")
+            source: win.cur && win.cur.art ? win.cur.art : ""
             hue: win.cur && win.cur.hue !== undefined ? win.cur.hue : 0.42
             drift: grid.cols > 1 && grid.currentIndex >= 0 ? ((grid.currentIndex % grid.cols) / (grid.cols - 1)) * 2 - 1 : 0
         }
