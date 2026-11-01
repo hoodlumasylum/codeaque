@@ -22,12 +22,12 @@ def ribbon(name, colour, lines, amp, periods, phase_step, width):
                 if 0 <= yy < H:
                     al = int(255 * (1 - abs(dy) / (width + 1)) * (0.55 if k else 1.0) * (1 - k / lines * 0.6))
                     r, g, b, a0 = px[x, yy]
-                    px[x, yy] = (colour[0], colour[1], colour[2], min(255, a0 + al // 3))
+                    px[x, yy] = (colour[0], colour[1], colour[2], min(255, a0 + int(al / 1.4)))
     img = img.filter(ImageFilter.GaussianBlur(2.2))
     img.save(OUT / name, optimize=True)
 
 
 if __name__ == "__main__":
-    ribbon("hh_wave1.png", (232, 194, 90), 9, 120, 2, 0.22, 2)     # gold
-    ribbon("hh_wave2.png", (60, 200, 150), 7, 90, 3, 0.30, 2)      # emerald
+    ribbon("hh_wave1.png", (70, 240, 120), 9, 120, 2, 0.22, 3)     # bright emerald green
+    ribbon("hh_wave2.png", (232, 194, 90), 5, 70, 3, 0.30, 1)      # a thin gold thread
     print("written to", OUT)

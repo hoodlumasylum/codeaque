@@ -723,7 +723,8 @@ Window {
             }
             if (padWaitBanner.visible && !backend.keyFromPad()) root.padToastHidden = root.padToastKey   // keyboard in use: hide the pad note
             var snd = win.keySound(e)
-            if (win.mode === "library") libraryKey(e)
+            if (win.mode === "library" && backend.handheld) { handheldScreen.handleKey(e); snd = "" }
+            else if (win.mode === "library") libraryKey(e)
             else if (win.mode === "search") searchKey(e)
             else if (win.mode === "menu") menuKey(e)
             else if (win.mode === "sort") sortKey(e)
@@ -753,23 +754,42 @@ Window {
         }
         WaveBackground {
             anchors.fill: parent
-            visible: !homeBackdrop.visible
-            active: !homeBackdrop.visible && !backend.running && win.visibility !== Window.Minimized
+            visible: !homeBackdrop.visible && !handheldScreen.visible
+            active: !homeBackdrop.visible && !handheldScreen.visible && !backend.running && win.visibility !== Window.Minimized
                     && (win.mode === "library" || win.mode === "search" || win.mode === "menu" || win.mode === "sort")
         }
         Backdrop {     // 0.6.1: the highlighted game's art, big and blurred, behind the home screen
             id: homeBackdrop
             objectName: "homeBackdrop"
             anchors.fill: parent
-            visible: win.mode === "library" || win.mode === "search" || win.mode === "menu" || win.mode === "sort"
+            visible: !backend.handheld && (win.mode === "library" || win.mode === "search" || win.mode === "menu" || win.mode === "sort")
             source: win.cur && win.cur.art ? win.cur.art : ""
             hue: win.cur && win.cur.hue !== undefined ? win.cur.hue : 0.42
             drift: grid.cols > 1 && grid.currentIndex >= 0 ? ((grid.currentIndex % grid.cols) / (grid.cols - 1)) * 2 - 1 : 0
         }
 
+        // ------------------------------------------------------------ 0.7.0: CodeAque Handheld Edition (Settings / --handheld)
+        HandheldScreen {
+            id: handheldScreen
+            objectName: "handheldScreen"
+            anchors.fill: parent
+            z: 15
+            visible: backend.handheld && win.mode === "library" && !backend.running
+            onMenuAction: function (id) {
+                if (id === "wifi") win.openWifi("library")
+                else if (id === "controllers") win.openPage("controllers")
+                else if (id === "addgames") win.openPage("addgames")
+                else if (id === "settings") win.openSetup()
+                else if (id === "downloads") win.openPage("downloads")
+                else if (id === "power") { backend.powerReset(); win.openPage("power") }
+                else if (id === "leave") backend.setHandheld(false)
+            }
+        }
+
         // ------------------------------------------------------------ banner + tabs
         TopBar {
             id: top
+            visible: !handheldScreen.visible
             u: win.u
             anchors.top: parent.top
             anchors.left: parent.left
@@ -842,6 +862,7 @@ Window {
         // ------------------------------------------------------------ system tiles
         ListView {
             id: tileView
+            visible: !handheldScreen.visible
             anchors.top: top.bottom
             anchors.topMargin: 10 * win.u
             anchors.left: parent.left
@@ -875,6 +896,7 @@ Window {
         // ------------------------------------------------------------ bottom hints
         HintBar {
             id: hints
+            visible: !handheldScreen.visible
             u: win.u
             anchors.left: parent.left
             anchors.right: parent.right
@@ -900,6 +922,7 @@ Window {
         // ------------------------------------------------------------ main area
         Item {
             id: main
+            visible: !handheldScreen.visible
             anchors.top: tileView.bottom
             anchors.topMargin: 8 * win.u
             anchors.bottom: hints.top

@@ -21,3 +21,5 @@ Rain 1.0 Rain.qml
 SystemHero 1.0 SystemHero.qml
 Backdrop 1.0 Backdrop.qml
 Glass 1.0 Glass.qml
+HandheldScreen 1.0 HandheldScreen.qml
+HandButton 1.0 HandButton.qml

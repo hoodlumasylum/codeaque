@@ -5297,9 +5297,27 @@ class Backend(QObject):
         self.uiPrefsChanged.emit()
 
     @Property("QVariantList", notify=statsChanged)
-    def handheldSections(self):
+    def handheldCategories(self):
         from . import handheld as _hh
-        return _hh.sections(self._all, self.store)
+        return _hh.categories(self._all, self.store)
+
+    @Slot(result="QVariantMap")
+    def handheldStatus(self):
+        """Battery and Online for the Handheld top bar (read when asked: cheap /sys reads)."""
+        from . import handheld as _hh
+        b = _hh.battery()
+        return {"battery": b["percent"], "hasBattery": b["present"], "charging": b["charging"],
+                "online": _hh.online()}
+
+    @Slot(str)
+    def toggleFavoriteGid(self, gid: str) -> None:
+        g = self._game_by_gid(gid)
+        if g is None:
+            return
+        now = self.store.toggle_favorite(g.gid)
+        self._rebuild_filters()
+        self.statsChanged.emit()
+        self.show_toast(("Added to favourites: " if now else "Removed from favourites: ") + g.title, 2500)
 
     @Property(bool, notify=uiPrefsChanged)
     def padReminderOn(self):
