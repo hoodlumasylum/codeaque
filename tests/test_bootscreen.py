@@ -43,7 +43,7 @@ def test_install_backup_readback_and_restore(tmp_path):
     assert "GRUB_DISABLE_OS_PROBER=true" in gd and "GRUB_TIMEOUT=5" in gd and "themes/codeaque/theme.txt" in gd
     assert os.access(root / "etc/grub.d/35_codeaque_windows", os.X_OK)
     ply = root / "usr/share/plymouth/themes/codeaque"
-    assert (ply / "codeaque.plymouth").is_file() and (ply / "rain-0.png").is_file() and "ANIM = 1" in (ply / "codeaque.script").read_text()
+    assert (ply / "codeaque.plymouth").is_file() and (ply / "dot.png").is_file() and "ANIM = 1" in (ply / "codeaque.script").read_text()
     assert (tmp_path / "ply").read_text().strip() == "codeaque"
     assert (root / "var/lib/atari-launcher/boot-backup/grub").read_text() == "GRUB_DEFAULT=0\n"
     assert (root / "var/lib/atari-launcher/boot-backup/plymouth").read_text().strip() == "mint-logo"
@@ -77,7 +77,7 @@ def test_static_fallback_and_no_partitioning():
 
 def test_assets_exist_and_no_windows_logo_source_kept():
     names = {p.name for p in bootscreen.ASSETS.iterdir()}
-    assert {"background-1920x1080.png", "background-1366x768.png", "code-glow.png", "rain-0.png", "select_c.png"} <= names
+    assert {"background-1920x1080.png", "background-1366x768.png", "code-glow.png", "grub-1920x1080.png", "dot.png", "select_c.png"} <= names
 
 
 def test_windows_entry_and_reboot(tmp_path):
@@ -224,7 +224,7 @@ def test_codeaque_menu_entry_script_output(tmp_path):
     out = subprocess.run(["sh", "-c", script], capture_output=True, text=True, env=env).stdout
     assert 'menuentry "CodeAque"' in out and "root=UUID=1111-UUID ro" in out and "quiet splash" in out
     assert "search --no-floppy --fs-uuid --set=root 1111-UUID" in out and "recovery" not in out
-    assert 'width = 48%' in bootscreen.theme_txt()
+    assert "width = 46%" in bootscreen.theme_txt()
 
 
 def test_menu_state_old_current_and_prompt(tmp_path, monkeypatch):

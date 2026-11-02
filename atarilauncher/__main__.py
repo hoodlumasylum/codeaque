@@ -116,6 +116,8 @@ def main(argv=None) -> int:
                 delay = 40
                 if action.startswith("wait"):
                     delay = int(action.split(":")[1]) if ":" in action else 500
+                elif action == "open-update":           # screenshots of the Update screen
+                    window.setProperty("mode", "update")
                 else:
                     backend.send_action(action)
                 QTimer.singleShot(delay, step)

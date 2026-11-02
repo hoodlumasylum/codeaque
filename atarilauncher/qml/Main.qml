@@ -1728,7 +1728,7 @@ Window {
                     anchors.leftMargin: 48 * win.u
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6 * win.u
-                    Text { text: backend.pageTitle(win.pageName); color: Theme.redBright; font.pixelSize: 42 * win.u
+                    Text { text: backend.pageTitle(win.pageName); color: Theme.accent; font.pixelSize: 42 * win.u
                            font.bold: true; font.letterSpacing: 4 * win.u }
                     Text { text: (backend.padStyle, backend.pageSub(win.pageName)); color: "#e6e8f2"; font.pixelSize: 21 * win.u }
                 }
@@ -1746,7 +1746,7 @@ Window {
                        color: "white"; font.pixelSize: 21 * win.u; font.bold: true }
                 MouseArea { anchors.fill: parent; onClicked: win.leavePage() }
             }
-            Rectangle { id: pageLine; anchors.top: pageHead.bottom; width: parent.width; height: 3 * win.u; color: Theme.red }
+            Rectangle { id: pageLine; anchors.top: pageHead.bottom; width: parent.width; height: 3 * win.u; color: Theme.accent }
             MenuList {
                 id: pageList
                 u: win.u
@@ -1824,13 +1824,13 @@ Window {
                     anchors.leftMargin: 48 * win.u
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6 * win.u
-                    Text { text: "UPDATE CODE"; color: Theme.redBright; font.pixelSize: 42 * win.u; font.bold: true
+                    Text { objectName: "updTitle"; text: "UPDATE CODEAQUE"; color: Theme.accent; font.pixelSize: 42 * win.u; font.bold: true
                            font.letterSpacing: 4 * win.u }
                     Text { text: "You have version " + backend.version + ". Your games, settings and favourites are never touched."
                            color: "#e6e8f2"; font.pixelSize: 21 * win.u }
                 }
             }
-            Rectangle { id: updLine; anchors.top: updHead.bottom; width: parent.width; height: 3 * win.u; color: Theme.red }
+            Rectangle { id: updLine; anchors.top: updHead.bottom; width: parent.width; height: 3 * win.u; color: Theme.accent }
             Column {
                 anchors.top: updLine.bottom
                 anchors.topMargin: 24 * win.u
@@ -1853,7 +1853,7 @@ Window {
                     Rectangle {
                         id: updFill
                         width: backend.updateFraction >= 0 ? parent.width * backend.updateFraction : 180 * win.u
-                        height: parent.height; radius: 7 * win.u; color: Theme.red
+                        height: parent.height; radius: 7 * win.u; color: Theme.accent
                         SequentialAnimation on x {
                             running: updScreen.visible && backend.updateFraction < 0 && updScreen.working
                             loops: Animation.Infinite
@@ -1888,10 +1888,10 @@ Window {
                 Rectangle {
                     visible: !updScreen.working || updScreen.st === "checking" ? true : false
                     width: updPrimaryText.implicitWidth + 70 * win.u; height: 62 * win.u; radius: 10 * win.u
-                    gradient: Gradient { GradientStop { position: 0; color: "#ee2a34" } GradientStop { position: 1; color: "#a8121b" } }
+                    gradient: Gradient { GradientStop { position: 0; color: Theme.accent } GradientStop { position: 1; color: Qt.darker(Theme.accent, 1.7) } }
                     border.width: 3 * win.u; border.color: "white"
                     opacity: updScreen.st === "checking" ? 0.4 : 1
-                    Text { id: updPrimaryText; anchors.centerIn: parent; color: "white"; font.pixelSize: 22 * win.u; font.bold: true
+                    Text { id: updPrimaryText; anchors.centerIn: parent; color: "#04121a"; font.pixelSize: 22 * win.u; font.bold: true
                            text: updScreen.st === "available" ? "INSTALL UPDATE  (Enter)"
                                : updScreen.st === "done" ? "RESTART CODE NOW  (Enter)"
                                : updScreen.st === "error" ? "TRY AGAIN  (Enter)"

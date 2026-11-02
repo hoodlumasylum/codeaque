@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.3 — the old look is gone everywhere after an update
+
+- **The boot screen uses Code's red / chrome splash** (start menu, start-up splash with a live loading bar, login screen). Before this, the boot pictures still had the old gold art.
+- **After an update, CodeAque checks the pictures stored outside its own folder** (under /boot and /usr/share). If they're old, Settings > Boot opens with one highlighted row: press it and type your password once. If only quiet boot is on, its logo is replaced straight away, again after one password box.
+- **The update also tidies up old leftovers:**
+  - Menu, autostart and desktop shortcuts that start an older CodeAque folder now start the updated one.
+  - An old CodeAque intro video picked in Settings is removed so the current one plays. Your own videos are kept.
+  - CodeAque-only mode counts as needing an update when it starts an older copy.
+- **The Update screen and page headers have the neon look.**
+
 ## What's new in 0.9.2 — Christmas theme, updates everywhere, website
 
 - **Christmas theme** (PC, Handheld, Android): falling snow, icy blues with festive red and green, snow-capped tiles and a soft original chime. Android suggests it once each December.

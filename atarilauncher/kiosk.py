@@ -206,7 +206,25 @@ def session_outdated(layout: Layout = DEFAULT) -> bool:
     except OSError:
         return False
     m = re.search(r"atari-session-version:\s*(\d+)", text)
-    return enabled(layout) and (int(m.group(1)) if m else 1) < SESSION_VERSION
+    if not enabled(layout):
+        return False
+    if (int(m.group(1)) if m else 1) < SESSION_VERSION:
+        return True
+    r = re.search(r"^RUN=(.+)$", text, re.M)          # it starts another (older) copy of CodeAque than this one
+    if r:
+        try:
+            run = shlex.split(r.group(1))[0]
+        except (ValueError, IndexError):
+            run = r.group(1).strip()
+        try:
+            if os.path.realpath(run) == os.path.realpath(str(run_script_path())):
+                return False
+            from . import __version__, updater
+            other = updater.version_in(Path(run).parent)       # an older CodeAque copy somewhere else
+            return bool(other) and updater.is_newer(__version__, other)
+        except Exception:
+            return False
+    return False
 
 
 def render_session_script(run_sh: Path, desktop_exec: str, home_hint: str = "") -> str:

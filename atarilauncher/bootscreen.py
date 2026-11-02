@@ -1,7 +1,7 @@
 """Settings > Boot: the CodeAque boot screen for dual-boot computers (GRUB theme + Plymouth splash), and putting the old one back.
 
-Made from Code's own final boot art (docs/branding/codeaque-boot-art-clean.png: the four-pane window shape was replaced by an original
-ankh made of falling-code glyphs, and the baked-in text and bar were painted out - they are live in Plymouth; scripts/clean_boot_art.py + scripts/make_boot_assets.py build the pictures). The menu entries are plain gold text:
+Made from Code's red / chrome splash (atarilauncher/assets/splash.png, the same picture CodeAque shows while it starts; its bar and
+dots are live in Plymouth; scripts/make_boot_assets.py builds the pictures). The menu entries are plain white text on a dark panel:
 "CodeAque" (default) and "Windows"; the distro's "Advanced options" stay as a small last line for recovery.
 
 What Install does (as root, after you confirm, in CodeAque's password box):
@@ -27,7 +27,8 @@ GRUB_D = "/etc/default/grub.d/zzz-codeaque-boot.cfg"
 WIN_SCRIPT = "/etc/grub.d/35_codeaque_windows"
 GRUB_CFG = "/boot/grub/grub.cfg"
 FONT_TTF = ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-GOLD, GOLD_LIGHT, DIM = "#e2b64a", "#ffe9a8", "#bda772"
+GOLD, GOLD_LIGHT, DIM = "#e8eaf2", "#ff8a8a", "#9a9cab"     # menu text (white), countdown (light red), dim
+ART_VERSION = 2     # 1 = the 0.5-0.9.2 gold art; 2 = 0.9.3: Code's red / chrome splash
 
 
 def theme_txt() -> str:
@@ -36,19 +37,19 @@ def theme_txt() -> str:
 title-text: ""
 desktop-image: "background.png"
 desktop-image-scale-method: "crop"
-desktop-color: "#050807"
+desktop-color: "#050507"
 terminal-font: "CodeAque Regular 20"
 terminal-box: "terminal_box_*.png"
 
 + boot_menu {{
-    left = 26%
-    top = 76%
-    width = 48%
-    height = 14%
+    left = 27%
+    top = 68%
+    width = 46%
+    height = 18%
     item_font = "CodeAque Regular 36"
     selected_item_font = "CodeAque Regular 36"
     item_color = "{GOLD}"
-    selected_item_color = "#140d02"
+    selected_item_color = "#ffffff"
     item_height = 50
     item_padding = 18
     item_spacing = 8
@@ -147,7 +148,7 @@ exit 0
 def plymouth_theme() -> str:
     return f"""[Plymouth Theme]
 Name=CodeAque
-Description=CodeAque boot art with a gold glow, a live spinner and an emerald progress line
+Description=Code's CodeAque splash with a live red loading bar
 ModuleName=script
 
 [script]
@@ -156,9 +157,8 @@ ScriptFile={PLY_DIR}/codeaque.script
 """
 
 
-PLYMOUTH_SCRIPT_TEMPLATE = """// CodeAque splash (CodeAque Settings > Boot). The art fills the screen; green symbols fall in columns (our own glyphs: 0/1 and
-// hieroglyph-style marks); the eyes, the logo and the ankh glow slowly; a live green / gold progress bar and text; fade in and out.
-// Light on old GPUs: ~24 moving sprites and one pulsing glow; no drawing per frame. ANIM = 0 is the still version.
+PLYMOUTH_SCRIPT_TEMPLATE = """// CodeAque splash (CodeAque Settings > Boot), art version 2: Code's red / chrome splash fills the screen; its loading bar fills
+// with the real boot progress, one of the four dots is lit at a time, and the red glow pulses slowly. ANIM = 0: no pulse / dots.
 ANIM = @ANIM@;
 Window.SetBackgroundTopColor(0, 0, 0);
 Window.SetBackgroundBottomColor(0, 0, 0);
@@ -171,55 +171,35 @@ bg.image = bg.image.Scale(bw, bh);
 bg.sprite = Sprite(bg.image); bg.sprite.SetX(bx); bg.sprite.SetY(by); bg.sprite.SetZ(0);
 glow.image = Image("code-glow.png").Scale(bw, bh);
 glow.sprite = Sprite(glow.image); glow.sprite.SetX(bx); glow.sprite.SetY(by); glow.sprite.SetZ(5);
-NCOL = 24;
-if (ANIM) {
-  for (j = 0; j < 6; j++) rimg[j] = Image("rain-" + j + ".png");
-  rh = rimg[0].GetHeight();
-  for (j = 0; j < NCOL; j++) {
-    side = j % 2;
-    // columns stay at the sides (over the pillars and the sky), away from the menu area in the middle
-    if (side == 0) cx = X + W * (0.02 + 0.28 * Math.Random()); else cx = X + W * (0.70 + 0.28 * Math.Random());
-    drop[j].sprite = Sprite(rimg[j % 6]);
-    drop[j].sprite.SetX(cx);
-    drop[j].y = Y - rh - Math.Random() * H;
-    drop[j].speed = 2 + Math.Random() * 4;
-    drop[j].sprite.SetY(drop[j].y);
-    drop[j].sprite.SetZ(2);
-    drop[j].sprite.SetOpacity(0);
-  }
-}
-bar_w = W * 0.34; bar_x = X + W / 2 - bar_w / 2; bar_y = Y + H * 0.865;
-track.image = Image("code-track.png").Scale(bar_w, 6);
-track.sprite = Sprite(track.image); track.sprite.SetX(bar_x); track.sprite.SetY(bar_y); track.sprite.SetZ(6);
+// the bar slot and the dots in the art (1672 x 941 picture: bar at 523,682 627x19; dots at 757 + 46*i, 741, 19x19)
+bar_x = bx + bw * 523 / 1672; bar_y = by + bh * 682 / 941; bar_w = bw * 627 / 1672; bar_h = Math.Max(3, bh * 19 / 941);
+track.image = Image("code-track.png").Scale(bar_w, bar_h);
+track.sprite = Sprite(track.image); track.sprite.SetX(bar_x); track.sprite.SetY(bar_y); track.sprite.SetZ(6); track.sprite.SetOpacity(0);
 line.base = Image("code-line.png");
 line.sprite = Sprite(); line.sprite.SetX(bar_x); line.sprite.SetY(bar_y); line.sprite.SetZ(7);
-head.image = Image("code-head.png");
-head.sprite = Sprite(head.image); head.sprite.SetY(bar_y - 3); head.sprite.SetX(bar_x); head.sprite.SetZ(8);
-t1.image = Image.Text("CODEAQUE  OS", 0.89, 0.71, 0.29, 1, "Sans Bold 26");
-t1.sprite = Sprite(t1.image); t1.sprite.SetX(X + W / 2 - t1.image.GetWidth() / 2); t1.sprite.SetY(Y + H * 0.765); t1.sprite.SetZ(6);
-t2.image = Image.Text("SYSTEM INITIALISING...", 0.83, 0.93, 0.85, 1, "Sans 16");
-t2.sprite = Sprite(t2.image); t2.sprite.SetX(X + W / 2 - t2.image.GetWidth() / 2); t2.sprite.SetY(Y + H * 0.815); t2.sprite.SetZ(6);
+head.image = Image("code-head.png").Scale(bar_h, bar_h);
+head.sprite = Sprite(head.image); head.sprite.SetY(bar_y); head.sprite.SetX(bar_x); head.sprite.SetZ(8);
+dsz = Math.Max(3, bh * 19 / 941);
+dimg = Image("dot.png").Scale(dsz, dsz);
+for (j = 0; j < 4; j++) {
+  dot[j].sprite = Sprite(dimg);
+  dot[j].sprite.SetX(bx + bw * (757 + 46 * j) / 1672); dot[j].sprite.SetY(by + bh * 741 / 941); dot[j].sprite.SetZ(6);
+  dot[j].sprite.SetOpacity(0);
+}
 t = 0; fade = 0; quitting = 0; progress = 0;
 fun refresh() {
   t++;
   if (quitting) fade = Math.Max(0, fade - 0.05); else fade = Math.Min(1, fade + 0.03);
-  bg.sprite.SetOpacity(fade); track.sprite.SetOpacity(fade); line.sprite.SetOpacity(fade); head.sprite.SetOpacity(fade);
-  t1.sprite.SetOpacity(fade); t2.sprite.SetOpacity(fade * (0.75 + 0.25 * Math.Sin(t / 12)));
-  glow.sprite.SetOpacity(fade * (0.25 + 0.35 * (0.5 + 0.5 * Math.Sin(t / 40))));     // slow pulse, about 5 s
-  if (ANIM) {
-    for (j = 0; j < NCOL; j++) {
-      drop[j].y = drop[j].y + drop[j].speed;
-      if (drop[j].y > Y + H) drop[j].y = Y - rh;
-      drop[j].sprite.SetY(drop[j].y);
-      drop[j].sprite.SetOpacity(fade * 0.8);
-    }
-  }
+  bg.sprite.SetOpacity(fade); line.sprite.SetOpacity(fade); head.sprite.SetOpacity(fade);
+  if (ANIM) glow.sprite.SetOpacity(fade * (0.15 + 0.3 * (0.5 + 0.5 * Math.Sin(t / 40)))); else glow.sprite.SetOpacity(fade * 0.2);
+  lit = Math.Int(t / 20) % 4;
+  for (j = 0; j < 4; j++) { if (j == lit || ANIM == 0 && j == 0) dot[j].sprite.SetOpacity(fade); else dot[j].sprite.SetOpacity(0); }
 }
 Plymouth.SetRefreshFunction(refresh);
 fun progress_cb(duration, p) {
   if (p > progress) progress = p;
   w = Math.Max(1, Math.Int(bar_w * progress));
-  line.sprite.SetImage(line.base.Scale(w, 6));
+  line.sprite.SetImage(line.base.Scale(w, bar_h));
   head.sprite.SetX(bar_x + w - head.image.GetWidth() / 2);
 }
 Plymouth.SetBootProgressFunction(progress_cb);
@@ -269,8 +249,8 @@ def install_script(lay: Layout = Layout(), assets: Path = ASSETS, animated: bool
         f"touch {_q(bk + '/done')}; fi",
         "STEP=2",
         f"mkdir -p {_q(th)} {_q(ply)}",
-        f"cp {_q(str(assets / 'background-1920x1080.png'))} {_q(th + '/background.png')}",
-        f"cp {_q(str(assets / 'background-1366x768.png'))} {_q(th + '/background-1366x768.png')}",
+        f"cp {_q(str(assets / 'grub-1920x1080.png'))} {_q(th + '/background.png')}",
+        f"cp {_q(str(assets / 'grub-1366x768.png'))} {_q(th + '/background-1366x768.png')}",
         f"cp {_q(str(assets))}/select_*.png {_q(th)}/",
         f"for p in n s e w ne nw se sw c; do cp {_q(str(assets))}/select_c.png {_q(th)}/terminal_box_$p.png; done",
         _write(th + "/theme.txt", theme_txt()),
@@ -278,7 +258,10 @@ def install_script(lay: Layout = Layout(), assets: Path = ASSETS, animated: bool
         "if command -v grub-mkfont >/dev/null 2>&1; then for f in " + " ".join(_q(f) for f in FONT_TTF) + "; do "
         f"if [ -f \"$f\" ]; then for s in 20 24 36; do grub-mkfont -n CodeAque -s $s -o {_q(th)}/codeaque-$s.pf2 \"$f\" >/dev/null 2>&1 || true; done; break; fi; done; fi",
         f"cp {_q(str(assets))}/background-1920x1080.png {_q(str(assets))}/code-glow.png {_q(str(assets))}/code-line.png "
-        f"{_q(str(assets))}/code-track.png {_q(str(assets))}/code-head.png {_q(str(assets))}/rain-*.png {_q(ply)}/",
+        f"{_q(str(assets))}/code-track.png {_q(str(assets))}/code-head.png {_q(str(assets))}/dot.png {_q(ply)}/",
+        f"rm -f {_q(ply)}/rain-*.png",                       # the old gold art's falling symbols
+        # quiet boot's own logo theme (Settings > Quiet boot), if it is there: the current CodeAque logo
+        f"if [ -d {_q(lay.p(QUIET_DIR))} ]; then cp {_q(str(LOGO))} {_q(lay.p(QUIET_DIR) + '/code-logo.png')}; chmod 644 {_q(lay.p(QUIET_DIR) + '/code-logo.png')}; fi",
         _write(ply + "/codeaque.script", PLYMOUTH_SCRIPT if animated else PLYMOUTH_STATIC),
         _write(ply + "/codeaque.plymouth", plymouth_theme()),
         "STEP=3",
@@ -368,6 +351,48 @@ def restore_script(lay: Layout = Layout()) -> str:
     return ("set -u\n" + restore_body(lay) + "\n"
             f"rm -rf {_q(bk)}\n"
             f"if grep -q codeaque {_q(lay.p(GRUB_CFG))} 2>/dev/null; then echo STILL; exit 1; fi\necho OK\n")
+
+
+QUIET_DIR = "/usr/share/plymouth/themes/code"
+LOGO = Path(__file__).resolve().parent / "assets" / "codeaque-logo.png"
+
+
+def _same(a: str | Path, b: str | Path) -> bool | None:
+    try:
+        return Path(a).read_bytes() == Path(b).read_bytes()
+    except OSError:
+        return None
+
+
+def art_outdated(lay: Layout = Layout(), assets: Path = ASSETS) -> list[str]:
+    """Which boot pictures on this computer are older than the ones in this CodeAque (they live under /boot and /usr/share, so the
+    per-user update cannot replace them by itself). Empty = up to date, or the boot screen was never installed."""
+    out = []
+    checks = [("the start menu picture", lay.p(GRUB_THEME_DIR) + "/background.png", assets / "grub-1920x1080.png"),
+              ("the start-up splash", lay.p(PLY_DIR) + "/background-1920x1080.png", assets / "background-1920x1080.png"),
+              ("the splash's animation", lay.p(PLY_DIR) + "/codeaque.script", None),
+              ("the login screen picture", lay.p(SHARE) + "/greeter-background.png", assets / "background-1920x1080.png"),
+              ("the quiet boot logo", lay.p(QUIET_DIR) + "/code-logo.png", LOGO)]
+    for what, there, ours in checks:
+        if not Path(there).exists():
+            continue
+        if ours is None:
+            try:
+                old = "art version 2" not in Path(there).read_text(errors="replace")
+            except OSError:
+                old = False
+        else:
+            old = _same(there, ours) is False
+        if old:
+            out.append(what)
+    return out
+
+
+def quiet_logo_script(lay: Layout = Layout()) -> str:
+    """Only quiet boot is on (no CodeAque boot screen): put the current logo in its splash and rebuild the start-up files."""
+    d = lay.p(QUIET_DIR)
+    return (f"set -e\ncp {_q(str(LOGO))} {_q(d + '/code-logo.png')}\nchmod 644 {_q(d + '/code-logo.png')}\n"
+            "if command -v update-initramfs >/dev/null 2>&1; then update-initramfs -u -k all >/dev/null 2>&1; fi\necho OK\n")
 
 
 def installed(lay: Layout = Layout()) -> bool:

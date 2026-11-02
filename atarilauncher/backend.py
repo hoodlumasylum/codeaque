@@ -1863,12 +1863,20 @@ class Backend(QObject):
         try:
             if self._running or self.store.get_pref("boot_reapply_asked", "") == __version__:
                 return
-            if bootscreen.menu_state(recovery=bool(self.store.get_pref("boot_recovery", False))) != "old":
+            stale = bootscreen.art_outdated()
+            menu_old = bootscreen.menu_state(recovery=bool(self.store.get_pref("boot_recovery", False))) == "old"
+            if not stale and not menu_old:
                 return
             self.store.set_pref("boot_reapply_asked", __version__)
+            if not menu_old and not bootscreen.installed():           # only quiet boot's logo is old: fix it straight away (one password box)
+                self._boot_run(bootscreen.quiet_logo_script(), "Putting the new CodeAque logo in the start-up splash")
+                self.show_toast("CodeAque was updated: putting the new logo in the start-up splash - type your password once.", 12000)
+                return
             self._boot_confirm = "install"           # one tap on the highlighted row does it (plus the password)
-            self._boot_msg = ("CodeAque was updated: your start menu still shows the old entries. Press the Install row once "
-                              "(it asks for your password) to get the new menu with just CodeAque and Windows.")
+            self._boot_msg = (("CodeAque was updated, but " + ", ".join(stale) + " on this computer still "
+                               + ("has" if len(stale) == 1 else "have") + " the OLD look (they are stored outside CodeAque, so an update "
+                               "cannot change them without your password). " if stale else "CodeAque was updated: your start menu still shows the old entries. ")
+                              + "Press the highlighted row once and type your password to put in the new look.")
             self.pageRequested.emit("boot")
         except Exception as exc:  # pragma: no cover
             kiosk.log_event(f"boot reapply prompt: {exc}")
@@ -1885,6 +1893,12 @@ class Backend(QObject):
         st = bootscreen.status()
         rec = bool(self.store.get_pref("boot_recovery", False))
         ms = bootscreen.menu_state(recovery=rec)
+        stale = bootscreen.art_outdated() if on else []
+        if stale and ms != "old":
+            rows.append({"kind": "done", "id": "bootinstall", "tone": "warn", "value": "UPDATE",
+                         "title": "Boot screen has the OLD look - press to put in the new one (one tap + password)",
+                         "detail": "Still old: " + ", ".join(stale) + ". This copies Code's new splash into the start menu, the start-up "
+                                   "splash and the login screen."})
         if ms == "old":
             rows.append({"kind": "done", "id": "bootinstall", "tone": "warn", "value": "UPDATE",
                          "title": "Boot menu is NOT up to date - press to update it (one tap + password)",

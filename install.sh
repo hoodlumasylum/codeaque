@@ -179,10 +179,16 @@ if [ "$AUTOSTART" = 1 ]; then
     echo "CodeAque will now start automatically when you log in."
 fi
 
+# Leftovers of older CodeAque copies: shortcuts / autostart entries that start another copy are pointed at this one, and an old
+# CodeAque intro video chosen in Settings is removed so the current splash plays (your own videos stay). No password needed.
+if [ -x "$APP_DIR/.venv/bin/python" ]; then
+    (cd "$APP_DIR" && PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -m atarilauncher.staleparts "$APP_DIR") || echo "Could not check for old CodeAque shortcuts."
+fi
+
 # Win600 / handheld set-ups (made by scripts/install-win600.sh): refresh the emulators' 1280x720 + built-in pad settings,
 # so an in-app update brings new emulator settings too (only those keys; Handheld mode on/off is left as you chose).
 if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/atari/win600-setup" ]; then
-    PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -m atarilauncher.win600 --emulators-only || warn "Could not refresh the emulator settings."
+    (cd "$APP_DIR" && PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -m atarilauncher.win600 --emulators-only) || warn "Could not refresh the emulator settings."
 fi
 
 say "Done!"
