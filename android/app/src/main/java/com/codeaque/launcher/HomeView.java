@@ -22,6 +22,7 @@ public class HomeView extends View {
         String effects();
         String status();      // "87%" or "87% charging", "" without a battery
         boolean online();
+        Bitmap appIcon(Catalog.Item item);   // an installed app's own icon (null for CodeAque's line-drawn tiles)
     }
 
     private Palette T = Palette.NEON;
@@ -31,7 +32,17 @@ public class HomeView extends View {
     public void setWallpaper(Bitmap b) { wallpaper = b; invalidate(); }
 
     private final Host host;
-    private final List<Catalog.Category> cats = Catalog.categories();
+    private List<Catalog.Category> cats = Catalog.categories();
+
+    /** 0.9.4: new rows after the installed apps / game folders were scanned; keeps the chosen category and tile. */
+    public void setCategories(List<Catalog.Category> n) {
+        String id = cats.get(cat).id;
+        cats = n;
+        int i = Catalog.indexOf(cats, id);
+        cat = i < 0 ? 0 : i; catAnim = cat;
+        tile = Math.max(0, Math.min(tile, items().size() - 1));
+        invalidate();
+    }
     private int cat = 0, tile = 1;       // Games, focused on the first real tile after "Cloud Gaming"? start on Cloud Gaming:
     private boolean inCats = false;
     private float catAnim = 0, scrollAnim = 0, t = 0;
@@ -439,7 +450,11 @@ public class HomeView extends View {
                 path.lineTo(r.right - 6 * s, r.top - 3 * s); path.quadTo(r.centerX(), r.top - 8 * s, r.left + 6 * s, r.top - 3 * s); path.close();
                 p.setColor(0xF2FFFFFF); c.drawPath(path, p);
             }
-            icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
+            Bitmap ai = host.appIcon(it);
+            if (ai != null) {                                   // the app's own icon, as Android shows it
+                float is = 40 * s; iconRect.set(r.centerX() - is / 2, r.top + h * 0.30f - is / 2 - 4 * s, r.centerX() + is / 2, r.top + h * 0.30f + is / 2 - 4 * s);
+                p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(ai, null, iconRect, p);
+            } else icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
             spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
             String lab = it.label.toUpperCase(Locale.ROOT);
             float ts = 15 * s; p.setTextSize(ts); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
@@ -458,8 +473,9 @@ public class HomeView extends View {
             }
         }
         // the focused tile's hint under the row
-        Catalog.Item f = its.get(tile);
-        String hint = f.isAction() ? "" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
+        if (its.isEmpty()) return;
+        Catalog.Item f = its.get(Math.min(tile, its.size() - 1));
+        String hint = f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
         text(c, hint, W / 2f, top + h + 24 * s, 14 * s, DIM, Paint.Align.CENTER, false);
     }
 

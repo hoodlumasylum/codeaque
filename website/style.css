@@ -36,3 +36,10 @@ footer{text-align:center;color:var(--dim);padding:30px 20px 50px;border-top:1px 
 @media (max-width:760px){.grid2,.gallery{grid-template-columns:1fr}.nav nav{gap:12px}.nav nav a{font-size:14px}.card{padding:20px}.brand img{height:28px}}
 @media (max-width:420px){.nav nav a:not(.pill){display:none}}
 .grid2>*,.box{min-width:0}p code,li code{word-break:break-all}
+.live{position:relative;border-color:#3fd4ff66;box-shadow:0 0 0 1px #3fd4ff22,0 0 60px #3fd4ff22;background:radial-gradient(700px 260px at 50% 0,#3fd4ff26,transparent),linear-gradient(180deg,#131820,#0f1217)}
+.live-logo{height:56px;display:block;margin:4px 0 14px;filter:drop-shadow(0 0 14px #3fd4ff88)}
+.live h2{color:#fff;text-shadow:0 0 18px #3fd4ff88}.live h3{color:var(--neon);margin:18px 0 6px}
+.tag{position:absolute;top:18px;right:18px;background:var(--neon);color:#04121a;font-weight:800;font-size:12px;letter-spacing:2px;padding:3px 10px;border-radius:999px;box-shadow:0 0 16px #3fd4ff99}
+.works{padding-left:22px}.works li{margin:6px 0}.works li::marker{color:var(--neon)}
+.soon{font-size:12px;border:1px solid var(--neon);color:var(--neon);border-radius:999px;padding:1px 8px;margin-left:6px;white-space:nowrap}
+.cta.left{justify-content:flex-start;margin-top:10px}

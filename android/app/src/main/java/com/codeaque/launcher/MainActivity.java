@@ -38,9 +38,16 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("codeaque", MODE_PRIVATE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+        edgeToEdge();
         view = new HomeView(this, this);
         setContentView(view);
+        immersive();
+        rescan();
+        IntentFilter pf = new IntentFilter();         // an app or game installed / removed while CodeAque is open
+        pf.addAction(Intent.ACTION_PACKAGE_ADDED); pf.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        pf.addAction(Intent.ACTION_PACKAGE_CHANGED); pf.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        pf.addDataScheme("package");
+        registerReceiver(packages, pf);
         view.requestFocus();
         pool = new SoundPool.Builder().setMaxStreams(3).setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
@@ -82,17 +89,161 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override protected void onResume() {
         super.onResume();
         installedCache.clear();       // apps may have been installed while we were away
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        immersive();
+        rescan();
         view.invalidate();
     }
 
+    @Override public void onWindowFocusChanged(boolean has) {
+        super.onWindowFocusChanged(has);
+        if (has) immersive();          // after a dialog, the volume panel or a swipe that showed the bars
+    }
+
+    // ---------- 0.9.4: true full screen (no status or navigation bar, drawn under the camera cut-out) ----------
+    private void edgeToEdge() {
+        android.view.Window w = getWindow();
+        w.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS | WindowManager.LayoutParams.FLAG_FULLSCREEN
+               );
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            w.setAttributes(lp);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 30) w.setDecorFitsSystemWindows(false);
+        w.setStatusBarColor(0); w.setNavigationBarColor(0);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void immersive() {
+        android.view.Window w = getWindow();
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+            android.view.WindowInsetsController c = w.getInsetsController();
+            if (c != null) {
+                c.hide(android.view.WindowInsets.Type.statusBars() | android.view.WindowInsets.Type.navigationBars());
+                c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        }
+    }
+
+    // ---------- 0.9.4: games and apps already on the device, emulators, and the user's own game folders ----------
+    static final class PackageWatch extends android.content.BroadcastReceiver {
+        private final java.lang.ref.WeakReference<MainActivity> a;
+        PackageWatch(MainActivity m) { a = new java.lang.ref.WeakReference<>(m); }
+        @Override public void onReceive(Context c, Intent i) {
+            MainActivity m = a.get();
+            if (m != null) { m.installedCache.clear(); m.icons.clear(); m.rescan(); }
+        }
+    }
+    private final PackageWatch packages = new PackageWatch(this);
+    private final Map<String, android.graphics.Bitmap> icons = new HashMap<>();
+    private volatile List<Catalog.Item> roms = new ArrayList<>();
+    private volatile boolean romsScanned;
+
+    private static boolean isGame(android.content.pm.ApplicationInfo ai) {
+        if (ai == null) return false;
+        if (android.os.Build.VERSION.SDK_INT >= 26 && ai.category == android.content.pm.ApplicationInfo.CATEGORY_GAME) return true;
+        return (ai.flags & android.content.pm.ApplicationInfo.FLAG_IS_GAME) != 0;     // older apps mark themselves this way
+    }
+
+    /** Reads the launchable apps (the manifest's MAIN/LAUNCHER <queries> entry makes them visible; no QUERY_ALL_PACKAGES). */
+    private void rescan() {
+        PackageManager pm = getPackageManager();
+        List<ResolveInfo> ri = new ArrayList<>(pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0));
+        ri.addAll(pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), 0));
+        java.util.Set<String> emuPkgs = new java.util.HashSet<>();
+        for (Catalog.Item e : Catalog.emulators()) emuPkgs.addAll(e.packages);
+        List<Catalog.Item> games = new ArrayList<>(), apps = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (ResolveInfo r : ri) {
+            String pkg = r.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || !seen.add(pkg)) continue;
+            Catalog.Item it = Catalog.deviceApp(r.loadLabel(pm).toString(), pkg, r.activityInfo.name);
+            apps.add(it);
+            if (isGame(r.activityInfo.applicationInfo) && !emuPkgs.contains(pkg)) games.add(it);
+        }
+        java.util.Comparator<Catalog.Item> az = (x, y) -> x.label.compareToIgnoreCase(y.label);
+        Collections.sort(apps, az); Collections.sort(games, az);
+        List<Catalog.Item> emus = new ArrayList<>();
+        for (Catalog.Item e : Catalog.emulators()) if (launchIntent(e) != null) emus.add(e);
+        view.setCategories(Catalog.categories(games, apps, emus, roms));
+        if (!romsScanned) { romsScanned = true; scanRoms(); }
+    }
+
+    @Override public android.graphics.Bitmap appIcon(Catalog.Item it) {
+        if (!it.isDeviceApp()) return null;
+        String k = it.key();
+        if (icons.containsKey(k)) return icons.get(k);
+        android.graphics.Bitmap b = null;
+        try {
+            android.graphics.drawable.Drawable d = getPackageManager().getActivityIcon(new android.content.ComponentName(it.pkg, it.cls));
+            int px = (int) (64 * getResources().getDisplayMetrics().density);
+            b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas cv = new android.graphics.Canvas(b);
+            d.setBounds(0, 0, px, px); d.draw(cv);
+        } catch (Exception ignored) { }
+        icons.put(k, b);
+        return b;
+    }
+
+    private static final int PICK_ROM_FOLDER = 8;
+
+    private void pickRomFolder() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);     // Android's own folder picker: CodeAque only sees what you choose
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try { startActivityForResult(i, PICK_ROM_FOLDER); }
+        catch (ActivityNotFoundException e) { Toast.makeText(this, "This device has no folder picker", Toast.LENGTH_LONG).show(); }
+    }
+
+    /** Lists game files in the folders the user picked (two folder levels deep, at most 500 files). Read only. */
+    private void scanRoms() {
+        final java.util.Set<String> trees = new java.util.HashSet<>(prefs.getStringSet("romTrees", new java.util.HashSet<>()));
+        if (trees.isEmpty()) return;
+        new Thread(() -> {
+            List<Catalog.Item> out = new ArrayList<>();
+            for (String t : trees) {
+                try {
+                    Uri tree = Uri.parse(t);
+                    listDocs(tree, android.provider.DocumentsContract.getTreeDocumentId(tree), 0, out);
+                } catch (Exception ignored) { }
+            }
+            Collections.sort(out, (x, y) -> x.label.compareToIgnoreCase(y.label));
+            roms = out;
+            runOnUiThread(() -> { romsScanned = true; rescan(); });
+        }).start();
+    }
+
+    private void listDocs(Uri tree, String docId, int depth, List<Catalog.Item> out) {
+        Uri kids = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId);
+        String[] cols = {android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE};
+        try (android.database.Cursor c = getContentResolver().query(kids, cols, null, null, null)) {
+            while (c != null && c.moveToNext() && out.size() < 500) {
+                String id = c.getString(0), name = c.getString(1), mime = c.getString(2);
+                if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) { if (depth < 2) listDocs(tree, id, depth + 1, out); }
+                else if (name != null && Catalog.isRomFile(name))
+                    out.add(Catalog.rom(name, android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id).toString()));
+            }
+        }
+    }
+
+    /** A game file: Android asks which installed emulator opens it (or opens the only one). */
+    private void openRom(Catalog.Item it) {
+        Intent v = new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(it.uri), "*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { start(Intent.createChooser(v, "Open " + it.label + " with")); }
+        catch (ActivityNotFoundException e) { Toast.makeText(this, "Install an emulator first (Retro row)", Toast.LENGTH_LONG).show(); }
+    }
+
     @Override public void onBackPressed() { /* a home screen stays */ }
-    @Override protected void onDestroy() { pool.release(); super.onDestroy(); }
+    @Override protected void onDestroy() { try { unregisterReceiver(packages); } catch (Exception ignored) { } pool.release(); super.onDestroy(); }
 
     // ---------- Host ----------
     @Override public boolean installed(Catalog.Item it) {
+        if (it.isDeviceApp() || it.isRom()) return true;
         String key = it.label;
         Boolean c = installedCache.get(key);
         if (c != null) return c;
@@ -114,6 +265,8 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public void open(Catalog.Item it) {
         try {
             if (it.isAction()) { action(it.action); return; }
+            if (it.isRom()) { openRom(it); return; }
+            if (it.isDeviceApp()) { start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls)); return; }
             Intent i = launchIntent(it);
             if (i != null) { start(i); return; }
             if (it.webUrl != null) { start(new Intent(Intent.ACTION_VIEW, Uri.parse(it.webUrl))); return; }
@@ -145,6 +298,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 view.invalidate(); break;
             }
             case "allapps": allApps(); break;
+            case "romfolder": pickRomFolder(); break;
             case "update": checkUpdate(true); break;
             case "theme": {
                 String n = Palette.next(theme().id);
@@ -266,6 +420,14 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == PICK_ROM_FOLDER && res == RESULT_OK && data != null && data.getData() != null) {
+            Uri t = data.getData();
+            try { getContentResolver().takePersistableUriPermission(t, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+            java.util.Set<String> trees = new java.util.HashSet<>(prefs.getStringSet("romTrees", new java.util.HashSet<>()));
+            trees.add(t.toString()); prefs.edit().putStringSet("romTrees", trees).apply();
+            Toast.makeText(this, "Looking for your games in that folder ...", Toast.LENGTH_SHORT).show();
+            scanRoms(); return;
+        }
         if (req != PICK_WALLPAPER || res != RESULT_OK || data == null || data.getData() == null) return;
         Uri u = data.getData();
         try { getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }

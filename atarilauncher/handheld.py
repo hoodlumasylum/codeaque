@@ -17,12 +17,14 @@ from . import emulators, webapps
 
 VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
-CATEGORIES = (("games", "Games", "pad"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
+CATEGORIES = (("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
               ("streams", "Streams", "stream"), ("media", "Media", "film"), ("music", "Music", "music"),
-              ("downloads", "Downloads", "download"), ("settings", "Settings", "gear"))
+              ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("settings", "Settings", "gear"))
+# 0.9.4: PC games already installed on this machine (shown in My Games); retro ROMs, web pages and apps are elsewhere
+PC_GAME_PLATFORMS = ("steam", "heroic", "lutris", "windows", "epic", "gog", "amazon")
 SETTINGS_TILES = (("wifi", "Wi-Fi", "wifi"), ("controllers", "Controllers", "pad"), ("addgames", "Add games", "usb"),
                   ("effects", "Reduce effects", "sparkle"), ("settings", "All settings", "gear"),
-                  ("leave", "Leave Handheld", "exit"), ("power", "Power", "power"),
+                  ("leave", "Classic home", "exit"), ("power", "Power", "power"),
                   ("update", "Update CodeAque", "download"))
 
 
@@ -99,7 +101,40 @@ def hub(games, store=None) -> list:
     return out
 
 
-def categories(games, store=None) -> list:
+def is_pc_game(g) -> bool:
+    return (not g.gid.startswith(("rom:", "web:", "app:", "tool:", "studio:"))) and not g.missing \
+        and (g.platform in PC_GAME_PLATFORMS or g.gid.startswith(("steam:", "heroic:", "lutris:", "win:")))
+
+
+def installed_emulators(cfg=None, home=None) -> list:
+    """Emulators already on this machine (PATH, Flatpak or CodeAque's AppImage folder) as tiles that start them."""
+    if cfg is None:
+        return []
+    out = []
+    for eid, emu in emulators.EMUS.items():
+        try:
+            _cmd, how = emulators.find_emu(cfg, eid, home)
+        except Exception:
+            how = ""
+        if how:
+            out.append({"key": "emu:" + eid, "title": emu.name, "icon": "invader", "kind": "action", "action": "emu:" + eid, "items": []})
+    return out
+
+
+def my_games(games, store=None, cfg=None, home=None) -> list:
+    """My Games row: installed Steam / Lutris / Heroic / Windows games, then a tile per system with your own ROMs, then emulators."""
+    pc = sorted((g for g in games if is_pc_game(g)), key=lambda g: g.title.lower())
+    tiles = [_launch_tile(g, "c_pc" if g.platform != "steam" else "steam") for g in pc]
+    return tiles + _systems(games, store) + installed_emulators(cfg, home)
+
+
+def all_apps(games) -> list:
+    """All Apps: every installed app tile (stores, launchers, media apps), A to Z."""
+    lst = [g for g in games if g.gid.startswith(("app:", "tool:", "studio:")) and not g.missing]
+    return [_launch_tile(g, "app") for g in sorted(lst, key=lambda g: g.title.lower())]
+
+
+def categories(games, store=None, cfg=None, home=None) -> list:
     games = list(games)
     cloud = sorted((g for g in games if is_cloud(g)), key=lambda g: [w.id for w in webapps.WEBAPPS].index(g.gid[4:])
                    if g.gid[4:] in [w.id for w in webapps.WEBAPPS] else 99)
@@ -111,7 +146,12 @@ def categories(games, store=None) -> list:
     media = [g for g in games if g.gid in ("app:kodi", "tool:recordings")]
     out = []
     for key, title, icon in CATEGORIES:
-        if key == "games":
+        if key == "mygames":
+            tiles = my_games(games, store, cfg, home) or [{"key": "addgames", "title": "Add games", "icon": "usb", "kind": "action",
+                                                           "action": "addgames", "items": []}]
+        elif key == "apps":
+            tiles = all_apps(games)
+        elif key == "games":
             tiles = [cloud_tile] + systems
         elif key == "cloud":
             tiles = [_launch_tile(g, "c_cloud") for g in cloud]

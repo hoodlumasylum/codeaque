@@ -22,6 +22,7 @@ os.environ.setdefault("ATARI_NO_BOOTPROMPT", "1")
 os.environ.setdefault("ATARI_NO_USBWATCH", "1")
 os.environ.setdefault("ATARI_NO_BRIGHTNESS", "1")
 os.environ.setdefault("ATARI_NO_WIFI", "1")        # no nmcli calls in tests unless a test mocks it
+os.environ.setdefault("ATARI_HOME_STYLE", "classic")   # the older UI tests drive the classic grid; test_console_home covers the default
 os.environ.setdefault("ATARI_NO_INTRO", "1")      # no start-up intro in tests unless a test turns it on
 FIX = Path(__file__).parent / "fixtures"
 

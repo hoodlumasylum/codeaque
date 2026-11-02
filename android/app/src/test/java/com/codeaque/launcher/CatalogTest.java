@@ -10,13 +10,23 @@ public class CatalogTest {
 
     public static void main(String[] a) {
         List<Catalog.Category> c = Catalog.categories();
-        check(c.get(0).id.equals("games") && c.get(0).items.get(0).action.equals("goto:cloud"), "Games starts with Cloud Gaming");
-        check(Catalog.indexOf(c, "cloud") == 1 && Catalog.indexOf(c, "retro") == 2, "Cloud then Retro");
+        check(c.get(0).id.equals("mygames") && c.get(1).id.equals("games") && c.get(1).items.get(0).action.equals("goto:cloud"), "My Games, then Games with Cloud Gaming");
+        check(Catalog.indexOf(c, "cloud") == 2 && Catalog.indexOf(c, "retro") == 3, "Cloud then Retro");
+        check(Catalog.indexOf(c, "allapps") == c.size() - 2 && c.get(c.size() - 1).id.equals("settings"), "All Apps before Settings");
+        // 0.9.4: installed games / apps / emulators / the user's own files
+        Catalog.Item g = Catalog.deviceApp("Some Game", "com.example.game", "com.example.game.Main");
+        Catalog.Item rom = Catalog.rom("My Game.sfc", "content://x/1");
+        List<Catalog.Category> d = Catalog.categories(List.of(g), List.of(g), List.of(Catalog.emulators().get(0)), List.of(rom));
+        List<Catalog.Item> mine = d.get(0).items;
+        check(mine.get(0) == g && mine.get(1).label.equals("RetroArch") && mine.get(2).label.equals("My Game") && mine.get(2).isRom(), "My Games order");
+        check("romfolder".equals(mine.get(mine.size() - 1).action), "My Games ends with Add game folder");
+        check(d.get(Catalog.indexOf(d, "allapps")).items.get(0).isDeviceApp(), "All Apps lists device apps");
+        check(Catalog.isRomFile("a.SFC") && Catalog.isRomFile("b.chd") && !Catalog.isRomFile("notes.txt") && !Catalog.isRomFile(".nes"), "game file types");
         Set<String> want = new HashSet<>(List.of("Xbox Cloud Gaming", "Amazon Luna", "GeForce NOW", "Netflix", "YouTube",
                 "TikTok", "Kodi", "RetroArch", "Minecraft", "Roblox"));
         for (Catalog.Category cat : c) for (Catalog.Item i : cat.items) {
             want.remove(i.label);
-            check(i.isAction() || i.storePackage() != null, i.label + " has a package for the Play Store link");
+            check(i.isAction() || i.isRom() || i.storePackage() != null, i.label + " has a package for the Play Store link");
             check(i.webUrl == null || i.webUrl.startsWith("https://"), i.label + " web link is https");
             check(!i.icon.contains("logo"), "no logos");
         }

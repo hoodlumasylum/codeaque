@@ -31,6 +31,19 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.4 — your installed games on the home screen, true full screen
+
+- **Android: My Games.** The home screen finds the games already installed on the device (apps Android marks as games) and shows them first, with their real icons. Emulators you already have (RetroArch, PPSSPP, DuckStation, …) get a tile too. **All Apps** lists every installed app. The rows update by themselves when you install or remove an app. CodeAque no longer asks for the "see all apps" permission.
+- **Android: your own game files.** *Add game folder* (My Games, or Settings > Game folders) opens Android's folder picker; game files in that folder are listed and open with an emulator you have installed. Nothing is downloaded or included.
+- **Android: real full screen.** No status bar or navigation bar (swipe from the edge to see them for a moment), drawn under the camera cut-out, re-applied after dialogs and when you come back.
+- **PC: the same home as the Android app.** CodeAque on the PC now opens the console-style home: My Games (Steam, Lutris, Heroic and Windows games already installed, your ROM systems, installed emulators), Retro, Cloud, Emulators, Streams, Media, Music, Downloads, All Apps and Settings. Settings > Controllers, Update CodeAque, themes and CodeAque-only mode work as before. *Settings > Classic home* goes back to the old grid.
+
+| PC | Android |
+|---|---|
+| ![PC console home](docs/screenshot-pc-console-home.png) | ![Android My Games](docs/screenshot-android-mygames-1280.png) |
+
+(The game in the Android screenshot is a made-up test app.)
+
 ## What's new in 0.9.3 — the old look is gone everywhere after an update
 
 - **The boot screen uses Code's red / chrome splash** (start menu, start-up splash with a live loading bar, login screen). Before this, the boot pictures still had the old gold art.

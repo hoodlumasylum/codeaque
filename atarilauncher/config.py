@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,11 @@ from .emulators import SYSTEM_BY_ID, SYSTEMS
 # Words usable in a command: {rom} {rom_dir} {rom_name} {core_path} and {retroarch} / {<emulator id>}.
 RETROARCH_TEMPLATE = "{retroarch} -f -L {core_path} {rom}"
 
+
+
+def _default_home_style() -> str:
+    """0.9.4: new and updated installs open the console home (the same as the Android app); ATARI_HOME_STYLE=classic for the old grid."""
+    return "classic" if os.environ.get("ATARI_HOME_STYLE") == "classic" else "console"
 
 @dataclass
 class SystemConfig:
@@ -66,6 +72,7 @@ class Config:
     steam_bigpicture: bool = True  # the Steam tile opens Steam full screen in Big Picture (controller-friendly) mode
     reduce_animations: bool = False  # Settings > Reduce animations: no moving background, bobbing or fades
     reduce_effects: str = "auto"   # Settings > Reduce effects: "auto" (on for weak graphics chips), "on" or "off" - blur, shadows, big backdrop
+    home_style: str = field(default_factory=lambda: _default_home_style())   # 0.9.4: "console" = the same home as the Android app (My Games / All Apps rows), "classic" = the old grid
     handheld: bool = False         # Settings > Handheld mode: the small-screen home with only Cloud Gaming and Retro (also --handheld)
     pad_reminder: bool = True      # Settings > Show pad reminder: the small "pad not connected" note on the home screen
     first_run: bool = False
@@ -128,6 +135,8 @@ def load_config(path: Path | None = None) -> Config:
         cfg.reduce_effects = re_ if re_ in ("auto", "on", "off") else "auto"
         cfg.pad_reminder = bool(ui.get("pad_reminder", True))
         cfg.handheld = bool(ui.get("handheld", False))
+        hs = ui.get("home_style", _default_home_style())
+        cfg.home_style = hs if hs in ("console", "classic") else "console"
         cfg.esc_exit = bool(ui.get("esc_exit", True))
         cfg.fullscreen_games = bool(ui.get("fullscreen_games", True))
         cfg.picture_shape = str(ui.get("picture_shape", "fill"))
@@ -225,6 +234,7 @@ def dump_config(cfg: Config) -> str:
         "pad_reminder = " + ("true" if cfg.pad_reminder else "false"),
         "# Handheld mode: CodeAque starts in the small-screen home with only Cloud Gaming and Retro.",
         "handheld = " + ("true" if cfg.handheld else "false"),
+        'home_style = "' + cfg.home_style + '"',
         "# Esc twice (or hold Esc 1 s, Ctrl+Esc, gamepad Guide+B) closes Netflix / YouTube / Kodi and returns to CodeAque.",
         "esc_exit = " + ("true" if cfg.esc_exit else "false"),
         "fullscreen_games = " + ("true" if cfg.fullscreen_games else "false"),

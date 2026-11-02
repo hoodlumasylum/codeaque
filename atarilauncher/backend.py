@@ -5297,13 +5297,15 @@ class Backend(QObject):
     @Property(bool, notify=uiPrefsChanged)
     def handheld(self):
         """Handheld mode: the small-screen home (Cloud Gaming + Retro only). Settings toggle, or --handheld for one start."""
-        return bool(self.cfg.handheld or getattr(self, "_handheld_once", False))
+        return bool(self.cfg.handheld or self.cfg.home_style == "console" or getattr(self, "_handheld_once", False))
 
     @Slot(bool)
     def setHandheld(self, on: bool) -> None:
         self._handheld_once = False
-        if self.cfg.handheld != bool(on):
+        style = "console" if on else "classic"       # 0.9.4: the console home (same as the Android app) is the default
+        if self.cfg.handheld != bool(on) or self.cfg.home_style != style:
             self.cfg.handheld = bool(on)
+            self.cfg.home_style = style
             self._save_prefs()
         self.uiPrefsChanged.emit()
 
@@ -5315,7 +5317,21 @@ class Backend(QObject):
     @Property("QVariantList", notify=statsChanged)
     def handheldCategories(self):
         from . import handheld as _hh
-        return _hh.categories(self._all, self.store)
+        return _hh.categories(self._all, self.store, self.cfg)
+
+    @Slot(str)
+    def launchEmulator(self, emu_id: str) -> None:
+        """My Games: start an emulator that is already installed (its own menu, no game)."""
+        from . import emulators as _em
+        if emu_id not in _em.EMUS:
+            return
+        cmd, how = _em.find_emu(self.cfg, emu_id)
+        if not how:
+            return
+        try:
+            subprocess.Popen(cmd, env=launcher.clean_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as exc:
+            print(f"[atari] could not start {emu_id}: {exc}")
 
     @Slot(result="QVariantMap")
     def handheldStatus(self):
@@ -5862,7 +5878,7 @@ class Backend(QObject):
         rows.append({"kind": "effects", "title": "Reduce effects", "value": _fxv,
                      "detail": "Turns off the see-through blur, soft shadows and the big blurred picture behind the home screen. "
                                "AUTO = on by itself for weak graphics chips. Press to step AUTO / ON / OFF."})
-        rows.append({"kind": "handheld", "title": "Handheld mode", "value": "ON" if self.cfg.handheld else "OFF",
+        rows.append({"kind": "handheld", "title": "Console home (same as Android)", "value": "ON" if self.handheld else "OFF",
                      "detail": "A home made for small handheld screens: only Cloud Gaming and Retro, big text, all by controller. "
                                "CodeAque then starts in it every time. Turn it off here, or with Y > Leave handheld mode."})
         rows.append({"kind": "padreminder", "title": "Show pad reminder", "value": "ON" if self.cfg.pad_reminder else "OFF",

@@ -14,12 +14,21 @@ public final class Catalog {
     public static final class Item {
         public final String label, icon, webUrl, action;
         public final List<String> packages;
+        /** 0.9.4: an app found on the device (pkg + activity class, its own icon is drawn) or a ROM file the user picked (uri). */
+        public final String pkg, cls, uri;
         public Item(String label, String icon, String[] packages, String webUrl, String action) {
+            this(label, icon, packages, webUrl, action, null, null, null);
+        }
+        public Item(String label, String icon, String[] packages, String webUrl, String action, String pkg, String cls, String uri) {
             this.label = label; this.icon = icon; this.webUrl = webUrl; this.action = action;
             this.packages = Collections.unmodifiableList(Arrays.asList(packages));
+            this.pkg = pkg; this.cls = cls; this.uri = uri;
         }
+        public boolean isDeviceApp() { return pkg != null && cls != null; }
+        public boolean isRom() { return uri != null; }
         public String storePackage() { return packages.isEmpty() ? null : packages.get(0); }
         public boolean isAction() { return action != null; }
+        public String key() { return isDeviceApp() ? pkg + "/" + cls : isRom() ? uri : label; }
     }
 
     public static final class Category {
@@ -44,9 +53,52 @@ public final class Catalog {
     static final Item MINECRAFT = app("Minecraft", "cube", "com.mojang.minecraftpe");
     static final Item ROBLOX = app("Roblox", "cube", "com.roblox.client");
 
+    /** An installed app or game (from PackageManager): opens itself, shows its own icon. */
+    public static Item deviceApp(String label, String pkg, String cls) {
+        return new Item(label, "grid", new String[]{pkg}, null, null, pkg, cls, null);
+    }
+
+    /** A game file from a folder the user chose (Android's folder picker); opened with an installed emulator. */
+    public static Item rom(String name, String uri) {
+        return new Item(stripExt(name), "cart", new String[0], null, null, null, null, uri);
+    }
+
+    /** File types emulators open. Only files the user already has are listed; nothing is downloaded. */
+    static final String[] ROM_EXT = {"nes", "sfc", "smc", "gb", "gbc", "gba", "nds", "n64", "z64", "v64", "md", "gen", "smd", "sms", "gg",
+            "pce", "a26", "a78", "lnx", "iso", "cue", "chd", "cso", "pbp", "gdi", "cdi", "rvz", "gcm", "wbfs", "zip", "7z", "3ds", "ws", "wsc", "ngp"};
+
+    public static boolean isRomFile(String name) {
+        int d = name.lastIndexOf('.');
+        if (d < 0 || name.startsWith(".")) return false;
+        String e = name.substring(d + 1).toLowerCase(java.util.Locale.ROOT);
+        for (String x : ROM_EXT) if (x.equals(e)) return true;
+        return false;
+    }
+
+    static String stripExt(String n) { int d = n.lastIndexOf('.'); return d > 0 ? n.substring(0, d) : n; }
+
+    /** The known emulator tiles (Retro row): used to show the emulators already installed in My Games. */
+    public static List<Item> emulators() {
+        for (Category c : categories()) if (c.id.equals("retro")) return c.items;
+        return Collections.emptyList();
+    }
+
     public static List<Category> categories() {
+        return categories(Collections.<Item>emptyList(), Collections.<Item>emptyList(), Collections.<Item>emptyList(), Collections.<Item>emptyList());
+    }
+
+    /** 0.9.4 home: My Games (installed games with their icons, installed emulators, the user's own game files) first,
+     *  All Apps before Settings. games / apps / emus / roms come from the device and may be empty. */
+    public static List<Category> categories(List<Item> games, List<Item> apps, List<Item> emus, List<Item> roms) {
+        List<Item> mine = new ArrayList<>(games);
+        mine.addAll(emus);
+        mine.addAll(roms);
+        mine.add(act("Add game folder", "image", "romfolder"));
+        List<Item> all = new ArrayList<>(apps);
+        if (all.isEmpty()) all.add(act("All apps", "grid", "allapps"));
         List<Category> c = new ArrayList<>();
-        c.add(new Category("games", "Games", "pad",
+        c.add(new Category("mygames", "My Games", "pad", mine.toArray(new Item[0])));
+        c.add(new Category("games", "Games", "cloud",
                 act("Cloud Gaming", "cloud", "goto:cloud"), XBOX, GFN, LUNA, RETROARCH, MINECRAFT, ROBLOX));
         c.add(new Category("cloud", "Cloud", "cloud", XBOX, GFN, LUNA, BOOST));
         c.add(new Category("retro", "Retro", "invader", RETROARCH,
@@ -64,13 +116,12 @@ public final class Catalog {
         c.add(new Category("media", "Media", "film",
                 app("Kodi", "film", "org.xbmc.kodi"),
                 app("Spotify", "music", "com.spotify.music")));
-        c.add(new Category("apps", "Apps", "grid", MINECRAFT, ROBLOX,
-                act("Browser", "globe", "browser"), act("All apps", "grid", "allapps")));
+        c.add(new Category("allapps", "All Apps", "grid", all.toArray(new Item[0])));
         c.add(new Category("settings", "Settings", "gear",
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Update", "download", "update"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Update", "download", "update"), act("Android settings", "gear", "settings")));
         return c;
     }
 

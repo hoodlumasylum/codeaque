@@ -11,7 +11,7 @@ FocusScope {
     id: hh
     property var cats: backend.handheldCategories
     property int cat: 0
-    property var tileIdx: [0, 0, 0, 0, 0, 0, 0, 0]
+    property var tileIdx: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     property string zone: "tiles"            // "cats" | "tiles" | "list"
     property int listIdx: 0
     property real slide: 0

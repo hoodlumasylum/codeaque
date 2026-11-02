@@ -16,4 +16,4 @@ def test_snow_and_jingle_are_shipped():
 
 def test_android_can_self_update():
     m = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text()
-    assert "REQUEST_INSTALL_PACKAGES" in m and "android.permission.INTERNET" in m and 'versionName="0.9.3"' in m
+    assert "REQUEST_INSTALL_PACKAGES" in m and "android.permission.INTERNET" in m and 'versionName="0.9.4"' in m

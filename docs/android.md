@@ -4,6 +4,9 @@ Android stays the system underneath. CodeAque is just the **home screen** on top
 neon-cyan look and white CODEAQUE logo as the Handheld Edition, with big tiles that open the apps you
 already have.
 
+> **0.9.4:** My Games (installed games with their icons, installed emulators, your own game folders), All Apps, true full screen.
+> Checked on an Android 11 emulator only; not yet on a real K56 / Android 14 device.
+
 > **Untested on a real RG3566.** It was checked on an Android 11 emulator (1280x720 and 640x480)
 > with a keyboard standing in for the pad.
 
