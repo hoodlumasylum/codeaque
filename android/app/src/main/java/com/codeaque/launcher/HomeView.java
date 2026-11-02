@@ -38,7 +38,9 @@ public class HomeView extends View {
     private long last = 0, lastFrame = 0;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
-    private Bitmap logo;
+    private Bitmap logo, splash;
+    private long splashStart = 0;                 // Code's splash with a live loading bar, shown once when the launcher starts
+    private static final long SPLASH_MS = 1900, SPLASH_FADE = 350;
     private final RectF r = new RectF(), iconRect = new RectF();
     private Catalog.Item prompt;          // "not installed" panel
     private final float[] motes = new float[36];
@@ -51,7 +53,8 @@ public class HomeView extends View {
         tile = 0;
         setFocusable(true); setFocusableInTouchMode(true);
         try {
-            logo = BitmapFactory.decodeStream(c.getAssets().open("logo.png"));   // the white CodeAque logo (3:1)
+            logo = BitmapFactory.decodeStream(c.getAssets().open("logo.png"));
+            splash = BitmapFactory.decodeStream(c.getAssets().open("splash.jpg"));   // 1280x720 copy of the 1672x941 art   // the white CodeAque logo (3:1)
         } catch (Exception ignored) { }
         java.util.Random rnd = new java.util.Random(7);
         for (int i = 0; i < motes.length; i++) motes[i] = rnd.nextFloat();
@@ -80,6 +83,7 @@ public class HomeView extends View {
     }
 
     @Override public boolean onKeyDown(int code, KeyEvent e) {
+        if (splash != null) { splash = null; invalidate(); return true; }     // any button skips the splash
         if (prompt != null) {
             if (code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_DPAD_CENTER) { Catalog.Item it = prompt; prompt = null; host.open(it); }
             else if (code == KeyEvent.KEYCODE_BUTTON_B || code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) { prompt = null; host.sound("hhback"); }
@@ -121,7 +125,8 @@ public class HomeView extends View {
     @Override public boolean onTouchEvent(MotionEvent e) {
         float x = e.getX(), y = e.getY(), H = getHeight();
         switch (e.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN: downX = x; downY = y; dragging = false; dragTiles = 0; return true;
+            case MotionEvent.ACTION_DOWN: if (splash != null) { splash = null; invalidate(); return true; }
+                downX = x; downY = y; dragging = false; dragTiles = 0; return true;
             case MotionEvent.ACTION_MOVE:
                 if (Math.abs(x - downX) > 24 * s && y > tilesTop()) {
                     dragging = true;
@@ -192,12 +197,37 @@ public class HomeView extends View {
         tiles(c, W, H);
         hints(c, W, H);
         if (prompt != null) prompt(c, W, H);
+        if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
 
         boolean settling = Math.abs(cat - catAnim) > 0.002f || Math.abs(target - scrollAnim) > 0.002f;
         if (anim || settling) {
             if ("on".equals(fx) || settling) postInvalidateOnAnimation();
             else postInvalidateDelayed(33);                 // auto: 30 fps background on weak chips
         }
+    }
+
+    /** Returns false (and frees the picture) once the splash is over. Geometry is in the 1672x941 art's pixels. */
+    private boolean drawSplash(Canvas c, int W, int H) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (splashStart == 0) splashStart = now;
+        long el = now - splashStart;
+        if (el > SPLASH_MS + SPLASH_FADE) { splash.recycle(); splash = null; return false; }
+        float k = Math.min(Math.max(W / 1672f, H / 941f), W * 0.96f / (1672f * 0.80f));   // never crop the wordmark
+        float ox = (W - 1672 * k) / 2, oy = (H - 941 * k) / 2;
+        int alpha = el < SPLASH_MS ? 255 : (int) (255 * (1 - (el - SPLASH_MS) / (float) SPLASH_FADE));
+        p.setAlpha(255); p.setColor(0xFF000000); p.setAlpha(alpha); c.drawRect(0, 0, W, H, p);
+        r.set(ox, oy, ox + 1672 * k, oy + 941 * k); p.setFilterBitmap(true); p.setAlpha(alpha); c.drawBitmap(splash, null, r, p);
+        float u = Math.min(1, el / (float) (SPLASH_MS - 200)); float prog = u < 0.5f ? 4 * u * u * u : 1 - (float) Math.pow(-2 * u + 2, 3) / 2;
+        float bh = 19 * k, bw = Math.max(bh, 627 * k * prog);
+        r.set(ox + 523 * k, oy + 682 * k, ox + 523 * k + bw, oy + 682 * k + bh);
+        p.setShader(new LinearGradient(0, r.top, 0, r.bottom, new int[]{0xFFFF6A6A, 0xFFFF1A1A, 0xFFA80000}, new float[]{0, 0.35f, 1}, Shader.TileMode.CLAMP));
+        p.setAlpha(alpha); c.drawRoundRect(r, bh / 2, bh / 2, p); p.setShader(null);
+        int d = (int) (el / 400) % 4;
+        p.setColor(0xFFFF2A2A); p.setAlpha(alpha);
+        r.set(ox + (757 + d * 46) * k, oy + 741 * k, ox + (776 + d * 46) * k, oy + 760 * k);
+        c.drawRoundRect(r, 3 * k, 3 * k, p);
+        p.setAlpha(255);
+        return true;
     }
 
     private void background(Canvas c, int W, int H, boolean anim) {

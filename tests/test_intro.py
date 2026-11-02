@@ -597,7 +597,7 @@ def test_the_shipped_intro_is_the_original_video_with_its_sound():
     import hashlib
     f = intro.bundled_file()
     assert f is not None
-    assert hashlib.sha256(f.read_bytes()).hexdigest() == "61164f0b78877e11d5d690b36b6f99d804a0def684acd049f05400b513e4e822"   # 0.9.0: made from the owner's new white logo (tools/make_intro_video.sh)
+    assert hashlib.sha256(f.read_bytes()).hexdigest() == "5dd16fc9a2b3b71de28538236f4a460ac65b9659eb03cbb5a9f328ac0fd518f9"   # 0.9.1: made from Code's splash (tools/make_intro_video.sh)
     if shutil.which("ffprobe"):
         out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name,channels",
                               "-of", "csv=p=0", str(f)], capture_output=True, text=True).stdout.strip()
@@ -614,3 +614,15 @@ def test_intro_sound_is_its_own_setting_default_on(tmp_path):
     assert config.load_config(f).intro_sound is False
     f.write_text("[ui]\nvolume = 0.5\n")
     assert config.load_config(f).intro_sound is True
+
+
+def test_own_intro_is_codes_splash_with_a_live_bar_that_never_crops_the_wordmark():
+    q = (Path(intro.__file__).with_name("qml") / "Intro.qml").read_text()
+    assert "../assets/splash.png" in q and "splash.progress" in q and "splash.dot" in q
+    from PySide6.QtGui import QImage
+    img = QImage(str(Path(intro.__file__).with_name("assets") / "splash.png"))
+    assert (img.width(), img.height()) == (1672, 941)
+    for W, H in ((640, 480), (1280, 720), (1920, 1080)):
+        k = min(max(W / 1672, H / 941), W * 0.96 / (1672 * 0.80))
+        assert 1672 * k * 0.80 <= W                      # the CODEAQUE wordmark always fits
+        assert 941 * k >= H * 0.85                        # and the art still (nearly) fills the screen

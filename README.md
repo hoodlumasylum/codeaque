@@ -31,6 +31,13 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.1 — new splash screen
+
+- Code's new splash (red and chrome CODEAQUE, "INITIALISING SYSTEM...") is now the start-up screen in the PC launcher,
+  Handheld / Win600 mode and the Android launcher. Its loading bar fills and the dots light up while CodeAque starts.
+- It fits 1280x720 and 640x480 screens without cutting into the logo. Any key, click, tap or button skips it.
+- The bundled start-up video was rebuilt from the splash (`tools/make_intro_video.sh`).
+
 ## What's new in 0.9.0 — new look, Android themes
 
 - **New CodeAque logo and a pure gaming look everywhere** (PC launcher, Handheld mode, Android launcher,

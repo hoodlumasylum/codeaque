@@ -56,3 +56,10 @@ def test_no_egyptian_art_left_in_the_defaults():
         t = p.read_text().lower()
         for bad in ("ankh", "anubis", "pyramid", "hieroglyph"):
             assert bad not in t, (p.name, bad)
+
+
+def test_android_shows_codes_splash_with_a_live_bar_and_can_be_skipped():
+    assert (AND / "app/src/main/assets/splash.jpg").exists()
+    src = (SRC / "HomeView.java").read_text()
+    assert "drawSplash" in src and "627 * k * prog" in src and "(757 + d * 46)" in src   # bar fill + dots over the art
+    assert "any button skips the splash" in src
