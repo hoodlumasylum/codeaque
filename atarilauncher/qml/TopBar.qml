@@ -61,8 +61,8 @@ Item {
     Wordmark {
         id: wm
         u: tb.u
-        compact: true
-        scale: 0.72
+        compact: false
+        scale: 0.6
         transformOrigin: Item.Left
         anchors.left: parent.left
         anchors.leftMargin: 28 * tb.u

@@ -7,6 +7,6 @@ Rectangle {
     width: 30 * s; height: width; radius: width / 2
     color: "transparent"
     border.width: 2 * s
-    border.color: "#d9e0d6"
-    Text { anchors.centerIn: parent; text: parent.letter; color: "#eef2ea"; font.pixelSize: 16 * parent.s; font.weight: Font.DemiBold }
+    border.color: "#d6dee0"
+    Text { anchors.centerIn: parent; text: parent.letter; color: "#eaf0f2"; font.pixelSize: 16 * parent.s; font.weight: Font.DemiBold }
 }

@@ -24,7 +24,12 @@ public class HomeView extends View {
         boolean online();
     }
 
-    private static final int GOLD = 0xFFE6C35C, GOLD_D = 0xFF9C7A22, GREEN = 0xFF2BE37A, GREEN_D = 0xFF0B3B22, TXT = 0xFFEAF5EE, DIM = 0xFF8FA89A;
+    private Palette T = Palette.NEON;
+    private int GOLD = T.gold, GOLD_D = T.goldDark, TXT = T.text, DIM = T.dim;
+    private Bitmap wallpaper;
+    public void setTheme(Palette t) { T = t; GOLD = t.gold; GOLD_D = t.goldDark; TXT = t.text; DIM = t.dim; invalidate(); }
+    public void setWallpaper(Bitmap b) { wallpaper = b; invalidate(); }
+
     private final Host host;
     private final List<Catalog.Category> cats = Catalog.categories();
     private int cat = 0, tile = 1;       // Games, focused on the first real tile after "Cloud Gaming"? start on Cloud Gaming:
@@ -33,7 +38,7 @@ public class HomeView extends View {
     private long last = 0, lastFrame = 0;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
-    private Bitmap ankh, ankhSmall;
+    private Bitmap logo;
     private final RectF r = new RectF(), iconRect = new RectF();
     private Catalog.Item prompt;          // "not installed" panel
     private final float[] motes = new float[36];
@@ -46,8 +51,7 @@ public class HomeView extends View {
         tile = 0;
         setFocusable(true); setFocusableInTouchMode(true);
         try {
-            ankh = BitmapFactory.decodeStream(c.getAssets().open("hh_ankh.png"));
-            ankhSmall = BitmapFactory.decodeStream(c.getAssets().open("hh_ankh_gold.png"));
+            logo = BitmapFactory.decodeStream(c.getAssets().open("logo.png"));   // the white CodeAque logo (3:1)
         } catch (Exception ignored) { }
         java.util.Random rnd = new java.util.Random(7);
         for (int i = 0; i < motes.length; i++) motes[i] = rnd.nextFloat();
@@ -198,10 +202,20 @@ public class HomeView extends View {
 
     private void background(Canvas c, int W, int H, boolean anim) {
         c.drawColor(0xFF000000);
-        p.setShader(new RadialGradient(W * 0.5f, H * 0.48f, W * 0.6f, 0xFF06301A, 0xFF000000, Shader.TileMode.CLAMP));
+        if (wallpaper != null) {             // the user's own picture, centre-cropped, darkened so the text stays readable
+            float sc = Math.max(W / (float) wallpaper.getWidth(), H / (float) wallpaper.getHeight());
+            float bw = wallpaper.getWidth() * sc, bh = wallpaper.getHeight() * sc;
+            r.set((W - bw) / 2, (H - bh) / 2, (W + bw) / 2, (H + bh) / 2);
+            p.setFilterBitmap(true); c.drawBitmap(wallpaper, null, r, p);
+            p.setColor(0x73000000); c.drawRect(0, 0, W, H, p);
+            return;
+        }
+        p.setShader(new RadialGradient(W * 0.5f, H * 0.48f, W * 0.6f, T.bgCenter, 0xFF000000, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, W, H, p); p.setShader(null);
+        if (T.aura) aura(c, W, H);
+        if (T.burst) burst(c, W, H);
         // flowing waves: a few sine curves, green with one gold thread
-        int[] cols = {0x6622E070, 0x4418B860, 0x3330FF90, 0x88E6C35C, 0x3322E070};
+        int[] cols = T.waves;
         float[] amp = {60, 40, 80, 30, 55}, fr = {1.2f, 1.9f, 0.9f, 1.5f, 2.4f}, sp = {0.35f, -0.25f, 0.2f, 0.3f, -0.4f}, wd = {3, 2, 1.5f, 1.4f, 1.2f};
         for (int w = 0; w < cols.length; w++) {
             path.reset();
@@ -214,7 +228,7 @@ public class HomeView extends View {
             stroke.setColor(cols[w]); stroke.setStrokeWidth(wd[w] * s * 1.5f);
             c.drawPath(path, stroke);
         }
-        p.setColor(0xFF7DFFB0);
+        p.setColor(T.accentLight);
         for (int i = 0; i < motes.length; i += 3) {
             float x = (motes[i] * W + t * 12 * s * (0.5f + motes[i + 1])) % W;
             float y = H * (0.3f + 0.4f * motes[i + 1]) + (float) Math.sin(t + i) * 10 * s;
@@ -224,10 +238,75 @@ public class HomeView extends View {
         p.setAlpha(255);
     }
 
+    /** Power Up: a pulsing orange core with a blue rim and energy sparks rising around the emblem. */
+    private void aura(Canvas c, int W, int H) {
+        float cx = W / 2f, cy = H * 0.44f, pulse = 0.5f + 0.5f * (float) Math.sin(t * 3.2f);
+        float rad = (230 + 30 * pulse) * s;
+        p.setShader(new RadialGradient(cx, cy, rad * 1.6f, new int[]{0x00000000, 0x332E9BFF, 0x00000000},
+                new float[]{0.45f, 0.75f, 1f}, Shader.TileMode.CLAMP));
+        c.drawCircle(cx, cy, rad * 1.6f, p);
+        p.setShader(new RadialGradient(cx, cy, rad, new int[]{(((int) (0x70 + 0x30 * pulse)) << 24) | 0xFFB040, 0x55FF6A00, 0x00FF4000},
+                new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
+        c.drawCircle(cx, cy, rad, p); p.setShader(null);
+        // flickering flame tongues around the core
+        for (int i = 0; i < 14; i++) {
+            double a = i * Math.PI * 2 / 14 + t * 0.35;
+            float len = (60 + 40 * (float) Math.abs(Math.sin(t * 4 + i * 1.7))) * s;
+            float x1 = cx + (float) Math.cos(a) * rad * 0.7f, y1 = cy + (float) Math.sin(a) * rad * 0.55f;
+            float x2 = x1 + (float) Math.cos(a) * len * 0.4f, y2 = y1 - len;
+            stroke.setStrokeWidth((5 + 3 * pulse) * s);
+            stroke.setShader(new LinearGradient(x1, y1, x2, y2, i % 3 == 0 ? 0x885CC8FF : 0x88FF9A1F, 0x00FF9A1F, Shader.TileMode.CLAMP));
+            c.drawLine(x1, y1, x2, y2, stroke);
+        }
+        stroke.setShader(null);
+        // rising sparks
+        for (int i = 0; i < motes.length; i += 3) {
+            float life = (t * (0.25f + 0.3f * motes[i + 1]) + motes[i]) % 1f;
+            float x = cx + (motes[i] - 0.5f) * W * 0.7f + (float) Math.sin(t * 2 + i) * 8 * s;
+            float y = H * 0.85f - life * H * 0.75f;
+            p.setColor(i % 2 == 0 ? 0xFFFFC060 : 0xFF8FD8FF);
+            p.setAlpha((int) (220 * (1 - life)));
+            c.drawCircle(x, y, (1.5f + 2f * motes[i + 2]) * s, p);
+        }
+        p.setAlpha(255);
+    }
+
+    /** Catch: slowly turning red/white sunburst with falling yellow confetti stars. */
+    private void burst(Canvas c, int W, int H) {
+        float cx = W / 2f, cy = H * 0.44f, R = Math.max(W, H) * 0.9f;
+        p.setColor(0x22FFFFFF);
+        for (int i = 0; i < 16; i++) {
+            double a0 = i * Math.PI / 8 + t * 0.15, a1 = a0 + Math.PI / 16;
+            path.reset(); path.moveTo(cx, cy);
+            path.lineTo(cx + (float) Math.cos(a0) * R, cy + (float) Math.sin(a0) * R);
+            path.lineTo(cx + (float) Math.cos(a1) * R, cy + (float) Math.sin(a1) * R); path.close();
+            c.drawPath(path, p);
+        }
+        p.setShader(new RadialGradient(cx, cy, 260 * s, 0x66FFD23F, 0x00FFD23F, Shader.TileMode.CLAMP));
+        c.drawCircle(cx, cy, 260 * s, p); p.setShader(null);
+        for (int i = 0; i < motes.length; i += 3) {
+            float life = (t * (0.08f + 0.1f * motes[i + 1]) + motes[i + 2]) % 1f;
+            float x = motes[i] * W + (float) Math.sin(t * 1.5f + i) * 14 * s, y = -20 * s + life * (H + 40 * s);
+            p.setColor(i % 9 == 0 ? 0xFFFF4A4A : i % 2 == 0 ? 0xFFFFD23F : 0xFFFFFFFF); p.setAlpha(190);
+            star(c, x, y, (5 + 4 * motes[i + 1]) * s, t * 2 + i, p);
+        }
+        p.setAlpha(255);
+    }
+
+    private void star(Canvas c, float x, float y, float rad, float rot, Paint q) {
+        path.reset();
+        for (int k = 0; k < 10; k++) {
+            double a = rot + k * Math.PI / 5 - Math.PI / 2; float rr = k % 2 == 0 ? rad : rad * 0.45f;
+            float px = x + (float) Math.cos(a) * rr, py = y + (float) Math.sin(a) * rr;
+            if (k == 0) path.moveTo(px, py); else path.lineTo(px, py);
+        }
+        path.close(); c.drawPath(path, q);
+    }
+
     private void goldText(Canvas c, String txt, float x, float y, float size, Paint.Align a, boolean bold) {
         p.setTextSize(size); p.setTextAlign(a); p.setFakeBoldText(bold);
         p.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
-        p.setShader(new LinearGradient(0, y - size, 0, y, new int[]{0xFFFFF1B8, GOLD, GOLD_D, 0xFFF5D77A}, null, Shader.TileMode.CLAMP));
+        p.setShader(new LinearGradient(0, y - size, 0, y, new int[]{T.goldLight, GOLD, GOLD_D, T.goldLight}, null, Shader.TileMode.CLAMP));
         c.drawText(txt, x, y, p); p.setShader(null); p.setFakeBoldText(false); p.setTypeface(Typeface.DEFAULT);
     }
 
@@ -242,9 +321,7 @@ public class HomeView extends View {
     }
 
     private void topBar(Canvas c, int W, int H) {
-        if (ankhSmall != null) { r.set(18 * s, 12 * s, 98 * s, 44 * s); c.drawBitmap(ankhSmall, null, r, p); }
-        goldText(c, "CODEAQUE", 108 * s, 38 * s, 30 * s, Paint.Align.LEFT, false);
-        spaced(c, "PORTABLE GAMING SYSTEM", 110 * s, 58 * s, 11 * s, 0xFFB8C8BE, Paint.Align.LEFT);
+        if (logo != null) { r.set(18 * s, 10 * s, 18 * s + 150 * s, 60 * s); p.setFilterBitmap(true); c.drawBitmap(logo, null, r, p); }
         String st = host.status();
         String right = clock.format(new Date()) + (st.isEmpty() ? "" : "   " + st);
         text(c, right, W - 24 * s, 36 * s, 20 * s, TXT, Paint.Align.RIGHT, false);
@@ -260,10 +337,10 @@ public class HomeView extends View {
             float sel = Math.max(0, 1 - Math.abs(catAnim - i));
             float size = (40 + 12 * sel) * s;
             if (sel > 0.05f) {
-                p.setShader(new RadialGradient(x, y, 60 * s, (((int) (0x55 * sel)) << 24) | 0x2BE37A, 0x002BE37A, Shader.TileMode.CLAMP));
+                p.setShader(new RadialGradient(x, y, 60 * s, (((int) (0x55 * sel)) << 24) | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(x, y, 60 * s, p); p.setShader(null);
             }
-            int col = i == cat ? (inCats ? GOLD : 0xFF6CFFA8) : 0xFFDDE7E1;
+            int col = i == cat ? (inCats ? GOLD : T.accent) : 0xFFDDE7E1;
             icon(c, cats.get(i).icon, x, y, size, col, i == cat ? 2.6f : 2.2f);
             text(c, cats.get(i).label, x, y + size * 0.5f + (i == cat ? 32 : 26) * s, (i == cat ? 24 : 18) * s, i == cat ? 0xFFFFFFFF : 0xFFC9D6CF, Paint.Align.CENTER, i == cat);
         }
@@ -271,18 +348,12 @@ public class HomeView extends View {
 
     private void mark(Canvas c, int W, int H) {
         float cx = W / 2f, top = H * 0.30f;
-        float aw = 420 * s, ah = aw * 0.4f;
-        if (ankh != null) { r.set(cx - aw / 2, top, cx + aw / 2, top + ah); c.drawBitmap(ankh, null, r, p); }
-        float ty = top + ah + 64 * s, size = 80 * s;
-        c.save(); c.scale(1f, 0.32f, cx, ty - size * 0.35f);
-        p.setShader(new RadialGradient(cx, ty - size * 0.35f, 400 * s, 0x6622E070, 0x0022E070, Shader.TileMode.CLAMP));
-        c.drawCircle(cx, ty - size * 0.35f, 400 * s, p); p.setShader(null); c.restore();
-        p.setTextSize(size); p.setTextAlign(Paint.Align.CENTER); p.setLetterSpacing(0.06f);
-        p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
-        p.setShader(new LinearGradient(0, ty - size * 0.75f, 0, ty, new int[]{0xFFFFFFFF, 0xFFC9D1D6, 0xFF6E7A82, 0xFFE9EEF2, 0xFF9AA4AA},
-                new float[]{0, 0.4f, 0.55f, 0.75f, 1}, Shader.TileMode.CLAMP));
-        c.drawText("CODEAQUE", cx, ty, p);
-        p.setShader(null); p.setLetterSpacing(0); p.setTypeface(Typeface.DEFAULT);
+        float lw = 560 * s, lh = lw / 3f, ly = top + 6 * s;
+        c.save(); c.scale(1f, 0.45f, cx, ly + lh / 2);     // soft theme-coloured glow behind the white logo
+        p.setShader(new RadialGradient(cx, ly + lh / 2, 330 * s, 0x77000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
+        c.drawCircle(cx, ly + lh / 2, 330 * s, p); p.setShader(null); c.restore();
+        if (logo != null) { r.set(cx - lw / 2, ly, cx + lw / 2, ly + lh); p.setFilterBitmap(true); c.drawBitmap(logo, null, r, p); }
+        float ty = ly + lh + 2 * s;
         spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
     }
 
@@ -297,16 +368,27 @@ public class HomeView extends View {
             float grow = sel ? 8 * s : 0;
             r.set(x - grow, top - grow * 1.5f, x + w + grow, top + h + grow * 0.5f);
             if (sel) {
-                p.setShader(new RadialGradient(r.centerX(), r.centerY(), w * 0.85f, 0x662BE37A, 0x002BE37A, Shader.TileMode.CLAMP));
+                p.setShader(new RadialGradient(r.centerX(), r.centerY(), w * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), w * 0.85f, p); p.setShader(null);
             }
-            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? 0xFF0F4A2A : 0xF0082414, 0xF0020C06, Shader.TileMode.CLAMP));
+            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
             c.drawRoundRect(r, 12 * s, 12 * s, p); p.setShader(null);
             stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
-            stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{0xFFFFF1B8, GOLD, GOLD_D} : new int[]{0xFF2E8F58, 0xFF1B5E38, 0xFF2E8F58}, null, Shader.TileMode.CLAMP));
+            stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
             c.drawRoundRect(r, 12 * s, 12 * s, stroke); stroke.setShader(null);
-            icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? 0xFF7DFFB0 : 0xFF3FD083, 2.2f);
-            spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : 0xFF9FB8A8, Paint.Align.CENTER);
+            if (sel && T.burst) {
+                p.setColor(0xFFFFD23F); star(c, r.right - 4 * s, r.top + 2 * s, 13 * s, t * 4, p);
+                for (int k = 0; k < 2; k++) {          // two little pills orbiting the tile
+                    double a = t * 2.4 + k * Math.PI;
+                    float px = r.centerX() + (float) Math.cos(a) * (w * 0.62f), py = r.centerY() + (float) Math.sin(a) * (h * 0.62f);
+                    c.save(); c.rotate((float) Math.toDegrees(a) + 90, px, py);
+                    p.setColor(k == 0 ? 0xFFFF4A4A : 0xFFFFD23F);
+                    RectF pill = new RectF(px - 9 * s, py - 4 * s, px + 9 * s, py + 4 * s);
+                    c.drawRoundRect(pill, 4 * s, 4 * s, p); c.restore();
+                }
+            }
+            icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
+            spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
             String lab = it.label.toUpperCase(Locale.ROOT);
             float ts = 15 * s; p.setTextSize(ts); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
             while (p.measureText(lab) > w - 14 * s && ts > 10 * s) { ts -= 0.5f * s; p.setTextSize(ts); }
@@ -317,7 +399,7 @@ public class HomeView extends View {
             } else text(c, lab, r.centerX(), r.top + h * 0.78f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
             if (!it.isAction() && !host.installed(it)) {
                 String b = it.webUrl != null ? "WEB" : "GET";
-                p.setColor(it.webUrl != null ? 0xCC0E5C33 : 0xCC6B5414);
+                p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
                 RectF br = new RectF(r.right - 44 * s, r.top + 7 * s, r.right - 7 * s, r.top + 23 * s);
                 c.drawRoundRect(br, 8 * s, 8 * s, p);
                 text(c, b, br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
@@ -345,15 +427,15 @@ public class HomeView extends View {
             x = r.right + 9 * s + p.measureText(hnt[1]) + 26 * s;
         }
         boolean on = host.online();
-        text(c, on ? "Online" : "Offline", W - 24 * s, y, 18 * s, on ? 0xFF6CFFA8 : DIM, Paint.Align.RIGHT, false);
+        text(c, on ? "Online" : "Offline", W - 24 * s, y, 18 * s, on ? T.accent : DIM, Paint.Align.RIGHT, false);
         p.setTextSize(18 * s);
-        icon(c, "globe", W - 24 * s - p.measureText(on ? "Online" : "Offline") - 16 * s, y - 6 * s, 18 * s, on ? 0xFF6CFFA8 : DIM, 1.8f);
+        icon(c, "globe", W - 24 * s - p.measureText(on ? "Online" : "Offline") - 16 * s, y - 6 * s, 18 * s, on ? T.accent : DIM, 1.8f);
     }
 
     private void prompt(Canvas c, int W, int H) {
         p.setColor(0xCC000000); c.drawRect(0, 0, W, H, p);
         r.set(W / 2f - 300 * s, H / 2f - 110 * s, W / 2f + 300 * s, H / 2f + 110 * s);
-        p.setColor(0xFF04170C); c.drawRoundRect(r, 16 * s, 16 * s, p);
+        p.setColor(T.prompt); c.drawRoundRect(r, 16 * s, 16 * s, p);
         stroke.setColor(GOLD); stroke.setStrokeWidth(2 * s); c.drawRoundRect(r, 16 * s, 16 * s, stroke);
         text(c, prompt.label + " is not installed", W / 2f, r.top + 56 * s, 26 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
         text(c, "Get it from the Play Store, then come back here.", W / 2f, r.top + 96 * s, 17 * s, DIM, Paint.Align.CENTER, false);
@@ -436,6 +518,17 @@ public class HomeView extends View {
                 path.moveTo(x0 + 5 * u, y0 + 3 * u); path.lineTo(x0 + 19 * u, y0 + 3 * u); path.lineTo(x0 + 19 * u, y0 + 21 * u); path.lineTo(x0 + 5 * u, y0 + 21 * u); path.close();
                 c.drawPath(path, stroke); ir.set(x0 + 8 * u, y0 + 6 * u, x0 + 16 * u, y0 + 13 * u); c.drawRect(ir, stroke);
                 c.drawLine(x0 + 9 * u, y0 + 18 * u, x0 + 15 * u, y0 + 18 * u, stroke); break;
+            case "palette":
+                path.moveTo(cx, y0 + 3 * u); path.cubicTo(x0 + 2 * u, y0 + 3 * u, x0 + 2 * u, y0 + 21 * u, cx, y0 + 21 * u);
+                path.cubicTo(x0 + 15 * u, y0 + 21 * u, x0 + 13 * u, y0 + 16 * u, x0 + 16 * u, y0 + 15 * u);
+                path.cubicTo(x0 + 22 * u, y0 + 14 * u, x0 + 23 * u, y0 + 3 * u, cx, y0 + 3 * u); c.drawPath(path, stroke);
+                c.drawCircle(x0 + 8 * u, y0 + 10 * u, 1.2f * u, stroke); c.drawCircle(x0 + 12 * u, y0 + 7 * u, 1.2f * u, stroke);
+                c.drawCircle(x0 + 16 * u, y0 + 9 * u, 1.2f * u, stroke); break;
+            case "image":
+                ir.set(x0 + 3 * u, y0 + 5 * u, x0 + 21 * u, y0 + 19 * u); c.drawRoundRect(ir, 2 * u, 2 * u, stroke);
+                path.moveTo(x0 + 4 * u, y0 + 17 * u); path.lineTo(x0 + 10 * u, y0 + 11 * u); path.lineTo(x0 + 14 * u, y0 + 15 * u);
+                path.lineTo(x0 + 16 * u, y0 + 13 * u); path.lineTo(x0 + 20 * u, y0 + 17 * u); c.drawPath(path, stroke);
+                c.drawCircle(x0 + 16 * u, y0 + 9 * u, 1.5f * u, stroke); break;
             default:
                 c.drawCircle(cx, cy, 8 * u, stroke);
         }

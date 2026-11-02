@@ -24,7 +24,7 @@ FocusScope {
     readonly property int li: Math.min(listIdx, Math.max(0, items.length - 1))
     readonly property bool fx: Theme.fx
     readonly property bool anim: Theme.anim
-    readonly property color glow: "#46f07a"
+    readonly property color glow: "#46cef0"
     readonly property bool hubOn: cats.length > cat && cats[cat].key === "emulators"
     signal menuAction(string id)
 
@@ -98,7 +98,7 @@ FocusScope {
         width: parent.width * 1.2; height: parent.height * 0.9
         x: -parent.width * 0.1; y: parent.height * 0.22
         radius: height / 2
-        gradient: Gradient { GradientStop { position: 0.0; color: "#00000000" } GradientStop { position: 0.5; color: "#14286a3a" }
+        gradient: Gradient { GradientStop { position: 0.0; color: "#00000000" } GradientStop { position: 0.5; color: "#14285d6a" }
                              GradientStop { position: 1.0; color: "#00000000" } }
     }
     Repeater {
@@ -128,7 +128,7 @@ FocusScope {
             required property int index
             readonly property real seed: ((index * 7919) % 1000) / 1000
             width: (2 + seed * 4) * hh.s; height: width; radius: width / 2
-            color: index % 4 === 0 ? "#f0d27a" : "#7dffa8"
+            color: index % 4 === 0 ? "#7ad3f0" : "#7de5ff"
             x: hh.width * ((index * 0.137 + seed * 0.5) % 1)
             property real p: seed
             y: hh.height * (1.0 - (p % 1) * 1.05)
@@ -139,22 +139,18 @@ FocusScope {
     }
 
     // ------------------------------------------------------------ status bar
-    Item {   // CodeAque's mark: a small winged ankh, the name, and what it is
+    Item {   // CodeAque's logo, small, top left
         objectName: "hhBrand"
-        x: 24 * hh.s; y: 10 * hh.s
-        width: brandName.x + brandName.width; height: 58 * hh.s
-        Image { id: brandAnkh; source: Qt.resolvedUrl("../assets/hh_ankh.svg"); width: 112 * hh.s; height: 45 * hh.s
-                sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); smooth: true; anchors.verticalCenter: parent.verticalCenter }
-        ChromeText { id: brandName; x: brandAnkh.width + 8 * hh.s; y: 2 * hh.s; text: "CODEAQUE"; px: 30 * hh.s; spacing: 3 * hh.s
-                     glowColor: hh.glow; glow: 0.6 }
-        Text { anchors.left: brandName.left; anchors.top: brandName.bottom; anchors.topMargin: -1 * hh.s
-               text: "PORTABLE GAMING SYSTEM"; color: "#d7ddd5"; font.pixelSize: 11.5 * hh.s; font.letterSpacing: 3.4 * hh.s }
+        x: 24 * hh.s; y: 12 * hh.s
+        width: 150 * hh.s; height: 50 * hh.s
+        Image { anchors.fill: parent; source: Qt.resolvedUrl("../assets/codeaque-logo.png"); fillMode: Image.PreserveAspectFit
+                sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); smooth: true; mipmap: true }
     }
     Row {
         objectName: "hhStatus"
         anchors.right: parent.right; anchors.rightMargin: 30 * hh.s; y: 14 * hh.s
         spacing: 18 * hh.s
-        Icon { name: "wifi"; size: 26 * hh.s; color: hh.status.online ? "white" : "#6d756c"; anchors.verticalCenter: parent.verticalCenter }
+        Icon { name: "wifi"; size: 26 * hh.s; color: hh.status.online ? "white" : "#6c7175"; anchors.verticalCenter: parent.verticalCenter }
         Row {
             visible: hh.status.hasBattery
             spacing: 8 * hh.s
@@ -206,7 +202,7 @@ FocusScope {
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: 14 * hh.s; width: 64 * hh.s; height: width
                     Icon { id: ciGlyph; anchors.fill: parent; name: ci.modelData.icon; size: parent.width; stroke: 1.8
-                           color: ci.on ? "#9dffbe" : "#e9ece6" }
+                           color: ci.on ? "#9debff" : "#e6ebec" }
                     MultiEffect {   // the chosen category glows
                         visible: ci.on && hh.fx
                         source: ciGlyph; anchors.fill: ciGlyph
@@ -218,7 +214,7 @@ FocusScope {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top: ciIcon.bottom; anchors.topMargin: 8 * hh.s
                     text: ci.modelData.title
-                    color: ci.on ? "white" : "#e2e6df"
+                    color: ci.on ? "white" : "#dfe5e6"
                     font.pixelSize: (ci.on ? 24 : 21) * hh.s; font.weight: ci.on ? Font.DemiBold : Font.Normal
                 }
                 Rectangle {   // focus underline when the row itself has the focus
@@ -231,7 +227,7 @@ FocusScope {
         }
     }
 
-    // ------------------------------------------------------------ the centre piece: winged ankh, chrome name, tagline
+    // ------------------------------------------------------------ the centre piece: the CodeAque logo and tagline
     Item {
         id: mark
         objectName: "hhMark"
@@ -242,32 +238,26 @@ FocusScope {
         opacity: hh.zone === "list" ? 0 : 1
         Behavior on opacity { enabled: hh.anim; NumberAnimation { duration: 220 } }
         Image {
-            id: bigAnkh
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: 470 * hh.s; height: 188 * hh.s
-            source: Qt.resolvedUrl("../assets/hh_ankh.svg")
-            fillMode: Image.PreserveAspectFit
-            sourceSize: Qt.size(Math.ceil(470 * hh.s * 1.5), Math.ceil(188 * hh.s * 1.5))
-            smooth: true
-        }
-        MultiEffect {
-            visible: hh.fx
-            source: bigAnkh; anchors.fill: bigAnkh
-            shadowEnabled: true; shadowColor: hh.glow; shadowBlur: 0.9; shadowOpacity: 0.55
-            shadowHorizontalOffset: 0; shadowVerticalOffset: 0
-        }
-        ChromeText {
             id: markText
             anchors.horizontalCenter: parent.horizontalCenter
-            y: bigAnkh.height * 0.62
-            text: "CODEAQUE"; px: 84 * hh.s; spacing: 10 * hh.s
-            glowColor: hh.glow; glow: 1.0
+            y: 10 * hh.s
+            width: 660 * hh.s; height: 220 * hh.s
+            source: Qt.resolvedUrl("../assets/codeaque-logo.png")
+            fillMode: Image.PreserveAspectFit
+            sourceSize: Qt.size(Math.ceil(width * 1.5), Math.ceil(height * 1.5))
+            smooth: true; mipmap: true
+        }
+        MultiEffect {   // soft neon glow behind the white logo
+            visible: hh.fx
+            source: markText; anchors.fill: markText
+            shadowEnabled: true; shadowColor: hh.glow; shadowBlur: 1.0; shadowOpacity: 0.8
+            shadowHorizontalOffset: 0; shadowVerticalOffset: 0
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: markText.bottom; anchors.topMargin: -2 * hh.s
             text: "GAMING  \u2022  CLOUD  \u2022  EMULATION  \u2022  STREAMING"
-            color: "#e9eee6"; font.pixelSize: 16 * hh.s; font.letterSpacing: 4 * hh.s; font.weight: Font.Medium
+            color: "#e6ecee"; font.pixelSize: 16 * hh.s; font.letterSpacing: 4 * hh.s; font.weight: Font.Medium
         }
     }
 
@@ -279,45 +269,31 @@ FocusScope {
         anchors.fill: parent
         opacity: hh.zone === "list" ? 0.12 : 1
         Behavior on opacity { enabled: hh.anim; NumberAnimation { duration: 200 } }
-        Canvas {   // glowing pyramids in the lower corners and a green sky line (drawn once)
+        Canvas {   // a soft neon floor glow (drawn once)
             anchors.fill: parent
             renderStrategy: Canvas.Cooperative
             onWidthChanged: requestPaint()
             onHeightChanged: requestPaint()
             onPaint: {
                 var c = getContext("2d"); c.reset()
-                function pyr(x, base, w, h, a) {
-                    c.beginPath(); c.moveTo(x - w / 2, base); c.lineTo(x, base - h); c.lineTo(x + w / 2, base); c.closePath()
-                    var g = c.createLinearGradient(x, base - h, x, base)
-                    g.addColorStop(0, "rgba(90,255,140," + a + ")"); g.addColorStop(1, "rgba(10,60,25," + (a * 0.4) + ")")
-                    c.fillStyle = g; c.fill()
-                    c.lineWidth = 1.5; c.strokeStyle = "rgba(120,255,160," + (a * 1.4) + ")"; c.stroke()
-                    c.beginPath(); c.moveTo(x, base - h); c.lineTo(x + w * 0.12, base); c.strokeStyle = "rgba(160,255,190," + a + ")"; c.stroke()
-                }
                 var H = height, W = width
                 var sky = c.createRadialGradient(W / 2, H * 1.2, 10, W / 2, H * 1.2, W * 0.75)
-                sky.addColorStop(0, "rgba(40,160,70,0.20)"); sky.addColorStop(1, "rgba(0,0,0,0)")
+                sky.addColorStop(0, "rgba(40,130,160,0.20)"); sky.addColorStop(1, "rgba(0,0,0,0)")
                 c.fillStyle = sky; c.fillRect(0, 0, W, H)
-                pyr(W * 0.06, H * 0.98, W * 0.20, H * 0.30, 0.22); pyr(W * 0.15, H * 0.98, W * 0.13, H * 0.19, 0.16)
-                pyr(W * 0.94, H * 0.98, W * 0.20, H * 0.30, 0.22); pyr(W * 0.85, H * 0.98, W * 0.13, H * 0.19, 0.16)
             }
         }
-        Row {     // gold winged ankh  CODEAQUE  winged ankh
+        Image {   // the logo over the hub
             id: hubTitle
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 212 * hh.s
-            spacing: 16 * hh.s
-            Image { source: Qt.resolvedUrl("../assets/hh_ankh_gold.svg"); width: 110 * hh.s; height: 44 * hh.s
-                    sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); anchors.verticalCenter: parent.verticalCenter }
-            ChromeText { text: "CODEAQUE"; metal: "gold"; px: 40 * hh.s; spacing: 7 * hh.s; glowColor: "#e8c25a"; glow: 0.5
-                         anchors.verticalCenter: parent.verticalCenter }
-            Image { source: Qt.resolvedUrl("../assets/hh_ankh_gold.svg"); width: 110 * hh.s; height: 44 * hh.s
-                    sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); anchors.verticalCenter: parent.verticalCenter }
+            y: 206 * hh.s
+            width: 186 * hh.s; height: 62 * hh.s
+            source: Qt.resolvedUrl("../assets/codeaque-logo.png"); fillMode: Image.PreserveAspectFit
+            sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); smooth: true; mipmap: true
         }
         Text { id: hubSub; anchors.horizontalCenter: parent.horizontalCenter; anchors.top: hubTitle.bottom; anchors.topMargin: 0
-               text: "RETRO EMULATORS HUB"; color: "#f1e6c4"; font.pixelSize: 15 * hh.s; font.letterSpacing: 6 * hh.s; font.weight: Font.DemiBold }
+               text: "RETRO EMULATORS HUB"; color: "#c4e6f1"; font.pixelSize: 15 * hh.s; font.letterSpacing: 6 * hh.s; font.weight: Font.DemiBold }
         Text { id: hubTag; anchors.horizontalCenter: parent.horizontalCenter; anchors.top: hubSub.bottom; anchors.topMargin: 2 * hh.s
-               text: "PLAY  \u2022  EMULATE  \u2022  PRESERVE  \u2022  STREAM"; color: "#9fd8ad"; font.pixelSize: 11.5 * hh.s; font.letterSpacing: 3 * hh.s }
+               text: "PLAY  \u2022  EMULATE  \u2022  PRESERVE  \u2022  STREAM"; color: "#9fcdd8"; font.pixelSize: 11.5 * hh.s; font.letterSpacing: 3 * hh.s }
         Grid {
             id: hubGrid
             readonly property int cols: 11
@@ -341,27 +317,27 @@ FocusScope {
                     Rectangle {   // brighter halo on the chosen one
                         visible: ht.on
                         anchors.fill: parent; anchors.margins: -5 * hh.s
-                        radius: 16 * hh.s; color: "transparent"; border.width: 5 * hh.s; border.color: "#6646f07a"
+                        radius: 16 * hh.s; color: "transparent"; border.width: 5 * hh.s; border.color: "#6646cef0"
                     }
                     Rectangle {
                         anchors.fill: parent
                         radius: 12 * hh.s
                         border.width: (ht.on ? 3 : 2.2) * hh.s
-                        border.color: ht.on ? "#ffe28a" : "#b88a2e"
+                        border.color: ht.on ? "#8ae2ff" : "#2e96b8"
                         gradient: Gradient {   // inner green glow
-                            GradientStop { position: 0.0; color: ht.on ? "#1d5a2c" : "#0f2a16" }
-                            GradientStop { position: 0.6; color: ht.on ? "#0e2c16" : "#08130b" }
-                            GradientStop { position: 1.0; color: "#050806" }
+                            GradientStop { position: 0.0; color: ht.on ? "#1d4e5a" : "#0f252a" }
+                            GradientStop { position: 0.6; color: ht.on ? "#0e262c" : "#081113" }
+                            GradientStop { position: 1.0; color: "#050708" }
                         }
                         Icon { anchors.horizontalCenter: parent.horizontalCenter; y: 7 * hh.s
-                               name: ht.modelData.icon; size: 28 * hh.s; stroke: 1.7; metal: "gold"; color: Theme.gold
+                               name: ht.modelData.icon; size: 28 * hh.s; stroke: 1.7; metal: ""; color: Theme.gold
                                opacity: ht.has || ht.on ? 1 : 0.7 }
                         Column {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom; anchors.bottomMargin: 6 * hh.s
                             width: parent.width - 8 * hh.s
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "CODEAQUE"
-                                   color: "#c9a85a"; font.pixelSize: 7.5 * hh.s; font.letterSpacing: 1.2 * hh.s; font.weight: Font.DemiBold }
+                                   color: "#5aadc9"; font.pixelSize: 7.5 * hh.s; font.letterSpacing: 1.2 * hh.s; font.weight: Font.DemiBold }
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                                    text: ht.modelData.title.toUpperCase(); color: "white"
                                    font.pixelSize: 12 * hh.s; font.weight: Font.Bold }
@@ -369,8 +345,8 @@ FocusScope {
                         Rectangle {   // how many games
                             visible: ht.has
                             anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 4 * hh.s
-                            width: cnt.implicitWidth + 8 * hh.s; height: 15 * hh.s; radius: height / 2; color: "#cc46f07a"
-                            Text { id: cnt; anchors.centerIn: parent; text: ht.modelData.items.length; color: "#05210d"
+                            width: cnt.implicitWidth + 8 * hh.s; height: 15 * hh.s; radius: height / 2; color: "#cc46cef0"
+                            Text { id: cnt; anchors.centerIn: parent; text: ht.modelData.items.length; color: "#051b21"
                                    font.pixelSize: 10 * hh.s; font.weight: Font.Bold }
                         }
                     }
@@ -384,7 +360,7 @@ FocusScope {
             visible: hh.zone !== "list" && hh.tile !== null
             text: hh.tile ? (hh.tile.full + "  -  " + (hh.tile.items.length ? hh.tile.items.length + " game" + (hh.tile.items.length === 1 ? "" : "s")
                                                     : "no games yet: add your own with Settings > Add games")) : ""
-            color: "#e8ecdf"; font.pixelSize: 16 * hh.s
+            color: "#dfe9ec"; font.pixelSize: 16 * hh.s
         }
     }
 
@@ -422,18 +398,18 @@ FocusScope {
                     Rectangle {   // soft glow round the chosen tile
                         visible: tl.hot
                         anchors.fill: box; anchors.margins: -6 * hh.s
-                        radius: 20 * hh.s; color: "transparent"; border.width: 6 * hh.s; border.color: "#5546f07a"
+                        radius: 20 * hh.s; color: "transparent"; border.width: 6 * hh.s; border.color: "#5546cef0"
                     }
                     Rectangle {
                         id: box
                         anchors.fill: parent
                         radius: 14 * hh.s
                         gradient: Gradient {
-                            GradientStop { position: 0.0; color: tl.hot ? "#163a20" : "#0d1a10" }
-                            GradientStop { position: 1.0; color: tl.hot ? "#07140b" : "#050906" }
+                            GradientStop { position: 0.0; color: tl.hot ? "#16333a" : "#0d171a" }
+                            GradientStop { position: 1.0; color: tl.hot ? "#071114" : "#050809" }
                         }
                         border.width: (tl.hot ? 3 : 1.5) * hh.s
-                        border.color: tl.hot ? "#7dff9a" : "#2f7a45"
+                        border.color: tl.hot ? "#7de5ff" : "#2f6b7a"
                         Icon {
                             anchors.horizontalCenter: parent.horizontalCenter
                             y: 16 * hh.s
@@ -441,7 +417,7 @@ FocusScope {
                             name: tl.modelData.icon.indexOf("console:") === 0 ? Theme.consoleFor(tl.modelData.icon.substring(8), "pad")
                                                                             : tl.modelData.icon
                             size: 44 * hh.s
-                            color: tl.hot ? "#b5ffcc" : "#7cf09a"
+                            color: tl.hot ? "#b5f0ff" : "#7cd9f0"
                         }
                         Column {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -449,7 +425,7 @@ FocusScope {
                             width: parent.width - 10 * hh.s
                             spacing: 1 * hh.s
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "CODEAQUE"
-                                   color: tl.hot ? "#c8ffd6" : "#aab8ad"; font.pixelSize: 9.5 * hh.s; font.letterSpacing: 1.4 * hh.s; font.weight: Font.DemiBold }
+                                   color: tl.hot ? "#c8f4ff" : "#aab2b8"; font.pixelSize: 9.5 * hh.s; font.letterSpacing: 1.4 * hh.s; font.weight: Font.DemiBold }
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                                    elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.WordWrap; lineHeight: 0.9
                                    text: tl.modelData.title.toUpperCase()
@@ -458,7 +434,7 @@ FocusScope {
                         Text {   // how many games inside
                             visible: tl.modelData.kind === "list"
                             anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 7 * hh.s
-                            text: tl.modelData.items.length; color: "#9fb7a6"; font.pixelSize: 14 * hh.s
+                            text: tl.modelData.items.length; color: "#9fb2b7"; font.pixelSize: 14 * hh.s
                         }
                     }
                     MouseArea { anchors.fill: parent; onClicked: { hh.setTile(tl.index); hh.zone = "tiles"; hh.activateTile() } }
@@ -470,7 +446,7 @@ FocusScope {
             visible: hh.tiles.length === 0
             anchors.verticalCenter: parent.verticalCenter; x: 10 * hh.s
             width: parent.width - 20 * hh.s; wrapMode: Text.WordWrap
-            color: "#dfe6dc"; font.pixelSize: 24 * hh.s
+            color: "#dce4e6"; font.pixelSize: 24 * hh.s
             text: hh.cat === 0 || hh.cat === 2 ? "No retro games yet. Copy your own game files to the Games folder, or go to Settings > Add games. CodeAque does not come with games or BIOS files."
                                                : "Nothing here yet."
         }
@@ -493,7 +469,7 @@ FocusScope {
         Text {
             anchors.right: parent.right; y: 4 * hh.s
             text: hh.tile ? hh.tile.title + "  " + (hh.items.length ? (hh.li + 1) + " / " + hh.items.length : "") : ""
-            color: "#9fb7a6"; font.pixelSize: 18 * hh.s
+            color: "#9fb2b7"; font.pixelSize: 18 * hh.s
         }
         Repeater {
             model: 8
@@ -517,7 +493,7 @@ FocusScope {
                     radius: 12 * hh.s
                     color: slot.it ? Qt.hsla(0.38, 0.4, 0.10 + (slot.it.hue * 0.08), 1) : "transparent"
                     border.width: slot.sel ? 2.5 * hh.s : 1 * hh.s
-                    border.color: slot.sel ? hh.glow : "#3a5a44"
+                    border.color: slot.sel ? hh.glow : "#3a545a"
                     clip: true
                     Behavior on width { enabled: hh.anim; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
                     Image { anchors.fill: parent; anchors.margins: parent.border.width; visible: source !== ""
@@ -525,7 +501,7 @@ FocusScope {
                             asynchronous: true; sourceSize.width: 256 }
                     Icon { anchors.centerIn: parent; visible: !(slot.it && slot.it.cover)
                            name: slot.it ? (slot.it.gid.indexOf("web:") === 0 ? "c_cloud" : Theme.consoleFor(slot.it.platform, "pad")) : "pad"
-                           size: art.width * 0.56; color: slot.sel ? "#b5ffcc" : "#e6ebe3" }
+                           size: art.width * 0.56; color: slot.sel ? "#b5f0ff" : "#e3e9eb" }
                 }
                 Column {
                     anchors.left: art.right; anchors.leftMargin: 22 * hh.s
@@ -537,19 +513,19 @@ FocusScope {
                            text: slot.it ? (slot.it.gid.indexOf("web:") === 0 ? "Needs internet and your own account with this service."
                                                                              : slot.it.sub + (slot.it.needsInstall ? "  -  needs its emulator (press A)" : ""))
                                          : ""
-                           color: "#9dffbe"; font.pixelSize: 20 * hh.s }
+                           color: "#9debff"; font.pixelSize: 20 * hh.s }
                 }
             }
         }
         Text {
             visible: hh.items.length === 0
             y: listLayer.selY; width: parent.width; wrapMode: Text.WordWrap
-            text: "Nothing in here yet."; color: "#dfe6dc"; font.pixelSize: 26 * hh.s
+            text: "Nothing in here yet."; color: "#dce4e6"; font.pixelSize: 26 * hh.s
         }
     }
 
     // ------------------------------------------------------------ hints and Online
-    Rectangle { x: 0; width: parent.width; y: parent.height - 62 * hh.s; height: 1; color: "#2646f07a" }
+    Rectangle { x: 0; width: parent.width; y: parent.height - 62 * hh.s; height: 1; color: "#2646cef0" }
     Row {
         x: 30 * hh.s; anchors.bottom: parent.bottom; anchors.bottomMargin: 16 * hh.s
         spacing: 30 * hh.s
@@ -559,7 +535,7 @@ FocusScope {
                 required property var modelData
                 spacing: 10 * hh.s
                 HandButton { letter: modelData.k; s: hh.s; anchors.verticalCenter: parent.verticalCenter }
-                Text { text: modelData.t; color: "#e8ece5"; font.pixelSize: 21 * hh.s; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: modelData.t; color: "#e5ebec"; font.pixelSize: 21 * hh.s; anchors.verticalCenter: parent.verticalCenter }
             }
         }
     }
@@ -568,7 +544,7 @@ FocusScope {
         anchors.right: parent.right; anchors.rightMargin: 30 * hh.s
         anchors.bottom: parent.bottom; anchors.bottomMargin: 16 * hh.s
         spacing: 10 * hh.s
-        Icon { name: "globe"; size: 28 * hh.s; color: hh.status.online ? hh.glow : "#6d756c"; anchors.verticalCenter: parent.verticalCenter }
-        Text { text: hh.status.online ? "Online" : "Offline"; color: "#e8ece5"; font.pixelSize: 21 * hh.s; anchors.verticalCenter: parent.verticalCenter }
+        Icon { name: "globe"; size: 28 * hh.s; color: hh.status.online ? hh.glow : "#6c7175"; anchors.verticalCenter: parent.verticalCenter }
+        Text { text: hh.status.online ? "Online" : "Offline"; color: "#e5ebec"; font.pixelSize: 21 * hh.s; anchors.verticalCenter: parent.verticalCenter }
     }
 }

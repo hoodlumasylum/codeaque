@@ -68,6 +68,7 @@ public final class Catalog {
                 act("Browser", "globe", "browser"), act("All apps", "grid", "allapps")));
         c.add(new Category("settings", "Settings", "gear",
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
+                act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
                 act("Home app", "home", "home"), act("Android settings", "gear", "settings")));
         return c;
@@ -81,6 +82,13 @@ public final class Catalog {
     /** "auto" -> "on" -> "off" -> "auto". */
     public static String nextEffects(String cur) {
         return "auto".equals(cur) ? "on" : "on".equals(cur) ? "off" : "auto";
+    }
+
+    /** Power-of-two BitmapFactory sample size so the longer side ends up at least `target` pixels. */
+    public static int sampleSize(int longSide, int target) {
+        int n = 1;
+        while (target > 0 && longSide / (n * 2) >= target) n *= 2;
+        return n;
     }
 
     private Catalog() {}

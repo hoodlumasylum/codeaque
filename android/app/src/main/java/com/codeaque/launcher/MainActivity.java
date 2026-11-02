@@ -44,11 +44,23 @@ public class MainActivity extends Activity implements HomeView.Host {
         view.requestFocus();
         pool = new SoundPool.Builder().setMaxStreams(3).setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
-        for (String n : new String[]{"hhmove", "hhcat", "hhselect", "hhback"}) {
+        for (String n : new String[]{"hhmove", "hhcat", "hhselect", "hhback", "powerup", "chime"}) {
             try { sounds.put(n, pool.load(getAssets().openFd(n + ".wav"), 1)); } catch (Exception ignored) { }
         }
+        Intent in0 = getIntent();      // am start -e theme powerup  (same as Settings > Theme)
+        if (in0 != null && in0.hasExtra("theme")) prefs.edit().putString("theme", Palette.byId(in0.getStringExtra("theme")).id).apply();
+        view.setTheme(Palette.byId(prefs.getString("theme", "neon")));
+        loadWallpaper();
+        final String launch = theme().selectSound;      // the theme's sound once on launch
+        if (launch != null) pool.setOnLoadCompleteListener((sp, id, st) -> { Integer want = sounds.get(launch); if (want != null && id == want) sp.play(id, 0.6f, 0.6f, 1, 0, 1f); });
         Intent i = getIntent();     // for screenshots/tests: am start -e cat cloud -e tile 1
         if (i != null && i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
+    }
+
+    @Override protected void onNewIntent(Intent i) {      // pressing Home again, or the screenshot extras
+        super.onNewIntent(i);
+        if (i.hasExtra("theme")) { prefs.edit().putString("theme", Palette.byId(i.getStringExtra("theme")).id).apply(); view.setTheme(theme()); }
+        if (i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
     }
 
     @Override protected void onResume() {
@@ -117,6 +129,22 @@ public class MainActivity extends Activity implements HomeView.Host {
                 view.invalidate(); break;
             }
             case "allapps": allApps(); break;
+            case "theme": {
+                String n = Palette.next(theme().id);
+                prefs.edit().putString("theme", n).apply();
+                view.setTheme(Palette.byId(n));
+                Toast.makeText(this, "Theme: " + Palette.byId(n).name, Toast.LENGTH_SHORT).show();
+                sound("hhselect"); break;
+            }
+            case "wallpaper":
+                if (prefs.getString("wallpaper", null) != null) {
+                    prefs.edit().remove("wallpaper").apply(); view.setWallpaper(null);
+                    Toast.makeText(this, "Wallpaper off: theme background", Toast.LENGTH_SHORT).show();
+                } else {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");
+                    startActivityForResult(pick, PICK_WALLPAPER);
+                }
+                break;
         }
     }
 
@@ -135,7 +163,39 @@ public class MainActivity extends Activity implements HomeView.Host {
                         .setClassName(apps.get(w)[1], apps.get(w)[2]))).show();
     }
 
+    private static final int PICK_WALLPAPER = 7;
+    private Palette theme() { return Palette.byId(prefs.getString("theme", "neon")); }
+
+    @Override protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != PICK_WALLPAPER || res != RESULT_OK || data == null || data.getData() == null) return;
+        Uri u = data.getData();
+        try { getContentResolver().takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+        prefs.edit().putString("wallpaper", u.toString()).apply();
+        loadWallpaper();
+    }
+
+    /** Decodes the chosen picture at about screen size, so a big photo costs a few MB, not hundreds. */
+    private void loadWallpaper() {
+        String s = prefs.getString("wallpaper", null);
+        if (s == null) { view.setWallpaper(null); return; }
+        try {
+            Uri u = Uri.parse(s);
+            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (java.io.InputStream in = getContentResolver().openInputStream(u)) { android.graphics.BitmapFactory.decodeStream(in, null, o); }
+            int maxSide = Math.max(getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels);
+            o.inSampleSize = Catalog.sampleSize(Math.max(o.outWidth, o.outHeight), maxSide);
+            o.inJustDecodeBounds = false;
+            try (java.io.InputStream in = getContentResolver().openInputStream(u)) { view.setWallpaper(android.graphics.BitmapFactory.decodeStream(in, null, o)); }
+        } catch (Exception e) {
+            prefs.edit().remove("wallpaper").apply(); view.setWallpaper(null);
+            Toast.makeText(this, "Could not open that picture", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     @Override public void sound(String n) {
+        if (theme().selectSound != null && n.equals("hhselect")) n = theme().selectSound;
         Integer id = sounds.get(n);
         if (id != null) pool.play(id, 0.5f, 0.5f, 1, 0, 1f);
     }

@@ -22,3 +22,37 @@ def test_android_launcher_is_a_home_app_without_logos():
     assert not any(n.endswith((".rom", ".bin", ".zip", ".iso")) for n in assets)
     src = (AND / "app/src/main/java/com/codeaque/launcher/HomeView.java").read_text()
     assert "PlayStation" not in src and "PSP" not in src
+
+
+SRC = AND / "app/src/main/java/com/codeaque/launcher"
+
+
+def test_themes_are_original_and_default_is_unchanged():
+    pal = (SRC / "Palette.java").read_text()
+    assert '"Power Up"' in pal and '"Catch"' in pal and '"Neon"' in pal
+    assert "ALL = {NEON, POWERUP, CATCH}" in pal                  # Neon is the default
+    everything = " ".join(p.read_text(errors="ignore") for p in AND.rglob("*") if p.is_file() and p.suffix in (".java", ".xml", ".md", ".gradle", ".sh"))
+    everything += (ROOT / "docs/android.md").read_text() + (ROOT / "README.md").read_text()
+    low = everything.lower()
+    for bad in ("dragon ball", "dbz", "goku", "saiyan", "kamehameha", "pokemon", "pokémon", "poke ball", "pokeball", "pikachu"):
+        assert bad not in low, bad
+
+
+def test_theme_sounds_are_generated_by_our_scripts():
+    for name, tool in (("powerup.wav", "make_powerup_sfx.py"), ("chime.wav", "make_catch_sfx.py")):
+        assert (AND / "app/src/main/assets" / name).stat().st_size > 1000
+        assert (ROOT / "tools" / tool).exists()
+
+
+def test_settings_offer_theme_and_wallpaper():
+    main = (SRC / "MainActivity.java").read_text()
+    assert "ACTION_OPEN_DOCUMENT" in main and "takePersistableUriPermission" in main and '"theme"' in main
+
+
+def test_no_egyptian_art_left_in_the_defaults():
+    assert not (ROOT / "atarilauncher/assets/hh_ankh.svg").exists()
+    assert (AND / "app/src/main/assets/logo.png").exists()
+    for p in [*(ROOT / "atarilauncher/qml").glob("*.qml"), *SRC.glob("*.java")]:
+        t = p.read_text().lower()
+        for bad in ("ankh", "anubis", "pyramid", "hieroglyph"):
+            assert bad not in t, (p.name, bad)

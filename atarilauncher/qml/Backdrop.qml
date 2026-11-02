@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Effects
 
 // Full-screen picture behind the home screen: the highlighted game's own art (wide art first), blurred and darkened,
-// cross-fading when the selection changes and drifting a little sideways (parallax). Without art: a soft emerald/gold
+// cross-fading when the selection changes and drifting a little sideways (parallax). Without art: a soft charcoal/neon
 // glow tinted by the game's colour. "Reduce effects" = no blur (a plain darkened picture) and no drift.
 Item {
     id: bd

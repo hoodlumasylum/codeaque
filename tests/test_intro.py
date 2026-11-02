@@ -91,13 +91,13 @@ def test_plan_follows_the_two_switches_and_the_env(tmp_path):
 
 def test_the_shipped_intro_video_is_there_and_is_a_real_clip():
     f = intro.bundled_file()
-    assert f is not None and f.name == "code-intro.mp4" and 6_000_000 < f.stat().st_size < 9_000_000
+    assert f is not None and f.name == "code-intro.mp4" and 50_000 < f.stat().st_size < 9_000_000
     assert f.read_bytes()[4:8] == b"ftyp"                                    # an MP4 container
-    # the ORIGINAL video, not a re-compressed copy: the source is 1280x720 at about 6 Mbit/s (it is not 1080p; nothing is upscaled)
+    # 0.9.0: the logo intro made by tools/make_intro_video.sh, 1280x720 (a still logo, so a low bit rate is enough)
     if shutil.which("ffprobe"):
         out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,bit_rate",
                               "-of", "csv=p=0", str(f)], capture_output=True, text=True).stdout.strip().split(",")
-        assert int(out[0]) == 1280 and int(out[1]) == 720 and int(out[2]) > 5_000_000
+        assert int(out[0]) == 1280 and int(out[1]) == 720 and int(out[2]) > 20_000
 
 
 def test_players_fill_the_whole_screen_borderless_keep_the_whole_picture_and_hide_the_pointer():
@@ -308,8 +308,8 @@ def test_atari_own_intro_shows_the_wordmark_plays_its_sound_and_ends(app, tmp_pa
         pump(app, 500)
         img = ui.win.grabWindow()
         gold = sum(1 for x in range(0, img.width(), 8) for y in range(0, img.height(), 8)
-                   if (lambda c: c.red() > 150 and c.green() > 100 and c.blue() < 90)(img.pixelColor(x, y)))
-        assert gold > 20                                                     # the gold CodeAque logo is really drawn
+                   if (lambda c: c.red() > 200 and c.green() > 200 and c.blue() > 200)(img.pixelColor(x, y)))
+        assert gold > 20                                                     # the white CodeAque logo is really drawn
         assert any(t == "Press any key to skip" for t, _ in texts(ui))
         assert wait_for(app, lambda: ui.mode == "library", 8), ui.mode      # it ends by itself after its length
         assert not ui.backend.introActive and not ui.warnings, ui.warnings
@@ -597,7 +597,7 @@ def test_the_shipped_intro_is_the_original_video_with_its_sound():
     import hashlib
     f = intro.bundled_file()
     assert f is not None
-    assert hashlib.sha256(f.read_bytes()).hexdigest() == "602023ee6e14728880e4690cb0e81c8144f64a1038138847456be2c1014e3e02"   # the file the owner sent, untouched
+    assert hashlib.sha256(f.read_bytes()).hexdigest() == "61164f0b78877e11d5d690b36b6f99d804a0def684acd049f05400b513e4e822"   # 0.9.0: made from the owner's new white logo (tools/make_intro_video.sh)
     if shutil.which("ffprobe"):
         out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name,channels",
                               "-of", "csv=p=0", str(f)], capture_output=True, text=True).stdout.strip()

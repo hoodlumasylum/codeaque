@@ -1,7 +1,7 @@
 # CodeAque Launcher for Android handhelds (RG3566 and similar)
 
-Android stays the system underneath. CodeAque is just the **home screen** on top: the same black,
-green-wave, gold-and-emerald look as the Handheld Edition, with big tiles that open the apps you
+Android stays the system underneath. CodeAque is just the **home screen** on top: the same charcoal,
+neon-cyan look and white CODEAQUE logo as the Handheld Edition, with big tiles that open the apps you
 already have.
 
 > **Untested on a real RG3566.** It was checked on an Android 11 emulator (1280x720 and 640x480)
@@ -33,6 +33,12 @@ From a PC with adb instead: `adb install codeaque-launcher.apk`.
 * **Retro** opens RetroArch (and PPSSPP, DuckStation, Dolphin, Mupen64Plus FZ, Flycast, DraStic if installed).
   No BIOS, ROMs, games or keys are included — bring your own.
 * **Apps > All apps** lists every installed app by name.
+* **Settings > Theme** cycles the looks: **Neon** (the default: charcoal, white logo, cyan), **Power Up** (orange and
+  blue, a glowing energy aura and a rising power-up sound) and **Catch** (red, white and yellow, a
+  turning sunburst with confetti stars, a spinning star on the selected tile and a bright chime).
+  All art and sounds are original (made by `tools/make_powerup_sfx.py` and `tools/make_catch_sfx.py`).
+* **Settings > Wallpaper** picks a picture from the device as the background (it is darkened a little
+  so the text stays readable). Choose Wallpaper again to go back to the theme background.
 * **Settings > Effects**: Auto (30 fps waves, the default), On (60 fps) or Off (still background, saves battery).
 
 ## Build it yourself
@@ -49,6 +55,9 @@ Android Studio / Gradle (`gradle assembleDebug`) works too. Release builds are s
 debug-style key unless you set `CODEAQUE_KEYSTORE`, `CODEAQUE_KS_PASS` and `CODEAQUE_KS_ALIAS`.
 
 ## What is untested
+
+* The wallpaper picker (Android's file chooser) was not clicked through on the emulator; the themes were.
+* The theme sounds were generated and checked as files, not heard on the device speaker.
 
 * Real RG3566 hardware: its pad's key codes, the 5in screen, speed, battery reading, and whether its
   Android build lets you change the home app (some vendor builds hide that choice).

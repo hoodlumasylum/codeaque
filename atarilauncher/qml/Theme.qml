@@ -128,19 +128,19 @@ QtObject {
                   windows: "c_pc", dos: "c_pc", apps: "c_pc", heroic: "c_pc", lutris: "c_pc" }
         return m[key] !== undefined ? m[key] : (glyph ? glyph : "pad")
     }
-    // the highlight colour of the home screen (gold), and its glow
-    property color accent: pal.accent !== undefined ? pal.accent : "#e8c25a"
-    property color accentGlow: pal.accentGlow !== undefined ? pal.accentGlow : "#66e8c25a"
-    readonly property color gold: "#e8c25a"
-    readonly property color emerald: "#0f6b4f"
-    readonly property color emeraldDark: "#062a1f"
+    // the highlight colour of the home screen (neon cyan), and its glow
+    property color accent: pal.accent !== undefined ? pal.accent : "#3fd4ff"
+    property color accentGlow: pal.accentGlow !== undefined ? pal.accentGlow : "#663fd4ff"
+    readonly property color gold: "#3fd4ff"      // the neon accent (was gold; the name stays so older code keeps working)
+    readonly property color emerald: "#1a2a36"
+    readonly property color emeraldDark: "#0c1218"
 
     // metal: "" | "gold" | "green" - a vertical metallic gradient along the lines instead of one flat colour
     function svg(name, color, stroke, px, metal) {
         var body = icons[name] !== undefined ? icons[name] : icons["pad"]
         var c = String(color), defs = ""
         if (metal === "gold" || metal === "green") {
-            var st = metal === "gold" ? ["#fff3c4", "#e8c25a", "#9b6d1c", "#f6dc8a"] : ["#e6ffd0", "#5cf07c", "#178a36", "#a8ff9a"]
+            var st = metal === "gold" ? ["#e8fbff", "#7fe4ff", "#1f8fc0", "#c4f3ff"] : ["#e0f4ff", "#5cb8ff", "#1c5fa8", "#a8d8ff"]
             defs = "<defs><linearGradient id='m' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='" + st[0]
                  + "'/><stop offset='.45' stop-color='" + st[1] + "'/><stop offset='.7' stop-color='" + st[2]
                  + "'/><stop offset='1' stop-color='" + st[3] + "'/></linearGradient></defs>"

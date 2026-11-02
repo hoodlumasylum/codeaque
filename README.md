@@ -31,6 +31,17 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.0 — new look, Android themes
+
+- **New CodeAque logo and a pure gaming look everywhere** (PC launcher, Handheld mode, Android launcher,
+  start-up video): dark charcoal, the white CODEAQUE logo and a neon cyan accent. The old Egyptian
+  artwork (ankh, Anubis, pyramids, gold & emerald) is gone from the defaults.
+- **Android launcher themes** (Settings > Theme): **Neon** (default), **Power Up** (orange & blue energy
+  aura, power-up sound) and **Catch** (red, white & yellow sunburst, spinning-star select, chime).
+  All original art and sound.
+- **Android: Settings > Wallpaper** uses your own picture from the device as the background.
+- Untested on real handhelds (RG353V, RG3566, Win600).
+
 ## What's new in 0.8.0 — Win600 installer and Android launcher (untested on real hardware)
 
 - **Anbernic Win600:** one command installs CodeAque, every supported emulator, sets them up for the
@@ -324,7 +335,7 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 ## What's new in 0.4.7
 
 * **New name and logo: CodeAque.** The app is now called **CodeAque** everywhere you can see it (window title, menus, About page, Power menu
-  "Restart CodeAque", menu entry, boot text, donate text) and has the new gold-and-emerald Anubis logo on the loading screen, the Plymouth
+  "Restart CodeAque", menu entry, boot text, donate text) and had the gold-and-emerald logo on the loading screen (replaced in 0.9.0), the Plymouth
   boot screen, the top bar, the app icon and the new **Help > About CodeAque** page. Nothing you set up changes: the commands `code`, `atari`
   and `code-launcher` still work, there is a new `codeaque` command, settings stay in `~/.config/atari`, updates still come from the same GitHub
   address with the same `atari-<version>` files, and existing installs get the new name and command on their first start after updating.

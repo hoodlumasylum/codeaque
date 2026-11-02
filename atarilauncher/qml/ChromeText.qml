@@ -20,7 +20,7 @@ Item {
         id: label
         text: ct.text
         font.pixelSize: ct.px; font.weight: ct.weight; font.letterSpacing: ct.spacing
-        color: ct.metal === "gold" ? "#f0cf6e" : "#e4e9ee"
+        color: ct.metal === "gold" ? "#6ed0f0" : "#e4e9ee"
     }
     ShaderEffectSource { id: letters; sourceItem: label; hideSource: Theme.fx; live: true; visible: false }
     Image {    // the glow behind: one soft light picture tinted in the glow colour (no shader, costs nothing)
@@ -37,11 +37,11 @@ Item {
         layer.enabled: Theme.fx
         layer.effect: MultiEffect { maskEnabled: true; maskSource: letters; maskThresholdMin: 0.45; maskSpreadAtMin: 0.25 }
         gradient: Gradient {
-            GradientStop { position: 0.0; color: ct.metal === "gold" ? "#fff6cf" : "#ffffff" }
-            GradientStop { position: 0.42; color: ct.metal === "gold" ? "#ecc55c" : "#cfd6dc" }
-            GradientStop { position: 0.54; color: ct.metal === "gold" ? "#8f6418" : "#6a737b" }
-            GradientStop { position: 0.78; color: ct.metal === "gold" ? "#d9ac45" : "#bcc5cc" }
-            GradientStop { position: 1.0; color: ct.metal === "gold" ? "#fbe7a1" : "#f4f7f9" }
+            GradientStop { position: 0.0; color: ct.metal === "gold" ? "#cff3ff" : "#ffffff" }
+            GradientStop { position: 0.42; color: ct.metal === "gold" ? "#5cc8ec" : "#cfd6dc" }
+            GradientStop { position: 0.54; color: ct.metal === "gold" ? "#18718f" : "#6a737b" }
+            GradientStop { position: 0.78; color: ct.metal === "gold" ? "#45b4d9" : "#bcc5cc" }
+            GradientStop { position: 1.0; color: ct.metal === "gold" ? "#a1e5fb" : "#f4f7f9" }
         }
     }
 }

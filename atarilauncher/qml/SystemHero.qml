@@ -1,7 +1,7 @@
 import QtQuick
 
 // The header above the games: the system's name, a line about it, an original drawing of that kind of machine and
-// a few plain numbers (no ratings, no logos). Dark emerald with gold, with a simple drawn desert-and-pyramids backdrop.
+// a few plain numbers (no ratings, no logos). Dark charcoal with a neon accent and a drawn perspective-grid backdrop.
 Rectangle {
     id: hero
     property real u: 1
@@ -14,14 +14,14 @@ Rectangle {
     clip: true
     gradient: Gradient {
         orientation: Gradient.Horizontal
-        GradientStop { position: 0.0; color: "#c006231a" }
-        GradientStop { position: 0.55; color: "#800b3a2b" }
-        GradientStop { position: 1.0; color: "#4014110a" }
+        GradientStop { position: 0.0; color: "#c00c1218" }
+        GradientStop { position: 0.55; color: "#80142836" }
+        GradientStop { position: 1.0; color: "#400a0e14" }
     }
     border.width: 1.5 * u
-    border.color: "#33e8c25a"
+    border.color: "#333fd4ff"
 
-    Canvas {           // original backdrop: a sun disc, dunes and three pyramids in thin gold lines
+    Canvas {           // original backdrop: a neon glow and a perspective floor grid in thin cyan lines
         id: bg
         anchors.fill: parent
         opacity: 0.55
@@ -31,20 +31,22 @@ Rectangle {
         onPaint: {
             var c = getContext("2d"); var w = width, h = height
             c.reset()
-            var g = c.createRadialGradient(w * 0.72, h * 0.35, 0, w * 0.72, h * 0.35, h * 0.9)
-            g.addColorStop(0, "rgba(232,194,90,0.28)"); g.addColorStop(1, "rgba(232,194,90,0)")
+            var g = c.createRadialGradient(w * 0.72, h * 0.4, 0, w * 0.72, h * 0.4, h * 0.9)
+            g.addColorStop(0, "rgba(63,212,255,0.25)"); g.addColorStop(1, "rgba(63,212,255,0)")
             c.fillStyle = g; c.fillRect(0, 0, w, h)
-            c.strokeStyle = "rgba(232,194,90,0.55)"; c.lineWidth = Math.max(1, 1.4 * hero.u)
-            function pyr(x, base, half, top) {
-                c.beginPath(); c.moveTo(x - half, base); c.lineTo(x, base - top); c.lineTo(x + half, base); c.stroke()
-                c.beginPath(); c.moveTo(x, base - top); c.lineTo(x + half * 0.25, base); c.stroke()
+            c.lineWidth = Math.max(1, 1.2 * hero.u)
+            var hz = h * 0.55, vx = w * 0.72
+            for (var i = -10; i <= 10; i++) {          // lines running to the horizon
+                c.strokeStyle = "rgba(63,212,255," + (0.35 - Math.abs(i) * 0.02) + ")"
+                c.beginPath(); c.moveTo(vx, hz); c.lineTo(vx + i * w * 0.09, h); c.stroke()
             }
-            pyr(w * 0.50, h * 0.98, h * 0.34, h * 0.42)
-            pyr(w * 0.60, h * 0.98, h * 0.48, h * 0.60)
-            pyr(w * 0.40, h * 0.98, h * 0.24, h * 0.28)
-            c.strokeStyle = "rgba(232,194,90,0.30)"
-            c.beginPath(); c.moveTo(0, h * 0.92); c.bezierCurveTo(w * 0.3, h * 0.80, w * 0.6, h * 1.02, w, h * 0.86); c.stroke()
-            c.beginPath(); c.arc(w * 0.72, h * 0.35, h * 0.16, 0, Math.PI * 2); c.stroke()
+            for (var k = 1; k <= 6; k++) {             // and across, closer together near the horizon
+                var y = hz + (h - hz) * Math.pow(k / 6, 1.8)
+                c.strokeStyle = "rgba(63,212,255," + (0.12 + k * 0.04) + ")"
+                c.beginPath(); c.moveTo(w * 0.3, y); c.lineTo(w, y); c.stroke()
+            }
+            c.strokeStyle = "rgba(160,235,255,0.45)"
+            c.beginPath(); c.moveTo(w * 0.3, hz); c.lineTo(w, hz); c.stroke()
         }
     }
     Rectangle {        // darker left side so the text is easy to read
@@ -52,8 +54,8 @@ Rectangle {
         radius: parent.radius
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: "#cc03120d" }
-            GradientStop { position: 0.55; color: "#4003120d" }
+            GradientStop { position: 0.0; color: "#cc080b10" }
+            GradientStop { position: 0.55; color: "#40080b10" }
             GradientStop { position: 1.0; color: "#00000000" }
         }
     }
