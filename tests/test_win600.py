@@ -42,3 +42,20 @@ def test_installer_names_are_known_and_no_pc_launchers():
 def test_no_bios_or_roms_bundled():
     t = (ROOT / "scripts/install-win600.sh").read_text().lower()
     assert "no bios" in t
+
+
+def test_updates_refresh_emulator_settings_on_win600_setups(tmp_path, monkeypatch):
+    monkeypatch.setattr(win600, "MARKER", tmp_path / "win600-setup")
+    monkeypatch.setattr(win600, "SETTINGS", {tmp_path / "r.cfg": {None: {"video_fullscreen": '"true"'}}})
+    monkeypatch.setattr(win600, "turn_on_handheld", lambda *a: (_ for _ in ()).throw(AssertionError("must not change Handheld mode")))
+    assert win600.main(["--emulators-only"]) == 0
+    assert 'video_fullscreen = "true"' in (tmp_path / "r.cfg").read_text() and not (tmp_path / "win600-setup").exists()
+    sh = (ROOT / "install.sh").read_text()
+    assert "win600-setup" in sh and "atarilauncher.win600 --emulators-only" in sh
+
+
+def test_no_terminal_installer_checks_the_release_and_needs_no_terminal():
+    d = (ROOT / "packaging/CodeAque-Install.desktop").read_text()
+    assert "Terminal=false" in d and "scripts/web-install.sh" in d
+    s = (ROOT / "scripts/web-install.sh").read_text()
+    assert "sha256sum -c" in s and "--no-system-packages" in s and "pkexec" in s and "sudo" not in s

@@ -4,3 +4,8 @@ __pycache__/
 .pytest_cache/
 dist/
 *.tmp
+docs/hangout-world-plan.md
+# private notes, never commit
+*.private.md
+private/
+notes/

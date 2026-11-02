@@ -84,9 +84,17 @@ def turn_on_handheld(cfg_path: Path | None = None) -> None:
     config.save_config(cfg, cfg_path)
 
 
-def main() -> int:
-    turn_on_handheld()
-    print("Handheld mode: on")
+MARKER = Path.home() / ".config/atari/win600-setup"   # install.sh refreshes the emulator settings on every update when this exists
+
+
+def main(argv: list[str] | None = None) -> int:
+    import sys
+    argv = sys.argv[1:] if argv is None else argv
+    if "--emulators-only" not in argv:
+        turn_on_handheld()
+        print("Handheld mode: on")
+        MARKER.parent.mkdir(parents=True, exist_ok=True)
+        MARKER.write_text("CodeAque Win600 set-up: install.sh / updates refresh the emulator settings\n")
     for path, sections in SETTINGS.items():
         try:
             set_keys(path, sections)

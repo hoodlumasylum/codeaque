@@ -70,7 +70,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Update", "download", "update"), act("Android settings", "gear", "settings")));
         return c;
     }
 

@@ -27,6 +27,7 @@ class Theme:
     rain: bool = False
     wave_opacity: float = 0.55
     colors: dict = field(default_factory=dict)
+    snow: bool = False                 # falling snow over the background and snow-capped tiles (the Christmas theme)
 
     def qml(self, rain_on: bool = True) -> dict:
         """What the screens use (Theme.qml): the colour names the QML already knows."""
@@ -34,7 +35,7 @@ class Theme:
         return {"bg": c["bg"], "panel": c["panel"], "card": c["card"], "line": c["line"], "text": c["text"], "dim": c["dim"],
                 "faint": c["faint"], "red": c["accent"], "redBright": c["focus"], "redDark": c["accent_dark"], "yellow": c["yellow"],
                 "green": c["green"], "blue": c["blue"], "overlay": c["overlay"], "gradTop": c["grad_top"], "gradBottom": c["grad_bottom"],
-                "waveOpacity": self.wave_opacity, "rain": bool(self.rain and rain_on), "id": self.id}
+                "waveOpacity": self.wave_opacity, "rain": bool(self.rain and rain_on), "snow": bool(self.snow and rain_on), "id": self.id}
 
 
 def _rgb(h: str) -> tuple[float, float, float]:
@@ -76,7 +77,8 @@ def _load(f: Path) -> Theme | None:
     try:
         d = tomllib.loads(f.read_text(encoding="utf-8"))
         t = Theme(f.stem, str(d.get("name") or f.stem), str(d.get("description", "")), int(d.get("order", 99)), bool(d.get("rain", False)),
-                  float(d.get("wave_opacity", 0.55)), {k: str(v) for k, v in dict(d.get("colors", {})).items()})
+                  float(d.get("wave_opacity", 0.55)), {k: str(v) for k, v in dict(d.get("colors", {})).items()},
+                  bool(d.get("snow", False)))
     except (OSError, ValueError, TypeError, tomllib.TOMLDecodeError):
         return None
     return None if problems(t) else t

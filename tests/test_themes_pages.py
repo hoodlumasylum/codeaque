@@ -15,7 +15,7 @@ from tests.test_bluetooth_pads import items, texts  # noqa: E402
 
 def test_five_original_themes_all_readable():
     ts = themes.all_themes()
-    assert [t.name for t in ts] == ["CodeAque Gold", "Midnight", "Neon", "Light", "Hoodlum Asylum"]
+    assert [t.name for t in ts] == ["CodeAque Gold", "Midnight", "Neon", "Light", "Hoodlum Asylum", "Christmas"]
     for t in ts:
         assert themes.problems(t) == [], t.id
     assert themes.get("nope").id == themes.DEFAULT and themes.get("hoodlum-asylum").rain

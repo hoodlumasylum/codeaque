@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install CodeAque
+Comment=Download, check and install the latest CodeAque (no terminal needed)
+Exec=bash -c "curl -fsSL https://raw.githubusercontent.com/hoodlumasylum/codeaque/main/scripts/web-install.sh | bash"
+Icon=system-software-install
+Terminal=false
+Categories=Game;

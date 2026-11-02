@@ -1777,7 +1777,7 @@ class Backend(QObject):
     # ----- Themes ------------------------------------------------------------------------------
     @Property("QVariantMap", notify=themeChanged)
     def themeColors(self):
-        t = themes.get(self.store.get_pref("theme", themes.DEFAULT))
+        t = themes.get(os.environ.get("CODEAQUE_THEME") or self.store.get_pref("theme", themes.DEFAULT))   # CODEAQUE_THEME: screenshots
         return t.qml(bool(self.store.get_pref("theme_rain", True)))
 
     @Slot(str)
@@ -1785,6 +1785,8 @@ class Backend(QObject):
         t = themes.get(theme_id)
         self.store.set_pref("theme", t.id)
         self.themeChanged.emit()
+        if t.snow:
+            self.playSound("jingle")          # the Christmas theme says hello with its own little jingle
 
     @Slot()
     def toggleRain(self) -> None:

@@ -105,3 +105,13 @@ def test_settings_row(app, tmp_path, monkeypatch):
         assert next(r for r in ui.backend.setupRows() if r["kind"] == "handheld")["value"] == "ON"
     finally:
         ui.close()
+
+
+def test_handheld_settings_offer_the_in_app_updater():
+    from atarilauncher import handheld
+    keys = [k for k, _, _ in handheld.SETTINGS_TILES]
+    assert keys[-1] == "update" and keys.index("leave") == 5            # added last, the other tiles keep their places
+    main = (Path(handheld.__file__).with_name("qml") / "Main.qml").read_text()
+    assert 'id === "update") win.openUpdate("library")' in main
+    hh = (Path(handheld.__file__).with_name("qml") / "HandheldScreen.qml").read_text()
+    assert 'objectName: "hhUpdate"' in hh and "backend.updateAvailable" in hh

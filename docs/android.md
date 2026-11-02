@@ -41,6 +41,14 @@ From a PC with adb instead: `adb install codeaque-launcher.apk`.
   so the text stays readable). Choose Wallpaper again to go back to the theme background.
 * **Settings > Effects**: Auto (30 fps waves, the default), On (60 fps) or Off (still background, saves battery).
 
+## Updating
+
+Settings > Update checks the latest GitHub release, downloads `codeaque-launcher.apk`, checks it against `SHA256SUMS.txt` and then hands it to Android's installer. You confirm there, and you may need to allow "Install unknown apps" for CodeAque once. Versions 0.9.1 and older can't update themselves, so install 0.9.2 by hand once.
+
+## Christmas theme
+
+Settings > Theme > Christmas shows falling snow and snow-capped tiles. From 1 December the launcher suggests it once a year.
+
 ## Build it yourself
 
 Needs JDK 17+ and the Android SDK (platform 34, build-tools 34):
@@ -55,6 +63,9 @@ Android Studio / Gradle (`gradle assembleDebug`) works too. Release builds are s
 debug-style key unless you set `CODEAQUE_KEYSTORE`, `CODEAQUE_KS_PASS` and `CODEAQUE_KS_ALIAS`.
 
 ## What is untested
+
+- The full self-update install prompt hasn't been run end to end: the only release so far is 0.9.2 itself. The version check was tested on the emulator.
+
 
 * The wallpaper picker (Android's file chooser) was not clicked through on the emulator; the themes were.
 * The theme sounds were generated and checked as files, not heard on the device speaker.

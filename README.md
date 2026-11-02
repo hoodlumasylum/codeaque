@@ -31,6 +31,19 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.2 — Christmas theme, updates everywhere, website
+
+- **Christmas theme** (PC, Handheld, Android): falling snow, icy blues with festive red and green, snow-capped tiles and a soft original chime. Android suggests it once each December.
+- **Update from Handheld mode**: Settings > Update CodeAque, plus an "Update ready" notice. Updates replace everything: app, themes, splash, icons, intro video, emulator settings and menu entries.
+- **Android self-update**: Settings > Update downloads the new APK, checks its SHA-256 and opens Android's install prompt. Versions 0.9.1 and older have no updater, so install the 0.9.2 APK once by hand.
+- **No-terminal first install**: double-click `CodeAque-Install.desktop` from the release page. It downloads the latest release, checks it against SHA256SUMS.txt and installs it for your user. A password box appears only if some system parts are missing.
+
+
+- New website for codeaque.com (source in `website/`, published with GitHub Pages).
+- Handheld mode: Settings > **Update CodeAque** tile and a small "Update ready" notice in the status bar. It uses the
+  same in-app updater as the PC launcher (Settings > Update CodeAque): it checks the latest release, shows the version,
+  downloads it, checks SHA256SUMS.txt, installs over your copy (your own account, no password needed) and restarts.
+
 ## What's new in 0.9.1 — new splash screen
 
 - Code's new splash (red and chrome CODEAQUE, "INITIALISING SYSTEM...") is now the start-up screen in the PC launcher,

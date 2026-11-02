@@ -1,0 +1,26 @@
+# Christmas - frosty white and icy blue with festive red and green, gentle falling snow and snow-capped tiles.
+# Original colours and drawing; the jingle is synthesised by tools/make_jingle_sfx.py. Lovely in December.
+name = "Christmas"
+description = "Frosty blue and white with festive red and green, and gently falling snow."
+order = 6
+rain = false
+snow = true
+wave_opacity = 0.35
+
+[colors]
+bg = "#0b1824"
+panel = "#10212f"
+card = "#152a3b"
+line = "#2a4a62"
+text = "#f4faff"
+dim = "#a9c3d6"
+faint = "#6d8aa0"
+accent = "#e23b3b"
+focus = "#ff5a5a"
+accent_dark = "#5a1010"
+yellow = "#f6d36b"
+green = "#3fbf6a"
+blue = "#8fd8ff"
+overlay = "#ee07111a"
+grad_top = "#12283b"
+grad_bottom = "#070f17"

@@ -22,7 +22,8 @@ CATEGORIES = (("games", "Games", "pad"), ("cloud", "Cloud", "c_cloud"), ("emulat
               ("downloads", "Downloads", "download"), ("settings", "Settings", "gear"))
 SETTINGS_TILES = (("wifi", "Wi-Fi", "wifi"), ("controllers", "Controllers", "pad"), ("addgames", "Add games", "usb"),
                   ("effects", "Reduce effects", "sparkle"), ("settings", "All settings", "gear"),
-                  ("leave", "Leave Handheld", "exit"), ("power", "Power", "power"))
+                  ("leave", "Leave Handheld", "exit"), ("power", "Power", "power"),
+                  ("update", "Update CodeAque", "download"))
 
 
 def _hue(title: str) -> float:

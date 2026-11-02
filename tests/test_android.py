@@ -30,7 +30,7 @@ SRC = AND / "app/src/main/java/com/codeaque/launcher"
 def test_themes_are_original_and_default_is_unchanged():
     pal = (SRC / "Palette.java").read_text()
     assert '"Power Up"' in pal and '"Catch"' in pal and '"Neon"' in pal
-    assert "ALL = {NEON, POWERUP, CATCH}" in pal                  # Neon is the default
+    assert "ALL = {NEON, POWERUP, CATCH, XMAS}" in pal                  # Neon is the default
     everything = " ".join(p.read_text(errors="ignore") for p in AND.rglob("*") if p.is_file() and p.suffix in (".java", ".xml", ".md", ".gradle", ".sh"))
     everything += (ROOT / "docs/android.md").read_text() + (ROOT / "README.md").read_text()
     low = everything.lower()

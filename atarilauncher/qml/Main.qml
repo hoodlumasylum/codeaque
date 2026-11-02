@@ -752,6 +752,11 @@ Window {
             anchors.fill: parent
             active: Theme.rain && Theme.anim && !backend.running && win.visibility !== Window.Minimized
         }
+        Snow {
+            anchors.fill: parent
+            z: 3
+            active: Theme.snow && !backend.running && win.visibility !== Window.Minimized
+        }
         WaveBackground {
             anchors.fill: parent
             visible: !homeBackdrop.visible && !handheldScreen.visible
@@ -783,6 +788,7 @@ Window {
                 else if (id === "downloads") win.openPage("downloads")
                 else if (id === "power") { backend.powerReset(); win.openPage("power") }
                 else if (id === "leave") backend.setHandheld(false)
+                else if (id === "update") win.openUpdate("library")     // the same in-app updater as Settings > Update CodeAque
             }
         }
 

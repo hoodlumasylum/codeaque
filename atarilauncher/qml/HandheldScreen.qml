@@ -138,6 +138,8 @@ FocusScope {
         }
     }
 
+    Snow { anchors.fill: parent; active: Theme.snow && hh.visible }     // the Christmas theme
+
     // ------------------------------------------------------------ status bar
     Item {   // CodeAque's logo, small, top left
         objectName: "hhBrand"
@@ -150,6 +152,14 @@ FocusScope {
         objectName: "hhStatus"
         anchors.right: parent.right; anchors.rightMargin: 30 * hh.s; y: 14 * hh.s
         spacing: 18 * hh.s
+        Rectangle {   // small "update ready" notice (Settings > Update CodeAque installs it)
+            objectName: "hhUpdate"
+            visible: backend.updateAvailable
+            anchors.verticalCenter: parent.verticalCenter
+            height: 28 * hh.s; width: updText.width + 24 * hh.s; radius: height / 2
+            color: "transparent"; border.width: 1.5 * hh.s; border.color: hh.glow
+            Text { id: updText; anchors.centerIn: parent; text: "Update " + backend.updateVersion + " ready"; color: "white"; font.pixelSize: 15 * hh.s }
+        }
         Icon { name: "wifi"; size: 26 * hh.s; color: hh.status.online ? "white" : "#6c7175"; anchors.verticalCenter: parent.verticalCenter }
         Row {
             visible: hh.status.hasBattery
@@ -410,6 +420,14 @@ FocusScope {
                         }
                         border.width: (tl.hot ? 3 : 1.5) * hh.s
                         border.color: tl.hot ? "#7de5ff" : "#2f6b7a"
+                        Rectangle {   // Christmas: a soft snow cap on the tile
+                            visible: Theme.snow
+                            x: 4 * hh.s; y: -4 * hh.s; width: parent.width - 8 * hh.s; height: 9 * hh.s; radius: height / 2
+                            color: "#f4fbff"; opacity: 0.95
+                            Repeater { model: 4
+                                Rectangle { x: (index + 0.5) * parent.width / 4 - width / 2; y: parent.height - height * 0.6
+                                            width: 10 * hh.s; height: 7 * hh.s; radius: width / 2; color: "#f4fbff" } }
+                        }
                         Icon {
                             anchors.horizontalCenter: parent.horizontalCenter
                             y: 16 * hh.s

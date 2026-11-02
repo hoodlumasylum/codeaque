@@ -244,6 +244,7 @@ public class HomeView extends View {
         c.drawRect(0, 0, W, H, p); p.setShader(null);
         if (T.aura) aura(c, W, H);
         if (T.burst) burst(c, W, H);
+        if (T.snow) snow(c, W, H);
         // flowing waves: a few sine curves, green with one gold thread
         int[] cols = T.waves;
         float[] amp = {60, 40, 80, 30, 55}, fr = {1.2f, 1.9f, 0.9f, 1.5f, 2.4f}, sp = {0.35f, -0.25f, 0.2f, 0.3f, -0.4f}, wd = {3, 2, 1.5f, 1.4f, 1.2f};
@@ -319,6 +320,20 @@ public class HomeView extends View {
             float x = motes[i] * W + (float) Math.sin(t * 1.5f + i) * 14 * s, y = -20 * s + life * (H + 40 * s);
             p.setColor(i % 9 == 0 ? 0xFFFF4A4A : i % 2 == 0 ? 0xFFFFD23F : 0xFFFFFFFF); p.setAlpha(190);
             star(c, x, y, (5 + 4 * motes[i + 1]) * s, t * 2 + i, p);
+        }
+        p.setAlpha(255);
+    }
+
+    private final float[] flakes = new float[180];
+    /** Christmas: soft snow drifting down at three depths (60 flakes: cheap on a 2 GB RK3566). */
+    private void snow(Canvas c, int W, int H) {
+        if (flakes[0] == 0) { java.util.Random rnd = new java.util.Random(11); for (int i = 0; i < flakes.length; i++) flakes[i] = 0.0001f + rnd.nextFloat(); }
+        for (int i = 0; i < flakes.length; i += 3) {
+            float depth = flakes[i + 2];                       // 0 far .. 1 near
+            float y = ((flakes[i + 1] + t * (0.03f + 0.07f * depth)) % 1f) * (H + 20 * s) - 10 * s;
+            float x = flakes[i] * W + (float) Math.sin(t * (0.6f + depth) + i) * 18 * s * depth;
+            p.setColor(0xFFFFFFFF); p.setAlpha((int) (90 + 140 * depth));
+            c.drawCircle(x, y, (1.2f + 2.6f * depth) * s, p);
         }
         p.setAlpha(255);
     }
@@ -416,6 +431,13 @@ public class HomeView extends View {
                     RectF pill = new RectF(px - 9 * s, py - 4 * s, px + 9 * s, py + 4 * s);
                     c.drawRoundRect(pill, 4 * s, 4 * s, p); c.restore();
                 }
+            }
+            if (T.snow) {                                     // a soft snow cap along the tile's top edge
+                path.reset(); float sy = r.top + 2 * s;
+                path.moveTo(r.left + 6 * s, sy);
+                for (int k2 = 0; k2 <= 6; k2++) { float px = r.left + 6 * s + (r.width() - 12 * s) * k2 / 6f; path.quadTo(px - (r.width() - 12 * s) / 12f, sy + ((k2 % 2 == 0) ? 7 : 3) * s, px, sy); }
+                path.lineTo(r.right - 6 * s, r.top - 3 * s); path.quadTo(r.centerX(), r.top - 8 * s, r.left + 6 * s, r.top - 3 * s); path.close();
+                p.setColor(0xF2FFFFFF); c.drawPath(path, p);
             }
             icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
             spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
@@ -548,6 +570,10 @@ public class HomeView extends View {
                 path.moveTo(x0 + 5 * u, y0 + 3 * u); path.lineTo(x0 + 19 * u, y0 + 3 * u); path.lineTo(x0 + 19 * u, y0 + 21 * u); path.lineTo(x0 + 5 * u, y0 + 21 * u); path.close();
                 c.drawPath(path, stroke); ir.set(x0 + 8 * u, y0 + 6 * u, x0 + 16 * u, y0 + 13 * u); c.drawRect(ir, stroke);
                 c.drawLine(x0 + 9 * u, y0 + 18 * u, x0 + 15 * u, y0 + 18 * u, stroke); break;
+            case "download":
+                c.drawLine(cx, y0 + 3 * u, cx, y0 + 15 * u, stroke);
+                path.moveTo(x0 + 7 * u, y0 + 10 * u); path.lineTo(cx, y0 + 15 * u); path.lineTo(x0 + 17 * u, y0 + 10 * u); c.drawPath(path, stroke);
+                c.drawLine(x0 + 4 * u, y0 + 20 * u, x0 + 20 * u, y0 + 20 * u, stroke); break;
             case "palette":
                 path.moveTo(cx, y0 + 3 * u); path.cubicTo(x0 + 2 * u, y0 + 3 * u, x0 + 2 * u, y0 + 21 * u, cx, y0 + 21 * u);
                 path.cubicTo(x0 + 15 * u, y0 + 21 * u, x0 + 13 * u, y0 + 16 * u, x0 + 16 * u, y0 + 15 * u);

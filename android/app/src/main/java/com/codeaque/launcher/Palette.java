@@ -8,7 +8,8 @@ public final class Palette {
             tileTop, tileSelTop, tileBottom, border, borderDark, text, dim, sub, prompt, webBadge, getBadge;
     public final int[] waves;
     public final boolean aura;
-    public boolean burst;          // Catch: cheerful sunburst + confetti, spinning star on the selected tile
+    public boolean burst;
+    public boolean snow;           // Christmas: falling snow and snow-capped tiles          // Catch: cheerful sunburst + confetti, spinning star on the selected tile
     public String selectSound;
     public float[] tint;           // 4x5 colour matrix recolouring the emblem (null = the original art)     // sound for launch / select, null = the normal one
 
@@ -42,7 +43,14 @@ public final class Palette {
             new int[]{0x55FFFFFF, 0x55FFD23F, 0x44FF5050, 0x66FFFFFF, 0x33FFD23F}, false);
     static { CATCH.burst = true; CATCH.selectSound = "chime"; }
 
-    public static final Palette[] ALL = {NEON, POWERUP, CATCH};
+    public static final Palette XMAS = new Palette("christmas", "Christmas",
+            0xFFE23B3B, 0xFFFFD6D6, 0xFF9E1C1C, 0xFFBFE9FF, 0xFFE8F7FF, 0xFF6FC3E8,
+            0x8FD8FF, 0xFF0E2236, 0xF0102638, 0xFF173C2A, 0xF0061018, 0xFF7FB8D8, 0xFF2E5F78,
+            0xFFF6FBFF, 0xFFA8C0D0, 0xFFCFE6F2, 0xFF08141E, 0xCC1F7A44, 0xCCB02424,
+            new int[]{0x44E8F7FF, 0x338FD8FF, 0x33FFFFFF, 0x55E23B3B, 0x3346C46E}, false);
+    static { XMAS.snow = true; XMAS.selectSound = "jingle"; }
+
+    public static final Palette[] ALL = {NEON, POWERUP, CATCH, XMAS};
 
     public static Palette byId(String id) {
         for (Palette p : ALL) if (p.id.equals(id)) return p;

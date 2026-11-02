@@ -44,21 +44,37 @@ public class MainActivity extends Activity implements HomeView.Host {
         view.requestFocus();
         pool = new SoundPool.Builder().setMaxStreams(3).setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
-        for (String n : new String[]{"hhmove", "hhcat", "hhselect", "hhback", "powerup", "chime"}) {
+        for (String n : new String[]{"hhmove", "hhcat", "hhselect", "hhback", "powerup", "chime", "jingle"}) {
             try { sounds.put(n, pool.load(getAssets().openFd(n + ".wav"), 1)); } catch (Exception ignored) { }
         }
         Intent in0 = getIntent();      // am start -e theme powerup  (same as Settings > Theme)
         if (in0 != null && in0.hasExtra("theme")) prefs.edit().putString("theme", Palette.byId(in0.getStringExtra("theme")).id).apply();
         view.setTheme(Palette.byId(prefs.getString("theme", "neon")));
         loadWallpaper();
+        maybeDailyCheck();
+        java.util.Calendar cal = java.util.Calendar.getInstance();          // December: suggest the Christmas theme once a year
+        String yr = "xmasHint" + cal.get(java.util.Calendar.YEAR);
+        if (cal.get(java.util.Calendar.MONTH) == java.util.Calendar.DECEMBER && !theme().snow && !prefs.getBoolean(yr, false)) {
+            prefs.edit().putBoolean(yr, true).apply();
+            Toast.makeText(this, "It's December: try the Christmas theme in Settings > Theme", Toast.LENGTH_LONG).show();
+        }
         final String launch = theme().selectSound;      // the theme's sound once on launch
         if (launch != null) pool.setOnLoadCompleteListener((sp, id, st) -> { Integer want = sounds.get(launch); if (want != null && id == want) sp.play(id, 0.6f, 0.6f, 1, 0, 1f); });
         Intent i = getIntent();     // for screenshots/tests: am start -e cat cloud -e tile 1
         if (i != null && i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
     }
 
-    @Override protected void onNewIntent(Intent i) {      // pressing Home again, or the screenshot extras
+    @Override protected void onNewIntent(Intent i) {      // pressing Home again, the screenshot extras, or the installer's answer
         super.onNewIntent(i);
+        if ("com.codeaque.launcher.INSTALLED".equals(i.getAction())) {
+            int st = i.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, -999);
+            if (st == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);     // Android's own "Install this update?" prompt
+                if (confirm != null) startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } else if (st != android.content.pm.PackageInstaller.STATUS_SUCCESS)
+                Toast.makeText(this, "Update not installed: " + i.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE), Toast.LENGTH_LONG).show();
+            return;
+        }
         if (i.hasExtra("theme")) { prefs.edit().putString("theme", Palette.byId(i.getStringExtra("theme")).id).apply(); view.setTheme(theme()); }
         if (i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
     }
@@ -129,6 +145,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 view.invalidate(); break;
             }
             case "allapps": allApps(); break;
+            case "update": checkUpdate(true); break;
             case "theme": {
                 String n = Palette.next(theme().id);
                 prefs.edit().putString("theme", n).apply();
@@ -161,6 +178,87 @@ public class MainActivity extends Activity implements HomeView.Host {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("All apps")
                 .setItems(names, (d, w) -> start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                         .setClassName(apps.get(w)[1], apps.get(w)[2]))).show();
+    }
+
+    // ---------- APK self-update: latest GitHub release -> SHA-256 check -> Android's own install prompt ----------
+    private volatile boolean updating;
+
+    private String myVersion() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "0"; }
+    }
+
+    private static String get(String url) throws java.io.IOException {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        c.setConnectTimeout(10000); c.setReadTimeout(20000); c.setRequestProperty("Accept", "application/vnd.github+json");
+        try (java.io.InputStream in = c.getInputStream(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            byte[] b = new byte[16384]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n);
+            return out.toString("UTF-8");
+        } finally { c.disconnect(); }
+    }
+
+    private void toast(String t) { runOnUiThread(() -> Toast.makeText(this, t, Toast.LENGTH_LONG).show()); }
+
+    /** manual = Settings > Update (asks and installs); otherwise the once-a-day quiet check that only tells you. */
+    private void checkUpdate(boolean manual) {
+        if (updating) return;
+        updating = true;
+        if (manual) toast("Checking for updates ...");
+        new Thread(() -> {
+            try {
+                UpdateInfo u = UpdateInfo.parse(get(UpdateInfo.API));
+                String mine = myVersion();
+                if (u == null || !UpdateInfo.newer(u.version, mine)) { if (manual) toast("CodeAque " + mine + " is the latest version."); return; }
+                if (!manual) { toast("CodeAque " + u.version + " is available: Settings > Update"); return; }
+                runOnUiThread(() -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                        .setTitle("Update to CodeAque " + u.version + "?")
+                        .setMessage("You have " + mine + ". The new version is downloaded, checked against the release's SHA256SUMS.txt and then Android asks you to install it.")
+                        .setPositiveButton("Update", (d, w) -> new Thread(() -> install(u)).start())
+                        .setNegativeButton("Not now", null).show());
+            } catch (Exception e) {
+                if (manual) toast("Could not check for updates (are you online?)");
+            } finally { updating = false; }
+        }).start();
+    }
+
+    private void install(UpdateInfo u) {
+        try {
+            toast("Downloading CodeAque " + u.version + " ...");
+            String want = UpdateInfo.expectedSha(get(u.sumsUrl));
+            if (want == null) { toast("The release has no checksum for the APK, so it was not installed."); return; }
+            java.io.File f = new java.io.File(getCacheDir(), "update.apk");
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(u.apkUrl).openConnection();
+            c.setConnectTimeout(10000); c.setReadTimeout(30000);
+            try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+                byte[] b = new byte[65536]; int n; long total = 0;
+                while ((n = in.read(b)) > 0) { out.write(b, 0, n); md.update(b, 0, n); total += n; if (total > 100L << 20) throw new java.io.IOException("too big"); }
+            } finally { c.disconnect(); }
+            StringBuilder hex = new StringBuilder(); for (byte x : md.digest()) hex.append(String.format("%02x", x));
+            if (!hex.toString().equals(want)) { f.delete(); toast("The download did not match its checksum, so it was not installed."); return; }
+            android.content.pm.PackageInstaller pi = getPackageManager().getPackageInstaller();
+            android.content.pm.PackageInstaller.SessionParams sp = new android.content.pm.PackageInstaller.SessionParams(
+                    android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            int id = pi.createSession(sp);
+            try (android.content.pm.PackageInstaller.Session s = pi.openSession(id)) {
+                try (java.io.InputStream in = new java.io.FileInputStream(f); java.io.OutputStream out = s.openWrite("codeaque", 0, f.length())) {
+                    byte[] b = new byte[65536]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n); s.fsync(out);
+                }
+                Intent done = new Intent(this, MainActivity.class).setAction("com.codeaque.launcher.INSTALLED");
+                int fl = android.os.Build.VERSION.SDK_INT >= 31 ? 0x02000000 /* FLAG_MUTABLE */ : 0;
+                android.app.PendingIntent pend = android.app.PendingIntent.getActivity(this, 1, done, android.app.PendingIntent.FLAG_UPDATE_CURRENT | fl);
+                s.commit(pend.getIntentSender());
+            }
+            f.delete();
+        } catch (Exception e) {
+            toast("The update could not be installed: " + e.getMessage());
+        }
+    }
+
+    private void maybeDailyCheck() {
+        long now = System.currentTimeMillis();
+        if (now - prefs.getLong("updChecked", 0) < 24L * 3600 * 1000) return;
+        prefs.edit().putLong("updChecked", now).apply();
+        checkUpdate(false);
     }
 
     private static final int PICK_WALLPAPER = 7;

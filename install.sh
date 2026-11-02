@@ -179,6 +179,12 @@ if [ "$AUTOSTART" = 1 ]; then
     echo "CodeAque will now start automatically when you log in."
 fi
 
+# Win600 / handheld set-ups (made by scripts/install-win600.sh): refresh the emulators' 1280x720 + built-in pad settings,
+# so an in-app update brings new emulator settings too (only those keys; Handheld mode on/off is left as you chose).
+if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/atari/win600-setup" ]; then
+    PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -m atarilauncher.win600 --emulators-only || warn "Could not refresh the emulator settings."
+fi
+
 say "Done!"
 cat <<EOT
 CodeAque ${VERSION:-} is installed. Start it from your application menu (look for "CodeAque" under Games),
