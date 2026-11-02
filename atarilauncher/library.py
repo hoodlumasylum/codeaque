@@ -237,8 +237,9 @@ def build_library(cfg: Config, home: Path | None = None, covers_root: Path | Non
             print(f"[atari] {finder.__name__} failed: {exc}")
             found = []
         for sg in found:
+            art = getattr(sg, "art", "") or ""
             res.games.append(Game(gid=sg.gid, title=sg.title, platform=sg.store, platform_name=sg.store_name,
-                                  launch=sg.uri, added=sg.played))
+                                  launch=sg.uri, added=sg.played, cover=art, header=art))
     apply_icons(res.games, home)
     return res
 

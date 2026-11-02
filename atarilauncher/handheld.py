@@ -17,7 +17,7 @@ from . import emulators, webapps
 
 VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
-CATEGORIES = (("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
+CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
               ("streams", "Streams", "stream"), ("media", "Media", "film"), ("music", "Music", "music"),
               ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("settings", "Settings", "gear"))
 # 0.9.4: PC games already installed on this machine (shown in My Games); retro ROMs, web pages and apps are elsewhere
@@ -49,8 +49,17 @@ def item(g, store=None) -> dict:
             "favorite": bool(store.is_favorite(g.gid)) if store is not None else False}
 
 
+def _art_url(g) -> str:
+    """Portrait cover first (box art / Steam's 600x900 library picture), then the wide header; '' = CodeAque's own tile art."""
+    for p in (g.cover, g.header):
+        if p and os.path.isfile(p):
+            return QUrl.fromLocalFile(p).toString()
+    return ""
+
+
 def _launch_tile(g, icon: str) -> dict:
-    return {"key": g.gid, "title": g.title, "icon": icon, "kind": "launch", "gid": g.gid, "items": []}
+    return {"key": g.gid, "title": g.title, "icon": icon, "kind": "launch", "gid": g.gid, "items": [],
+            "art": _art_url(g), "hue": _hue(g.title)}
 
 
 def _systems(games, store) -> list:
@@ -61,7 +70,8 @@ def _systems(games, store) -> list:
     out = []
     for sid, (name, lst) in sorted(by.items(), key=lambda kv: kv[1][0].lower()):
         lst.sort(key=lambda g: g.title.lower())
-        out.append({"key": sid, "title": name, "icon": kind_icon(sid), "kind": "list", "items": [item(g, store) for g in lst]})
+        out.append({"key": sid, "title": name, "icon": kind_icon(sid), "kind": "list", "items": [item(g, store) for g in lst],
+                    "hue": _hue(sid)})
     return out
 
 
@@ -117,14 +127,18 @@ def installed_emulators(cfg=None, home=None) -> list:
         except Exception:
             how = ""
         if how:
-            out.append({"key": "emu:" + eid, "title": emu.name, "icon": "invader", "kind": "action", "action": "emu:" + eid, "items": []})
+            out.append({"key": "emu:" + eid, "title": emu.name, "icon": "invader", "kind": "action", "action": "emu:" + eid, "items": [],
+                        "hue": _hue(eid)})
     return out
 
 
 def my_games(games, store=None, cfg=None, home=None) -> list:
     """My Games row: installed Steam / Lutris / Heroic / Windows games, then a tile per system with your own ROMs, then emulators."""
-    pc = sorted((g for g in games if is_pc_game(g)), key=lambda g: g.title.lower())
+    pc = sorted((g for g in games if is_pc_game(g)), key=lambda g: (g.platform != "steam", g.title.lower()))   # Steam first
     tiles = [_launch_tile(g, "c_pc" if g.platform != "steam" else "steam") for g in pc]
+    # 0.9.5: your ROM games that have a picture (libretro box art fetched once and cached, or your own) as their own cover tiles
+    roms = sorted((g for g in games if is_retro(g) and _art_url(g)), key=lambda g: g.title.lower())[:60]
+    tiles += [_launch_tile(g, kind_icon(g.platform)) for g in roms]
     return tiles + _systems(games, store) + installed_emulators(cfg, home)
 
 
@@ -146,7 +160,14 @@ def categories(games, store=None, cfg=None, home=None) -> list:
     media = [g for g in games if g.gid in ("app:kodi", "tool:recordings")]
     out = []
     for key, title, icon in CATEGORIES:
-        if key == "mygames":
+        if key == "steam":      # 0.9.5: Steam at the top: Big Picture, then the Steam games installed here (with their pictures)
+            st = sorted((g for g in games if is_pc_game(g) and g.platform == "steam"), key=lambda g: g.title.lower())
+            tiles = [{"key": "app:steam", "title": "Steam Big Picture", "icon": "monitor", "kind": "launch", "gid": "app:steam",
+                      "items": [], "hue": 0.6}] + [_launch_tile(g, "monitor") for g in st]
+        elif key == "pcgames":   # Lutris, Heroic (Epic / GOG / Amazon) and Windows games installed here
+            tiles = [_launch_tile(g, "c_pc") for g in sorted((g for g in games if is_pc_game(g) and g.platform != "steam"),
+                                                           key=lambda g: g.title.lower())]
+        elif key == "mygames":
             tiles = my_games(games, store, cfg, home) or [{"key": "addgames", "title": "Add games", "icon": "usb", "kind": "action",
                                                            "action": "addgames", "items": []}]
         elif key == "apps":

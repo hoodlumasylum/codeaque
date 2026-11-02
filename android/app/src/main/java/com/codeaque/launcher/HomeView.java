@@ -22,7 +22,8 @@ public class HomeView extends View {
         String effects();
         String status();      // "87%" or "87% charging", "" without a battery
         boolean online();
-        Bitmap appIcon(Catalog.Item item);   // an installed app's own icon (null for CodeAque's line-drawn tiles)
+        Bitmap appIcon(Catalog.Item item);
+        Bitmap cover(Catalog.Item item);     // 0.9.5: a game picture (the app's own banner, or cached libretro box art), null = none   // an installed app's own icon (null for CodeAque's line-drawn tiles)
     }
 
     private Palette T = Palette.NEON;
@@ -61,7 +62,7 @@ public class HomeView extends View {
     public HomeView(Context c, Host host) {
         super(c);
         this.host = host;
-        tile = 0;
+        tile = 0; cat = 1; catAnim = 1;          // start on My Games (Steam is the first tab, one to the left)
         setFocusable(true); setFocusableInTouchMode(true);
         try {
             logo = BitmapFactory.decodeStream(c.getAssets().open("logo.png"));
@@ -177,8 +178,9 @@ public class HomeView extends View {
 
     // ---------- geometry (scaled from the 1280x720 design) ----------
     private float catsBottom() { return getHeight() * 0.26f; }
-    private float tileH() { return 112 * s; }
-    private float tileW() { return 156 * s; }
+    private boolean covers() { String id = cats.get(cat).id; return id.equals("mygames") || id.equals("steam"); }      // 0.9.5: portrait box-art tiles
+    private float tileH() { return (covers() ? 190 : 112) * s; }
+    private float tileW() { return (covers() ? 128 : 156) * s; }
     private float tileGap() { return 14 * s; }
     private float tilesTop() { return getHeight() - 80 * s - tileH(); }
     private float tilesLeft() { return 24 * s; }
@@ -410,7 +412,7 @@ public class HomeView extends View {
         c.drawCircle(cx, ly + lh / 2, 330 * s, p); p.setShader(null); c.restore();
         if (logo != null) { r.set(cx - lw / 2, ly, cx + lw / 2, ly + lh); p.setFilterBitmap(true); c.drawBitmap(logo, null, r, p); }
         float ty = ly + lh + 2 * s;
-        spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
+        if (!covers()) spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
     }
 
     private void tiles(Canvas c, int W, int H) {
@@ -427,6 +429,7 @@ public class HomeView extends View {
                 p.setShader(new RadialGradient(r.centerX(), r.centerY(), w * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), w * 0.85f, p); p.setShader(null);
             }
+            if (covers()) { coverTile(c, it, sel); continue; }
             p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
             c.drawRoundRect(r, 12 * s, 12 * s, p); p.setShader(null);
             stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
@@ -478,6 +481,50 @@ public class HomeView extends View {
         String hint = f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
         text(c, hint, W / 2f, top + h + 24 * s, 14 * s, DIM, Paint.Align.CENTER, false);
     }
+
+    private final Path clip = new Path();
+    private final RectF src = new RectF();
+    /** A portrait My Games tile in r: the game's picture (centre-cropped), else CodeAque's own generic art with the app icon. */
+    private void coverTile(Canvas c, Catalog.Item it, boolean sel) {
+        float rad = 12 * s;
+        Bitmap cov = host.cover(it), ai = cov == null ? host.appIcon(it) : null;
+        c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
+        if (cov != null) {
+            float sc = Math.max(r.width() / cov.getWidth(), r.height() / cov.getHeight());
+            float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
+            src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
+            p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(cov, null, src, p);
+        } else {
+            float hue = (Math.abs(it.key().hashCode()) % 360);
+            int top = Color.HSVToColor(new float[]{hue, 0.7f, 0.55f}), mid = Color.HSVToColor(new float[]{hue, 0.8f, 0.22f});
+            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, new int[]{top, mid, 0xFF05080A}, new float[]{0, 0.6f, 1}, Shader.TileMode.CLAMP));
+            c.drawRect(r, p); p.setShader(null);
+            p.setColor(0x10FFFFFF);
+            for (int k = 0; k < 5; k++) { float x0 = r.left + (k * 0.3f - 0.3f) * r.width(); path.reset(); path.moveTo(x0, r.bottom); path.lineTo(x0 + 8 * s, r.bottom);
+                path.lineTo(x0 + 8 * s + r.height() * 0.55f, r.top); path.lineTo(x0 + r.height() * 0.55f, r.top); path.close(); c.drawPath(path, p); }
+            stroke.setColor(0x33FFFFFF); stroke.setShader(null); stroke.setStrokeWidth(2 * s);
+            c.drawCircle(r.centerX(), r.top + r.height() * 0.36f, r.width() * 0.32f, stroke);
+            if (ai != null) { float is = 52 * s; iconRect.set(r.centerX() - is / 2, r.top + r.height() * 0.36f - is / 2, r.centerX() + is / 2, r.top + r.height() * 0.36f + is / 2);
+                p.setFilterBitmap(true); p.setColor(0xFFFFFFFF); c.drawBitmap(ai, null, iconRect, p); }
+            else icon(c, it.icon, r.centerX(), r.top + r.height() * 0.36f, 40 * s, sel ? T.accentLight : 0xFFDDF4FF, 2.2f);
+        }
+        p.setShader(new LinearGradient(0, r.bottom - r.height() * 0.34f, 0, r.bottom, 0x00000000, 0xE6000000, Shader.TileMode.CLAMP));
+        c.drawRect(r.left, r.bottom - r.height() * 0.34f, r.right, r.bottom, p); p.setShader(null);
+        c.restore();
+        stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
+        stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
+        c.drawRoundRect(r, rad, rad, stroke); stroke.setShader(null);
+        if (T.snow) { p.setColor(0xF2FFFFFF); r2.set(r.left + 6 * s, r.top - 4 * s, r.right - 6 * s, r.top + 5 * s); c.drawRoundRect(r2, 5 * s, 5 * s, p); }
+        String lab = it.label.toUpperCase(Locale.ROOT);
+        float ts = 14 * s; p.setTextSize(ts); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        while (p.measureText(lab) > r.width() - 12 * s && ts > 10 * s) { ts -= 0.5f * s; p.setTextSize(ts); }
+        if (p.measureText(lab) > r.width() - 12 * s && lab.contains(" ")) {
+            int sp = lab.lastIndexOf(' ');
+            text(c, lab.substring(0, sp), r.centerX(), r.bottom - 12 * s - ts * 1.1f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
+            text(c, lab.substring(sp + 1), r.centerX(), r.bottom - 12 * s, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        } else text(c, lab, r.centerX(), r.bottom - 12 * s, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
+    }
+    private final RectF r2 = new RectF();
 
     private void hints(Canvas c, int W, int H) {
         float y = H - 24 * s;

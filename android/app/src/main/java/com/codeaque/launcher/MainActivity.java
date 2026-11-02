@@ -136,7 +136,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         PackageWatch(MainActivity m) { a = new java.lang.ref.WeakReference<>(m); }
         @Override public void onReceive(Context c, Intent i) {
             MainActivity m = a.get();
-            if (m != null) { m.installedCache.clear(); m.icons.clear(); m.rescan(); }
+            if (m != null) { m.installedCache.clear(); m.icons.clear(); m.coverCache.clear(); m.rescan(); }
         }
     }
     private final PackageWatch packages = new PackageWatch(this);
@@ -188,6 +188,77 @@ public class MainActivity extends Activity implements HomeView.Host {
         } catch (Exception ignored) { }
         icons.put(k, b);
         return b;
+    }
+
+    // ---------- 0.9.5: game pictures ----------
+    private final Map<String, android.graphics.Bitmap> coverCache = new HashMap<>();
+    private final java.util.Set<String> fetching = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
+    @Override public android.graphics.Bitmap cover(Catalog.Item it) {
+        String k = it.key();
+        if (coverCache.containsKey(k)) return coverCache.get(k);
+        android.graphics.Bitmap b = null;
+        if (!it.isRom() && !it.isAction() && !it.isDeviceApp()) {     // a catalogue tile (Steam, Steam Link): the installed app's own banner
+            Intent li = launchIntent(it);
+            if (li != null && li.getComponent() != null) it = Catalog.deviceApp(it.label, li.getComponent().getPackageName(), li.getComponent().getClassName());
+        }
+        if (it.isDeviceApp()) {                  // the game's own TV banner, when it has one
+            try {
+                PackageManager pm = getPackageManager();
+                android.graphics.drawable.Drawable d = pm.getActivityBanner(new android.content.ComponentName(it.pkg, it.cls));
+                if (d == null) d = pm.getApplicationBanner(it.pkg);
+                if (d != null) {
+                    int w = Math.max(1, d.getIntrinsicWidth() > 0 ? d.getIntrinsicWidth() : 320), h = Math.max(1, d.getIntrinsicHeight() > 0 ? d.getIntrinsicHeight() : 180);
+                    b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+                    d.setBounds(0, 0, w, h); d.draw(new android.graphics.Canvas(b));
+                }
+            } catch (Exception ignored) { }
+        } else if (it.isRom() && it.boxart() != null) {
+            java.io.File f = coverFile(it);
+            if (f.isFile()) b = decodeCover(f);
+            else { fetchCover(it, f); return null; }           // not cached yet: fetched in the background, shown when it arrives
+        }
+        coverCache.put(k, b);
+        return b;
+    }
+
+    private java.io.File coverFile(Catalog.Item it) {
+        java.io.File dir = new java.io.File(getFilesDir(), "covers"); dir.mkdirs();
+        return new java.io.File(dir, Integer.toHexString(it.boxart().hashCode()) + ".png");
+    }
+
+    private android.graphics.Bitmap decodeCover(java.io.File f) {
+        android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options(); o.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
+        o.inSampleSize = Catalog.sampleSize(Math.max(o.outWidth, o.outHeight), 400); o.inJustDecodeBounds = false;
+        return android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
+    }
+
+    /** One request to the public libretro thumbnails server for a game file the user has; a miss is remembered (no retries). */
+    private void fetchCover(Catalog.Item it, java.io.File f) {
+        final String url = it.boxart(), k = it.key();
+        if (prefs.getStringSet("coverMiss", java.util.Collections.emptySet()).contains(url) || !fetching.add(url)) return;
+        new Thread(() -> {
+            boolean ok = false;
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                c.setConnectTimeout(8000); c.setReadTimeout(15000);
+                if (c.getResponseCode() == 200) {
+                    java.io.File tmp = new java.io.File(f.getPath() + ".part");
+                    try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+                        byte[] b = new byte[32768]; int n; long t = 0;
+                        while ((n = in.read(b)) > 0) { out.write(b, 0, n); t += n; if (t > 8L << 20) throw new java.io.IOException("too big"); }
+                    }
+                    ok = tmp.renameTo(f);
+                } else if (c.getResponseCode() == 404) {
+                    java.util.Set<String> m = new java.util.HashSet<>(prefs.getStringSet("coverMiss", java.util.Collections.emptySet()));
+                    m.add(url); prefs.edit().putStringSet("coverMiss", m).apply();
+                }
+                c.disconnect();
+            } catch (Exception ignored) { }
+            final boolean got = ok;
+            runOnUiThread(() -> { if (got) coverCache.remove(k); else coverCache.put(k, null); view.invalidate(); });
+        }).start();
     }
 
     private static final int PICK_ROM_FOLDER = 8;

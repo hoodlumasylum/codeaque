@@ -181,6 +181,45 @@ class StoreGame:
     store_name: str
     uri: str              # heroic://launch/<runner>/<id>  |  lutris:rungameid/<id>
     played: float = 0.0
+    art: str = ""         # 0.9.5: a cover / banner the store app already saved on this PC ("" = none)
+
+
+def _heroic_art(base: Path) -> dict[str, str]:
+    """{app id: local picture} from Heroic's own image cache (images-cache/<sha256 of the picture URL>). Never downloads."""
+    import hashlib
+    out: dict[str, str] = {}
+    cache = base / "images-cache"
+    if not cache.is_dir():
+        return out
+    for name in ("legendary_library.json", "gog_library.json", "nile_library.json"):
+        data = _json(base / "store_cache" / name)
+        items = data.get("library") or data.get("games") or [] if isinstance(data, dict) else data if isinstance(data, list) else []
+        for g in items if isinstance(items, list) else []:
+            if not isinstance(g, dict):
+                continue
+            aid = g.get("app_name") or g.get("appName") or g.get("id")
+            for key in ("art_square", "art_cover"):
+                url = g.get(key)
+                if aid and isinstance(url, str) and url:
+                    f = cache / hashlib.sha256(url.encode()).hexdigest()
+                    if f.is_file():
+                        out.setdefault(str(aid), str(f))
+    return out
+
+
+def lutris_art(slug: str, home: Path) -> str:
+    """Lutris's own saved cover (portrait) or banner for a game slug, '' if it has none."""
+    if not slug:
+        return ""
+    roots = [home / ".local/share/lutris", home / ".cache/lutris", home / ".var/app/net.lutris.Lutris/data/lutris",
+             home / ".var/app/net.lutris.Lutris/cache/lutris"]
+    for sub in ("coverart", "banners"):
+        for r in roots:
+            for ext in (".jpg", ".png"):
+                f = r / sub / (slug + ext)
+                if f.is_file():
+                    return str(f)
+    return ""
 
 
 def _json(path: Path):
@@ -247,6 +286,7 @@ def heroic_games(home: Path | None = None) -> list[StoreGame]:
         if not base.is_dir():
             continue
         titles = _titles_from_cache(base)
+        arts = _heroic_art(base)
         files = {
             "legendary": [base / "legendaryConfig/legendary/installed.json"],
             "gog": [base / "gog_store/installed.json"],
@@ -264,7 +304,7 @@ def heroic_games(home: Path | None = None) -> list[StoreGame]:
                         continue
                     seen.add(gid)
                     name = title or titles.get(aid) or (Path(path).name if path else "") or aid
-                    out.append(StoreGame(gid, name, HEROIC, "Heroic (Epic / GOG)", f"heroic://launch/{runner}/{aid}"))
+                    out.append(StoreGame(gid, name, HEROIC, "Heroic (Epic / GOG)", f"heroic://launch/{runner}/{aid}", 0.0, arts.get(aid, "")))
     return out
 
 
@@ -283,13 +323,13 @@ def lutris_games(home: Path | None = None) -> list[StoreGame]:
         try:
             con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
             try:
-                rows = con.execute("SELECT id, name, runner, lastplayed FROM games "
+                rows = con.execute("SELECT id, name, runner, lastplayed, slug FROM games "
                                    "WHERE installed = 1 AND (hidden IS NULL OR hidden = 0)").fetchall()
             finally:
                 con.close()
         except sqlite3.Error:
             continue
-        for gid, name, runner, last in rows:
+        for gid, name, runner, last, slug in rows:
             if (runner or "") == "steam" or not name:
                 continue
             key = f"lutris:{gid}"
@@ -297,7 +337,7 @@ def lutris_games(home: Path | None = None) -> list[StoreGame]:
                 continue
             seen.add(key)
             out.append(StoreGame(key, str(name), LUTRIS, "Lutris", f"lutris:rungameid/{gid}",
-                                 float(last or 0)))
+                                 float(last or 0), lutris_art(str(slug or ""), home)))
     return out
 
 

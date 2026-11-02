@@ -26,6 +26,7 @@ public final class Catalog {
         }
         public boolean isDeviceApp() { return pkg != null && cls != null; }
         public boolean isRom() { return uri != null; }
+        public String boxart() { return isRom() && cls != null ? boxartUrl(cls) : null; }
         public String storePackage() { return packages.isEmpty() ? null : packages.get(0); }
         public boolean isAction() { return action != null; }
         public String key() { return isDeviceApp() ? pkg + "/" + cls : isRom() ? uri : label; }
@@ -60,7 +61,7 @@ public final class Catalog {
 
     /** A game file from a folder the user chose (Android's folder picker); opened with an installed emulator. */
     public static Item rom(String name, String uri) {
-        return new Item(stripExt(name), "cart", new String[0], null, null, null, null, uri);
+        return new Item(stripExt(name), "cart", new String[0], null, null, null, name, uri);   // cls = the file name (for box art)
     }
 
     /** File types emulators open. Only files the user already has are listed; nothing is downloaded. */
@@ -73,6 +74,44 @@ public final class Catalog {
         String e = name.substring(d + 1).toLowerCase(java.util.Locale.ROOT);
         for (String x : ROM_EXT) if (x.equals(e)) return true;
         return false;
+    }
+
+    /** 0.9.5: libretro-thumbnails system folder for a game file type (only types that belong to one system; "" = no lookup). */
+    public static String libretroSystem(String fileName) {
+        int d = fileName.lastIndexOf('.');
+        String e = d < 0 ? "" : fileName.substring(d + 1).toLowerCase(java.util.Locale.ROOT);
+        switch (e) {
+            case "nes": return "Nintendo - Nintendo Entertainment System";
+            case "sfc": case "smc": return "Nintendo - Super Nintendo Entertainment System";
+            case "gb": return "Nintendo - Game Boy";
+            case "gbc": return "Nintendo - Game Boy Color";
+            case "gba": return "Nintendo - Game Boy Advance";
+            case "nds": return "Nintendo - Nintendo DS";
+            case "n64": case "z64": case "v64": return "Nintendo - Nintendo 64";
+            case "md": case "gen": case "smd": return "Sega - Mega Drive - Genesis";
+            case "sms": return "Sega - Master System - Mark III";
+            case "gg": return "Sega - Game Gear";
+            case "pce": return "NEC - PC Engine - TurboGrafx 16";
+            case "a26": return "Atari - 2600";
+            case "a78": return "Atari - 7800";
+            case "lnx": return "Atari - Lynx";
+            case "ws": return "Bandai - WonderSwan";
+            case "wsc": return "Bandai - WonderSwan Color";
+            case "ngp": return "SNK - Neo Geo Pocket";
+            default: return "";
+        }
+    }
+
+    /** Box art URL on the public libretro thumbnails server for a game file (its name, libretro's character rules), or null. */
+    public static String boxartUrl(String fileName) {
+        String sys = libretroSystem(fileName);
+        if (sys.isEmpty()) return null;
+        String n = stripExt(fileName).replaceAll("[&*/:`<>?\\\\|\"]", "_");
+        return "https://thumbnails.libretro.com/" + enc(sys) + "/Named_Boxarts/" + enc(n) + ".png";
+    }
+
+    static String enc(String s) {
+        try { return java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20"); } catch (Exception e) { return s; }
     }
 
     static String stripExt(String n) { int d = n.lastIndexOf('.'); return d > 0 ? n.substring(0, d) : n; }
@@ -97,6 +136,9 @@ public final class Catalog {
         List<Item> all = new ArrayList<>(apps);
         if (all.isEmpty()) all.add(act("All apps", "grid", "allapps"));
         List<Category> c = new ArrayList<>();
+        // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
+        c.add(new Category("steam", "Steam", "display", app("Steam Link", "display", "com.valvesoftware.steamlink"),
+                app("Steam", "display", "com.valvesoftware.android.steam.community")));
         c.add(new Category("mygames", "My Games", "pad", mine.toArray(new Item[0])));
         c.add(new Category("games", "Games", "cloud",
                 act("Cloud Gaming", "cloud", "goto:cloud"), XBOX, GFN, LUNA, RETROARCH, MINECRAFT, ROBLOX));

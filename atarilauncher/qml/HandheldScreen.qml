@@ -25,6 +25,7 @@ FocusScope {
     readonly property bool fx: Theme.fx
     readonly property bool anim: Theme.anim
     readonly property color glow: "#46cef0"
+    readonly property bool covers: cats.length > cat && (cats[cat].key === "mygames" || cats[cat].key === "steam" || cats[cat].key === "pcgames")     // 0.9.5: portrait box-art tiles
     readonly property bool hubOn: cats.length > cat && cats[cat].key === "emulators"
     signal menuAction(string id)
 
@@ -267,6 +268,7 @@ FocusScope {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: markText.bottom; anchors.topMargin: -2 * hh.s
             text: "GAMING  \u2022  CLOUD  \u2022  EMULATION  \u2022  STREAMING"
+            visible: !hh.covers
             color: "#e6ecee"; font.pixelSize: 16 * hh.s; font.letterSpacing: 4 * hh.s; font.weight: Font.Medium
         }
     }
@@ -380,11 +382,11 @@ FocusScope {
         objectName: "hhTiles"
         visible: !hh.hubOn
         x: 30 * hh.s; width: parent.width - 60 * hh.s
-        y: parent.height - 205 * hh.s; height: 120 * hh.s
+        y: parent.height - (hh.covers ? 282 : 205) * hh.s; height: (hh.covers ? 200 : 120) * hh.s
         clip: false
         opacity: hh.zone === "list" ? 0.35 : 1
         Behavior on opacity { enabled: hh.anim; NumberAnimation { duration: 200 } }
-        readonly property real tw: 112 * hh.s
+        readonly property real tw: (hh.covers ? 136 : 112) * hh.s
         readonly property real gap: 10 * hh.s
         readonly property real full: hh.tiles.length * (tw + gap) - gap
         readonly property real scrollX: full <= width ? 0
@@ -401,7 +403,9 @@ FocusScope {
                     required property int index
                     readonly property bool on: index === hh.ti
                     readonly property bool hot: on && hh.zone !== "cats"
-                    width: ((index === 0 && hh.cat === 0) || hh.tiles.length <= 7 ? 1.4 : 1) * tileRow.tw; height: tileRow.height
+                    readonly property string art: tl.modelData.art || ""
+                    readonly property bool pic: hh.covers && art !== "" && artImg.status !== Image.Error
+                    width: hh.covers ? tileRow.tw : ((index === 0 && hh.cat === 0) || hh.tiles.length <= 7 ? 1.4 : 1) * tileRow.tw; height: tileRow.height
                     scale: hot ? 1.06 : 1.0
                     z: on ? 2 : 0
                     Behavior on scale { enabled: hh.anim; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -420,6 +424,36 @@ FocusScope {
                         }
                         border.width: (tl.hot ? 3 : 1.5) * hh.s
                         border.color: tl.hot ? "#7de5ff" : "#2f6b7a"
+                        clip: hh.covers
+                        Item {        // 0.9.5: CodeAque's own generic art for a system / emulator tile in My Games (no logos)
+                            visible: hh.covers && !tl.pic
+                            anchors.fill: parent; anchors.margins: box.border.width
+                            readonly property real hue: tl.modelData.hue !== undefined ? tl.modelData.hue : 0.53
+                            Rectangle { anchors.fill: parent; radius: 12 * hh.s
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: Qt.hsla(tl.modelData.hue !== undefined ? tl.modelData.hue : 0.53, 0.65, 0.34, 1) }
+                                    GradientStop { position: 0.6; color: Qt.hsla(tl.modelData.hue !== undefined ? tl.modelData.hue : 0.53, 0.7, 0.14, 1) }
+                                    GradientStop { position: 1.0; color: "#05080a" } } }
+                            Repeater { model: 5      // soft diagonal light bands
+                                Rectangle { x: (index * 0.28 - 0.3) * parent.width; y: -parent.height * 0.2; width: 7 * hh.s; height: parent.height * 1.4
+                                            rotation: 28; color: "white"; opacity: 0.05 + 0.03 * (index % 2) } }
+                            Rectangle { anchors.horizontalCenter: parent.horizontalCenter; y: parent.height * 0.18; width: parent.width * 0.62; height: width
+                                        radius: width / 2; color: "transparent"; border.width: 2 * hh.s; border.color: "#33ffffff" }
+                        }
+                        Image {       // the game's own cover: Steam's library picture, Lutris / Heroic's saved cover, libretro box art
+                            id: artImg
+                            visible: tl.pic
+                            anchors.fill: parent; anchors.margins: box.border.width
+                            source: hh.covers ? tl.art : ""
+                            fillMode: Image.PreserveAspectCrop; asynchronous: true; cache: true; smooth: true
+                            sourceSize: Qt.size(272, 400)
+                        }
+                        Rectangle {   // dark band so the name stays readable on a picture
+                            visible: tl.pic
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                            anchors.margins: box.border.width; height: parent.height * 0.3
+                            gradient: Gradient { GradientStop { position: 0.0; color: "#00000000" } GradientStop { position: 1.0; color: "#e6000000" } }
+                        }
                         Rectangle {   // Christmas: a soft snow cap on the tile
                             visible: Theme.snow
                             x: 4 * hh.s; y: -4 * hh.s; width: parent.width - 8 * hh.s; height: 9 * hh.s; radius: height / 2
@@ -429,8 +463,9 @@ FocusScope {
                                             width: 10 * hh.s; height: 7 * hh.s; radius: width / 2; color: "#f4fbff" } }
                         }
                         Icon {
+                            visible: !tl.pic
                             anchors.horizontalCenter: parent.horizontalCenter
-                            y: 16 * hh.s
+                            y: (hh.covers ? 52 : 16) * hh.s
                             stroke: 1.8
                             name: tl.modelData.icon.indexOf("console:") === 0 ? Theme.consoleFor(tl.modelData.icon.substring(8), "pad")
                                                                             : tl.modelData.icon
@@ -442,7 +477,7 @@ FocusScope {
                             anchors.bottom: parent.bottom; anchors.bottomMargin: 10 * hh.s
                             width: parent.width - 10 * hh.s
                             spacing: 1 * hh.s
-                            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "CODEAQUE"
+                            Text { visible: !tl.pic; width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "CODEAQUE"
                                    color: tl.hot ? "#c8f4ff" : "#aab2b8"; font.pixelSize: 9.5 * hh.s; font.letterSpacing: 1.4 * hh.s; font.weight: Font.DemiBold }
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                                    elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.WordWrap; lineHeight: 0.9
@@ -465,7 +500,8 @@ FocusScope {
             anchors.verticalCenter: parent.verticalCenter; x: 10 * hh.s
             width: parent.width - 20 * hh.s; wrapMode: Text.WordWrap
             color: "#dce4e6"; font.pixelSize: 24 * hh.s
-            text: hh.cat === 0 || hh.cat === 2 ? "No retro games yet. Copy your own game files to the Games folder, or go to Settings > Add games. CodeAque does not come with games or BIOS files."
+            text: hh.cats.length > hh.cat && hh.cats[hh.cat].key === "pcgames" ? "No PC games found yet. Games you install with Lutris or Heroic (Epic, GOG, Amazon) show up here."
+                : hh.cats.length > hh.cat && hh.cats[hh.cat].key === "games" ? "No retro games yet. Copy your own game files to the Games folder, or go to Settings > Add games. CodeAque does not come with games or BIOS files."
                                                : "Nothing here yet."
         }
     }

@@ -31,6 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.5 — game pictures, Steam and PC Games at the top
+
+- **Pictures of your games.** My Games tiles are now tall box-art tiles. PC: Steam's own library pictures (from Steam's local cache, else Steam's public image server), Lutris's and Heroic's saved covers, and libretro box art for your ROMs (fetched once and cached; nothing is included in CodeAque). Android: the game's own banner or icon, and libretro box art for files in your game folders. Without a picture a tile gets CodeAque's own coloured art (no logos).
+- **Steam first.** A Steam tab is first in the top bar: Steam Big Picture plus your installed Steam games (PC); Steam Link and the Steam app (Android). Steam games come first in My Games.
+- **PC Games tab** (PC) right after Steam: Lutris, Heroic (Epic / GOG / Amazon) and Windows games installed on this PC.
+
+| PC | Android |
+|---|---|
+| ![PC Steam tab](docs/screenshot-pc-steam-covers.png) | ![Android My Games](docs/screenshot-android-covers-1280.png) |
+
+(Screenshots use made-up demo games and art.)
+
 ## What's new in 0.9.4 — your installed games on the home screen, true full screen
 
 - **Android: My Games.** The home screen finds the games already installed on the device (apps Android marks as games) and shows them first, with their real icons. Emulators you already have (RetroArch, PPSSPP, DuckStation, …) get a tile too. **All Apps** lists every installed app. The rows update by themselves when you install or remove an app. CodeAque no longer asks for the "see all apps" permission.
