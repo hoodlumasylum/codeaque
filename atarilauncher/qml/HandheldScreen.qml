@@ -153,13 +153,19 @@ FocusScope {
         objectName: "hhStatus"
         anchors.right: parent.right; anchors.rightMargin: 30 * hh.s; y: 14 * hh.s
         spacing: 18 * hh.s
-        Rectangle {   // small "update ready" notice (Settings > Update CodeAque installs it)
+        Rectangle {   // small "update ready" notice — tap opens the same Update screen as Settings
             objectName: "hhUpdate"
             visible: backend.updateAvailable
             anchors.verticalCenter: parent.verticalCenter
             height: 28 * hh.s; width: updText.width + 24 * hh.s; radius: height / 2
             color: "transparent"; border.width: 1.5 * hh.s; border.color: hh.glow
             Text { id: updText; anchors.centerIn: parent; text: "Update " + backend.updateVersion + " ready"; color: "white"; font.pixelSize: 15 * hh.s }
+            MouseArea {
+                objectName: "hhUpdateClick"
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: hh.menuAction("update")
+            }
         }
         Icon { name: "wifi"; size: 26 * hh.s; color: hh.status.online ? "white" : "#6c7175"; anchors.verticalCenter: parent.verticalCenter }
         Row {

@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.7 — tap the Update-ready banner
+
+- **PC console home:** the top "Update X ready" notice is now a button. Tap or click it and the same Update screen as Settings > Update CodeAque opens (notes, install, restart). You no longer have to dig through Settings for an update that is already waiting.
+- **Classic PC top bar:** the green UPDATE pill was already wired the same way; it keeps that behaviour and shows a hand cursor on hover.
+
 ## What's new in 0.9.6 — Projector mode, free movies, Games Store
 
 - **Projector mode (Android):** Settings > Projector mode. Bigger tiles, TV overscan-safe margins, Cloud and Media first. TV boxes and projectors get a one-time hint.

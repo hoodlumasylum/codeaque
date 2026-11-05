@@ -137,6 +137,20 @@ def test_handheld_settings_offer_the_in_app_updater():
     assert 'id === "update") win.openUpdate("library")' in main
     hh = (Path(handheld.__file__).with_name("qml") / "HandheldScreen.qml").read_text()
     assert 'objectName: "hhUpdate"' in hh and "backend.updateAvailable" in hh
+    # top Update-ready notice must open the same Update screen as Settings (not a label-only pill)
+    assert 'objectName: "hhUpdateClick"' in hh
+    assert 'hh.menuAction("update")' in hh
+    assert "Qt.PointingHandCursor" in hh
+
+
+def test_classic_topbar_update_pill_opens_the_in_app_updater():
+    from atarilauncher import handheld
+    qml = Path(handheld.__file__).with_name("qml")
+    tb = (qml / "TopBar.qml").read_text()
+    main = (qml / "Main.qml").read_text()
+    assert "signal updateRequested()" in tb
+    assert 'objectName: "tbUpdateClick"' in tb and "tb.updateRequested()" in tb
+    assert "onUpdateRequested: win.openUpdate(\"library\")" in main
 
 
 def test_console_home_is_the_default_without_the_test_override(tmp_path, monkeypatch):

@@ -167,7 +167,7 @@ Item {
             border.color: Theme.green
             Text { id: updText; anchors.centerIn: parent; text: "UPDATE " + backend.updateVersion; color: "#bff0c0"
                    font.pixelSize: 14 * tb.u; font.bold: true; font.letterSpacing: 0.8 * tb.u }
-            MouseArea { anchors.fill: parent; onClicked: tb.updateRequested() }
+            MouseArea { objectName: "tbUpdateClick"; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: tb.updateRequested() }
         }
         Rectangle {
             id: searchBtn
