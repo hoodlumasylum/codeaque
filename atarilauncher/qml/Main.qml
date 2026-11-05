@@ -718,6 +718,7 @@ Window {
             if (backend.running) {
                 if ((backend.runningCancelable || backend.runningPlaying) && (e.key === Qt.Key_Escape || e.key === Qt.Key_B || e.key === Qt.Key_Backspace)) backend.cancelLaunch()
                 else if (backend.runningPlaying && isEnter(e.key)) backend.showGame()
+                else if (backend.runningCancelable && (e.key === Qt.Key_F10 || e.key === Qt.Key_Y)) backend.showSteam()
                 else if (backend.runningSteam && (e.key === Qt.Key_C || e.key === Qt.Key_Y || e.key === Qt.Key_F10)) backend.copySteamLog()
                 return
             }
@@ -789,7 +790,9 @@ Window {
                 else if (id === "power") { backend.powerReset(); win.openPage("power") }
                 else if (id === "leave") backend.setHandheld(false)
                 else if (id === "update") win.openUpdate("library")
-                else if (id.indexOf("emu:") === 0) backend.launchEmulator(id.substring(4))     // the same in-app updater as Settings > Update CodeAque
+                else if (id.indexOf("emu:") === 0) backend.launchEmulator(id.substring(4))
+                else if (id === "getgames") backend.getGames()
+                else if (id.indexOf("store:") === 0) backend.openStorePage(id.substring(6))     // the same in-app updater as Settings > Update CodeAque
             }
         }
 
@@ -1956,6 +1959,15 @@ Window {
                     color: "#26ffffff"; border.color: Theme.redBright; border.width: 2
                     Text { anchors.centerIn: parent; text: "Cancel - back to CodeAque  (Esc / B)"; color: "white"; font.pixelSize: 24 * win.u; font.bold: true }
                     MouseArea { anchors.fill: parent; onClicked: backend.cancelLaunch() }
+                }
+                Rectangle {
+                    objectName: "showSteam"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: backend.runningCancelable && backend.runningStatus.indexOf("Steam") >= 0
+                    width: 420 * win.u; height: 64 * win.u; radius: height / 2
+                    color: "#26ffffff"; border.color: Theme.dim; border.width: 2
+                    Text { anchors.centerIn: parent; text: "Show Steam  (Y)"; color: "white"; font.pixelSize: 24 * win.u; font.bold: true }
+                    MouseArea { anchors.fill: parent; onClicked: backend.showSteam() }
                 }
                 Rectangle {
                     objectName: "showGame"

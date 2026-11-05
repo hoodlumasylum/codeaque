@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1050,6 +1051,9 @@ class Backend(QObject):
         g = next((x for x in self._all if x.gid == self._inst_for_gid), None) if self._inst_for_gid else None
         if self._inst_ok and g is not None and not g.missing:
             rows.append({"kind": "done", "id": "launch", "title": f"Open {g.title} now"})
+        h = next((x for x in self._all if x.gid == "app:heroic"), None)
+        if self._inst_ok and "heroic" in self._inst_specs and self._inst_for_gid != "app:heroic" and h is not None and not h.missing:
+            rows.append({"kind": "done", "id": "launch_heroic", "title": "Open Heroic (Epic / GOG) now"})
         if not self._inst_ok and self._inst_specs:
             rows.append({"kind": "item", "id": "retry", "title": "Try again"})
             rows.append({"kind": "item", "id": "copylog", "title": "Copy log (to send to someone who is helping you)"})
@@ -1186,6 +1190,12 @@ class Backend(QObject):
                 self.begin_install(["roblox"], for_gid="app:roblox", what="Roblox (Sober)")
                 return ""
             self._launch_game(g)
+            return "close"
+        if rid == "launch_heroic":
+            h = next((x for x in self._all if x.gid == "app:heroic"), None)
+            self._inst_state = "idle"
+            if h is not None and not h.missing and not self._running:
+                self._launch_game(h)
             return "close"
         if rid == "copylog":
             self.copyLog()
@@ -4094,7 +4104,28 @@ class Backend(QObject):
         guard = getattr(self, "_steam_guard", None)
         if guard is not None and phase in ("starting", "launching"):
             guard.handled_by_code()                       # CodeAque itself is starting Steam: the watcher must not interfere
-        if phase in ("reveal", "playing") and self._shell_mode() and self._window is not None and not os.environ.get("ATARI_NO_MINIMIZE"):
+        # 0.9.6: on the desktop too (not only CodeAque-only mode): a full-screen CodeAque kept Steam's windows and the game behind it,
+        # which looked like "just loading" for ever. It comes back by itself when the game ends.
+        if phase in ("reveal", "playing") and self._window is not None and not os.environ.get("ATARI_NO_MINIMIZE"):
+            if getattr(self, "_hidden_for", None) is not self._running:   # once per launch (reveal then playing)
+                self._hidden_for = self._running
+                self._hide_for_game()
+
+    @Slot()
+    def showSteam(self) -> None:
+        """Now-loading screen: 'Show Steam' - CodeAque steps aside and asks Steam to show its main window (sign in, updates, Proton)."""
+        from . import apps as _apps
+        cmd, how = _apps.app_command(self.cfg, _apps.BY_ID["steam"])
+        if not how:
+            self.show_toast("Steam is not installed. Press Get Games in the Steam tab.", 8000)
+            return
+        try:
+            subprocess.Popen(cmd + ["steam://open/main"], env=launcher.clean_env(), stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as exc:
+            self.show_toast(f"Could not open Steam: {exc}", 8000)
+            return
+        if self._running and self._window is not None and not os.environ.get("ATARI_NO_MINIMIZE"):
             self._hide_for_game()
 
     @Property(bool, notify=runningStatusChanged)
@@ -5318,6 +5349,33 @@ class Backend(QObject):
     def handheldCategories(self):
         from . import handheld as _hh
         return _hh.categories(self._all, self.store, self.cfg)
+
+    @Slot()
+    def getGames(self) -> None:
+        """0.9.6 Get Games: Steam and Heroic (Epic, GOG, Amazon) from Flathub, on CodeAque's own Install page (no terminal).
+        Flatpak and the Flathub store are set up first when missing (one password box). Afterwards 'Open Steam now'."""
+        from . import apps as _apps
+        need = [i for i in ("steam", "heroic") if not _apps.app_command(self.cfg, _apps.BY_ID[i])[1]]
+        if not need:
+            self.show_toast("Steam and Heroic are installed. Sign in there; your games then show up in the Steam and PC Games tabs. "
+                            "Tip: Steam > Settings > Compatibility > 'Enable Steam Play for all other titles' (CodeAque turns this on for you).", 12000)
+            g = next((x for x in self._all if x.gid == "app:steam"), None)
+            if g is not None and not self._running:
+                self._launch_game(g)
+            return
+        self.begin_install(need, for_gid="app:steam" if "steam" in need else "app:heroic",
+                           what=" and ".join(_apps.BY_ID[i].title for i in need))
+
+    @Slot(str)
+    def openStorePage(self, pid: str) -> None:
+        """Games Store tile: a store's official page in CodeAque's full-screen browser window (Esc twice comes back). You sign in
+        and pay on the store's own page; the game then installs through Steam / Heroic and shows up in CodeAque."""
+        from . import webapps as _wa
+        page = next((w for w in _wa.STORE_PAGES + _wa.FREE_TV if w.id == pid), None)
+        if page is None:
+            return
+        if not self._running:
+            self._launch_game(Game(gid=page.gid, title=page.title, platform=_wa.STREAMING, platform_name="Games Store"))
 
     @Slot(str)
     def launchEmulator(self, emu_id: str) -> None:

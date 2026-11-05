@@ -59,6 +59,12 @@ public class MainActivity extends Activity implements HomeView.Host {
         view.setTheme(Palette.byId(prefs.getString("theme", "neon")));
         loadWallpaper();
         maybeDailyCheck();
+        PackageManager pm0 = getPackageManager();        // a TV box / projector: suggest Projector mode once
+        if (!prefs.contains("projector") && !prefs.getBoolean("projHint", false)
+                && (pm0.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || !pm0.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN))) {
+            prefs.edit().putBoolean("projHint", true).apply();
+            Toast.makeText(this, "On a TV or projector? Try Settings > Projector mode", Toast.LENGTH_LONG).show();
+        }
         java.util.Calendar cal = java.util.Calendar.getInstance();          // December: suggest the Christmas theme once a year
         String yr = "xmasHint" + cal.get(java.util.Calendar.YEAR);
         if (cal.get(java.util.Calendar.MONTH) == java.util.Calendar.DECEMBER && !theme().snow && !prefs.getBoolean(yr, false)) {
@@ -106,7 +112,11 @@ public class MainActivity extends Activity implements HomeView.Host {
                );
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             WindowManager.LayoutParams lp = w.getAttributes();
-            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            // SHORT_EDGES left a black band on Android 14 when the cut-out is on a long edge (landscape-native screens);
+            // ALWAYS (Android 11+) draws under every cut-out
+            lp.layoutInDisplayCutoutMode = android.os.Build.VERSION.SDK_INT >= 30
+                    ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             w.setAttributes(lp);
         }
         if (android.os.Build.VERSION.SDK_INT >= 30) w.setDecorFitsSystemWindows(false);
@@ -170,7 +180,9 @@ public class MainActivity extends Activity implements HomeView.Host {
         Collections.sort(apps, az); Collections.sort(games, az);
         List<Catalog.Item> emus = new ArrayList<>();
         for (Catalog.Item e : Catalog.emulators()) if (launchIntent(e) != null) emus.add(e);
-        view.setCategories(Catalog.categories(games, apps, emus, roms));
+        boolean proj = prefs.getBoolean("projector", false);
+        view.setProjector(proj);
+        view.setCategories(Catalog.categories(games, apps, emus, roms, proj));
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
 
@@ -370,6 +382,13 @@ public class MainActivity extends Activity implements HomeView.Host {
             }
             case "allapps": allApps(); break;
             case "romfolder": pickRomFolder(); break;
+            case "accounts": start(new Intent(Settings.ACTION_SYNC_SETTINGS)); break;
+            case "projector": {
+                boolean on = !prefs.getBoolean("projector", false);
+                prefs.edit().putBoolean("projector", on).apply();
+                Toast.makeText(this, "Projector mode " + (on ? "on: bigger tiles, safe margins, Cloud and Media first" : "off"), Toast.LENGTH_SHORT).show();
+                rescan(); break;
+            }
             case "update": checkUpdate(true); break;
             case "theme": {
                 String n = Palette.next(theme().id);

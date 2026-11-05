@@ -17,9 +17,9 @@ from . import emulators, webapps
 
 VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
-CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
+CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("store", "Games Store", "cart"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
               ("streams", "Streams", "stream"), ("media", "Media", "film"), ("music", "Music", "music"),
-              ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("settings", "Settings", "gear"))
+              ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("accounts", "Accounts", "app"), ("settings", "Settings", "gear"))
 # 0.9.4: PC games already installed on this machine (shown in My Games); retro ROMs, web pages and apps are elsewhere
 PC_GAME_PLATFORMS = ("steam", "heroic", "lutris", "windows", "epic", "gog", "amazon")
 SETTINGS_TILES = (("wifi", "Wi-Fi", "wifi"), ("controllers", "Controllers", "pad"), ("addgames", "Add games", "usb"),
@@ -116,6 +116,34 @@ def is_pc_game(g) -> bool:
         and (g.platform in PC_GAME_PLATFORMS or g.gid.startswith(("steam:", "heroic:", "lutris:", "win:")))
 
 
+GET_GAMES = {"key": "getgames", "title": "Get Games", "icon": "download", "kind": "action", "action": "getgames", "items": [],
+             "hue": 0.53}
+# 0.9.6 Accounts: each platform's own app, where you sign in yourself (CodeAque never sees a password)
+ACCOUNTS = (("app:steam", "Steam"), ("app:heroic", "Epic · GOG · Amazon (Heroic)"), ("web:xcloud", "Xbox (Cloud Gaming)"),
+            ("app:eaapp", "EA app"))
+
+
+def store_tiles(games) -> list:
+    """Games Store: Top Games, then Free (one tap installs: open-source games from Flathub, free-to-play on Steam), then Paid
+    (the official stores; you pay the store, the game installs there and shows up in CodeAque). No prices in CodeAque."""
+    from . import webapps
+    def page(pid, title, icon, hue):
+        return {"key": "store:" + pid, "title": title, "icon": icon, "kind": "action", "action": "store:" + pid, "items": [], "hue": hue}
+    tiles = [page("steamtop", "Top Games (Steam)", "star", 0.6)]
+    free = [g for g in games if g.gid.startswith("free:") and "does not work" not in g.title.lower()]
+    free.sort(key=lambda g: g.gid != "free:rivals")          # pinned: Marvel Rivals (free on Steam, installs through Steam)
+    tiles += [dict(_launch_tile(g, "pad"), title="Free · " + g.title) for g in free]
+    tiles += [page("steamfree", "Free on Steam", "star", 0.58), page("epicfree", "Free on Epic", "star", 0.1)]
+    tiles += [page(p.id, "Paid · " + p.title, "cart", 0.3 + i * 0.1) for i, p in enumerate(webapps.STORE_PAGES) if p.id not in ("steamtop", "steamfree", "epicfree")]
+    return tiles
+
+
+def account_tiles(games) -> list:
+    by = {g.gid: g for g in games}
+    return [{"key": gid, "title": title, "icon": "app", "kind": "launch", "gid": gid, "items": [], "hue": 0.55 + i * 0.07,
+             "art": _art_url(by[gid])} for i, (gid, title) in enumerate(ACCOUNTS) if gid in by]
+
+
 def installed_emulators(cfg=None, home=None) -> list:
     """Emulators already on this machine (PATH, Flatpak or CodeAque's AppImage folder) as tiles that start them."""
     if cfg is None:
@@ -163,10 +191,14 @@ def categories(games, store=None, cfg=None, home=None) -> list:
         if key == "steam":      # 0.9.5: Steam at the top: Big Picture, then the Steam games installed here (with their pictures)
             st = sorted((g for g in games if is_pc_game(g) and g.platform == "steam"), key=lambda g: g.title.lower())
             tiles = [{"key": "app:steam", "title": "Steam Big Picture", "icon": "monitor", "kind": "launch", "gid": "app:steam",
-                      "items": [], "hue": 0.6}] + [_launch_tile(g, "monitor") for g in st]
+                      "items": [], "hue": 0.6}] + [_launch_tile(g, "monitor") for g in st] + [GET_GAMES]
         elif key == "pcgames":   # Lutris, Heroic (Epic / GOG / Amazon) and Windows games installed here
             tiles = [_launch_tile(g, "c_pc") for g in sorted((g for g in games if is_pc_game(g) and g.platform != "steam"),
-                                                           key=lambda g: g.title.lower())]
+                                                           key=lambda g: g.title.lower())] + [GET_GAMES]
+        elif key == "store":
+            tiles = store_tiles(games)
+        elif key == "accounts":
+            tiles = account_tiles(games)
         elif key == "mygames":
             tiles = my_games(games, store, cfg, home) or [{"key": "addgames", "title": "Add games", "icon": "usb", "kind": "action",
                                                            "action": "addgames", "items": []}]
@@ -181,7 +213,11 @@ def categories(games, store=None, cfg=None, home=None) -> list:
         elif key == "streams":
             tiles = [_launch_tile(g, "stream") for g in video]
         elif key == "media":
-            tiles = [_launch_tile(g, "film") for g in media]
+            from . import webapps as _wa
+            iptv = [g for g in games if g.gid == "app:hypnotix"]
+            tiles = [_launch_tile(g, "film") for g in media] + [_launch_tile(g, "live") for g in iptv] + [
+                {"key": "store:" + w.id, "title": w.title, "icon": "film", "kind": "action", "action": "store:" + w.id, "items": [],
+                 "hue": 0.05 + i * 0.13} for i, w in enumerate(_wa.FREE_TV)]
         elif key == "music":
             tiles = [_launch_tile(g, "music") for g in music]
         elif key == "downloads":

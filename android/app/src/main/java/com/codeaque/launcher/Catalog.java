@@ -128,6 +128,16 @@ public final class Catalog {
 
     /** 0.9.4 home: My Games (installed games with their icons, installed emulators, the user's own game files) first,
      *  All Apps before Settings. games / apps / emus / roms come from the device and may be empty. */
+    /** Projector mode: Cloud (GeForce NOW, Xbox) and Media (Kodi, Free Movies & TV) come first. */
+    public static List<Category> categories(List<Item> games, List<Item> apps, List<Item> emus, List<Item> roms, boolean projector) {
+        List<Category> c = categories(games, apps, emus, roms);
+        if (!projector) return c;
+        List<Category> out = new ArrayList<>();
+        for (String id : new String[]{"cloud", "media"}) { int i = indexOf(c, id); if (i >= 0) out.add(c.get(i)); }
+        for (Category k : c) if (!out.contains(k)) out.add(k);
+        return out;
+    }
+
     public static List<Category> categories(List<Item> games, List<Item> apps, List<Item> emus, List<Item> roms) {
         List<Item> mine = new ArrayList<>(games);
         mine.addAll(emus);
@@ -155,15 +165,34 @@ public final class Catalog {
                 app("YouTube", "stream", "com.google.android.youtube", "com.google.android.youtube.tv"),
                 app("TikTok", "stream", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill"),
                 app("Twitch", "stream", "tv.twitch.android.app")));
+        // 0.9.6: IPTV = your own playlist in VLC; Free Movies & TV = legal free services (their app, else their website)
         c.add(new Category("media", "Media", "film",
                 app("Kodi", "film", "org.xbmc.kodi"),
-                app("Spotify", "music", "com.spotify.music")));
+                app("Spotify", "music", "com.spotify.music"),
+                app("IPTV (VLC, your own playlist)", "stream", "org.videolan.vlc"),
+                web("Pluto TV", "film", "https://pluto.tv/", "tv.pluto.android"),
+                web("Tubi", "film", "https://tubitv.com/", "com.tubitv"),
+                web("Plex (free)", "film", "https://watch.plex.tv/", "com.plexapp.android"),
+                web("Freevee", "film", "https://www.amazon.co.uk/gp/video/storefront?contentId=freetv", "com.amazon.avod.thirdpartyclient"),
+                web("BBC iPlayer", "film", "https://www.bbc.co.uk/iplayer", "bbc.iplayer.android"),
+                web("ITVX", "film", "https://www.itv.com/", "air.ITVMobilePlayer"),
+                web("Channel 4", "film", "https://www.channel4.com/", "com.channel4.ondemand")));
+        // 0.9.6: Games Store (Play Store pages; prices stay on Google Play) and Accounts (each service's own app)
+        c.add(new Category("store", "Games Store", "grid",
+                web("Top Games", "cube", "https://play.google.com/store/games"),
+                web("Free Games", "cube", "https://play.google.com/store/search?q=free%20games&c=apps"),
+                web("Paid Games", "cube", "https://play.google.com/store/search?q=premium%20games&c=apps")));
+        c.add(new Category("accounts", "Accounts", "home",
+                app("Steam", "display", "com.valvesoftware.android.steam.community"),
+                XBOX,
+                app("Google Play Games", "pad", "com.google.android.play.games"),
+                act("Android accounts", "gear", "accounts")));
         c.add(new Category("allapps", "All Apps", "grid", all.toArray(new Item[0])));
         c.add(new Category("settings", "Settings", "gear",
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Update", "download", "update"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("Android settings", "gear", "settings")));
         return c;
     }
 

@@ -736,7 +736,7 @@ def _slog(msg: str) -> None:
 
 
 def _run_steam(cfg: Config, game: Game, on_started, poll: float, start_timeout: float, grace: float = 6.0, status=None, cancel=None,
-               steam_running=None, ui_ready=None, settle: float = 3.0, reveal_after: float = 20.0, resend_after: float = 45.0,
+               steam_running=None, ui_ready=None, settle: float = 3.0, reveal_after: float = 12.0, resend_after: float = 45.0,
                hint_after: float = 60.0, game_wait: float = GAME_WAIT_MAX, front=None, ui_grace: float = 12.0, resend_every: float = 8.0):
     """A Steam game from CodeAque. Never fire-and-forget: (1) start Steam first when it is not running (Big Picture) and WAIT until its
     window process exists, (2) only then hand it steam://rungameid/<id>, (3) show live status, resend the request once, offer a hint
@@ -767,6 +767,13 @@ def _run_steam(cfg: Config, game: Game, on_started, poll: float, start_timeout: 
         _slog("cancelled - back in CodeAque (" + note + ")")
         return 0.0, INFO + "Cancelled - back in CodeAque. Steam keeps running; open the Steam tile to see it."
 
+    # 0.9.6: no remembered Steam account = Steam will show its sign-in window: step aside at once so it can be seen
+    try:
+        if not steam_mod.remembered_login() and steam_mod.steam_roots():
+            _slog("no remembered Steam sign-in - showing Steam's own sign-in window")
+            say("reveal", "Sign in to Steam first (Steam's own window). Your game starts after that.")
+    except Exception:
+        pass
     # 1. Steam first
     t0 = time.time()
     if steam_running():

@@ -93,6 +93,9 @@ APP_DEFS: list[AppDef] = [
                 "install script (lutris.net/games/rockstar-games-launcher); after that Play opens it. Sign in with your own Rockstar "
                 "account. GTA Online refuses Linux (anti-cheat); story modes usually work. Rockstar games you own on Steam are best "
                 "played from Steam."),
+    AppDef("hypnotix", "IPTV (Hypnotix)", "", ("hypnotix",),
+           "Linux Mint's IPTV player. Add your OWN playlist (from your TV provider) in its settings; CodeAque includes no channels or "
+           "playlists.", apt="hypnotix", group="streaming"),
     AppDef("moonlight", "Moonlight (game streaming)", "com.moonlight_stream.Moonlight", ("moonlight", "moonlight-qt"),
            "Streams games from another PC running Sunshine or GeForce Experience."),
 ]

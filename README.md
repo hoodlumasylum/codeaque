@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.6 — Projector mode, free movies, Games Store
+
+- **Projector mode (Android):** Settings > Projector mode. Bigger tiles, TV overscan-safe margins, Cloud and Media first. TV boxes and projectors get a one-time hint.
+- **Free Movies & TV:** Pluto TV, Tubi, Plex Free, Freevee, plus BBC iPlayer / ITVX / Channel 4 (UK). Opens each service's own app or website. IPTV uses your own playlist in VLC (Android) or Hypnotix (PC).
+- **Games Store:** Top / Free / Paid pages on the official stores (Steam, Epic, GOG, Humble). Prices stay on the stores. Marvel Rivals stays pinned in Free when available.
+- **Accounts:** sign in inside each platform's own app. CodeAque never sees a password.
+- **Website:** one-tap Android / Projector / TV box APK download button.
+
 ## What's new in 0.9.5 — game pictures, Steam and PC Games at the top
 
 - **Pictures of your games.** My Games tiles are now tall box-art tiles. PC: Steam's own library pictures (from Steam's local cache, else Steam's public image server), Lutris's and Heroic's saved covers, and libretro box art for your ROMs (fetched once and cached; nothing is included in CodeAque). Android: the game's own banner or icon, and libretro box art for files in your game folders. Without a picture a tile gets CodeAque's own coloured art (no logos).

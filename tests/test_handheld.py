@@ -16,12 +16,12 @@ def _cats():
 
 def test_categories_match_the_layout_and_games_starts_with_cloud_gaming():
     cats = handheld.categories(demo_library().games)
-    assert [c["title"] for c in cats] == ["Steam", "PC Games", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Downloads",
-                                          "All Apps", "Settings"]
-    games = cats[3]["tiles"]
+    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Downloads",
+                                          "All Apps", "Accounts", "Settings"]
+    games = cats[4]["tiles"]
     assert games[0]["title"] == "Cloud Gaming" and games[0]["kind"] == "list" and games[0]["items"]
     assert all(t["icon"].startswith("g_") for t in games[1:])          # original generic pictures, never logos
-    hub = cats[5]["tiles"]
+    hub = cats[6]["tiles"]
     from atarilauncher import emulators
     assert len(hub) == len(emulators.SYSTEMS) and all(t["icon"].startswith("g_") for t in hub)
 
@@ -30,9 +30,9 @@ def test_my_games_has_installed_pc_games_and_all_apps_has_apps():
     cats = {c["key"]: c for c in handheld.categories(demo_library().games)}
     mine = [t.get("gid", "") for t in cats["mygames"]["tiles"]]
     assert mine[0].startswith("steam:")                                  # Steam games already installed, first
-    assert all(not t["gid"].startswith("steam:") for t in cats["pcgames"]["tiles"])
+    assert all(not t.get("gid", "").startswith("steam:") for t in cats["pcgames"]["tiles"])
     st = cats["steam"]["tiles"]
-    assert st[0]["gid"] == "app:steam" and all(t["gid"].startswith("steam:") for t in st[1:]) and len(st) > 1
+    assert st[0]["gid"] == "app:steam" and all(t["gid"].startswith("steam:") for t in st[1:-1]) and len(st) > 1
     assert all(t.get("gid", "").startswith(("app:", "tool:", "studio:")) for t in cats["apps"]["tiles"])
 
 
@@ -45,7 +45,7 @@ def test_installed_emulators_become_tiles(monkeypatch):
 
 def test_no_pc_game_launchers_outside_my_games_and_all_apps():
     for c in handheld.categories(demo_library().games):
-        if c["key"] in ("steam", "pcgames", "mygames", "apps"):
+        if c["key"] in ("steam", "pcgames", "store", "mygames", "apps", "accounts"):
             continue
         for t in c["tiles"]:
             gids = [t.get("gid", "")] + [i["gid"] for i in t["items"]]
@@ -95,7 +95,8 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         hs = ui.win.findChild(QQuickItem, "handheldScreen")
         assert hs.property("visible") and ui.mode == "library"
         assert hs.property("zone") == "tiles" and hs.property("cat") == 0     # Steam
-        ui.key(Qt.Key_E, 100); ui.key(Qt.Key_E, 100); ui.key(Qt.Key_E, 100); assert hs.property("cat") == 3   # Retro: Cloud Gaming first
+        for _ in range(4): ui.key(Qt.Key_E, 100)
+        assert hs.property("cat") == 4   # Retro: Cloud Gaming first
         ui.key(Qt.Key_Return, 100)                       # Cloud Gaming -> its list
         assert hs.property("zone") == "list"
         ui.key(Qt.Key_Return, 100)
@@ -103,10 +104,10 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         ui.key(Qt.Key_Escape, 100)
         assert hs.property("zone") == "tiles"
         ui.key(Qt.Key_E, 100)                            # RB: next category (Cloud)
-        assert hs.property("cat") == 4
+        assert hs.property("cat") == 5
         ui.key(Qt.Key_Up, 100); assert hs.property("zone") == "cats"
-        ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 5
-        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 11  # Y: Settings
+        ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 6
+        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 13  # Y: Settings
         ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100)   # tiles: back to Wi-Fi
         for _ in range(5):
             ui.key(Qt.Key_Right, 60)                     # ... Leave Handheld
@@ -144,3 +145,22 @@ def test_console_home_is_the_default_without_the_test_override(tmp_path, monkeyp
     assert c.home_style == "console"
     c.home_style = "classic"; config.save_config(c, tmp_path / "config.toml")
     assert config.load_config(tmp_path / "config.toml").home_style == "classic"
+
+
+def test_store_has_top_free_and_paid_and_accounts_open_official_apps():
+    cats = {c["key"]: c for c in handheld.categories(demo_library().games)}
+    st = cats["store"]["tiles"]
+    assert st[0]["action"] == "store:steamtop"
+    assert any(t.get("action") == "store:steamfree" for t in st) and any(t["title"].startswith("Paid") for t in st)
+    from atarilauncher import webapps
+    for p in webapps.STORE_PAGES:
+        assert p.url.startswith("https://") and webapps.BY_ID[p.id] is p
+    assert all("$" not in t["title"] and "£" not in t["title"] for t in st)
+    acc = [t["gid"] for t in cats["accounts"]["tiles"]]
+    order = [a[0] for a in handheld.ACCOUNTS]
+    assert acc and acc == [g for g in order if g in acc]
+
+
+def test_get_games_tile_in_steam_and_pc_games():
+    cats = {c["key"]: c for c in handheld.categories(demo_library().games)}
+    assert cats["steam"]["tiles"][-1]["action"] == "getgames" and cats["pcgames"]["tiles"][-1]["action"] == "getgames"

@@ -12,6 +12,10 @@ public class CatalogTest {
         List<Catalog.Category> c = Catalog.categories();
         check(c.get(0).id.equals("steam") && c.get(1).id.equals("mygames") && c.get(2).id.equals("games") && c.get(2).items.get(0).action.equals("goto:cloud"), "Steam, My Games, then Games with Cloud Gaming");
         check(Catalog.indexOf(c, "cloud") == 3 && Catalog.indexOf(c, "retro") == 4, "Cloud then Retro");
+        List<Catalog.Category> pj = Catalog.categories(List.of(), List.of(), List.of(), List.of(), true);
+        check(pj.get(0).id.equals("cloud") && pj.get(1).id.equals("media") && pj.size() == c.size(), "projector order");
+        check(Catalog.indexOf(c, "store") > 0 && Catalog.indexOf(c, "accounts") > 0, "Games Store and Accounts");
+        for (Catalog.Item i : c.get(Catalog.indexOf(c, "store")).items) check(i.webUrl.startsWith("https://play.google.com/"), "store opens Google Play");
         check(Catalog.indexOf(c, "allapps") == c.size() - 2 && c.get(c.size() - 1).id.equals("settings"), "All Apps before Settings");
         // 0.9.4: installed games / apps / emulators / the user's own files
         Catalog.Item g = Catalog.deviceApp("Some Game", "com.example.game", "com.example.game.Main");
@@ -28,7 +32,7 @@ public class CatalogTest {
                 "TikTok", "Kodi", "RetroArch", "Minecraft", "Roblox"));
         for (Catalog.Category cat : c) for (Catalog.Item i : cat.items) {
             want.remove(i.label);
-            check(i.isAction() || i.isRom() || i.storePackage() != null, i.label + " has a package for the Play Store link");
+            check(i.isAction() || i.isRom() || i.webUrl != null || i.storePackage() != null, i.label + " has a package for the Play Store link");
             check(i.webUrl == null || i.webUrl.startsWith("https://"), i.label + " web link is https");
             check(!i.icon.contains("logo"), "no logos");
         }

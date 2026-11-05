@@ -94,6 +94,16 @@ WEBAPPS += [
 ]
 # The optional "Support CodeAque" donate page: a browser window opened by a button in Settings / Options. It is NOT a tile (not in WEBAPPS).
 SUPPORT = WebApp("support", donate.TITLE, donate.DONATE_URL, browse=True, note=donate.NOTE)
+# 0.9.6 Games Store pages (official stores only; prices stay on the stores' own pages). Opened by the Games Store tab only.
+STORE_PAGES: list[WebApp] = [
+    WebApp("steamtop", "Top Games (Steam)", "https://store.steampowered.com/charts/topselling/global", browse=True),
+    WebApp("steamfree", "Free on Steam", "https://store.steampowered.com/genre/Free%20to%20Play/", browse=True),
+    WebApp("epicfree", "Free on Epic", "https://store.epicgames.com/free-games", browse=True),
+    WebApp("steamstore", "Steam Store", "https://store.steampowered.com/", browse=True),
+    WebApp("gogstore", "GOG", "https://www.gog.com/en/games", browse=True),
+    WebApp("epicstore", "Epic Games Store", "https://store.epicgames.com/", browse=True),
+    WebApp("humble", "Humble Store", "https://www.humblebundle.com/store", browse=True),
+]
 BY_ID = {w.id: w for w in WEBAPPS}
 BY_ID[SUPPORT.id] = SUPPORT
 UNREAL = WebApp("unrealpage", "Unreal Engine for Linux (Epic's page)", "https://www.unrealengine.com/en-US/linux", browse=True,
@@ -102,6 +112,18 @@ BY_ID[UNREAL.id] = UNREAL
 XEMU_HDD = WebApp("xemuhdd", "xemu: Required Files (free ready-made hard disk)", "https://xemu.app/docs/required-files/", browse=True,
                   note="xemu's own page. Its ready-made 8 GB disk has no Microsoft files in it; download it there yourself.")
 BY_ID[XEMU_HDD.id] = XEMU_HDD
+# 0.9.6 Media > Free Movies & TV: legal free (ad-supported) services, their official websites only.
+FREE_TV: list[WebApp] = [
+    WebApp("plutotv", "Pluto TV", "https://pluto.tv/", True),
+    WebApp("tubi", "Tubi", "https://tubitv.com/", True),
+    WebApp("plexfree", "Plex (free movies & TV)", "https://watch.plex.tv/", True),
+    WebApp("freevee", "Freevee", "https://www.amazon.co.uk/gp/video/storefront?contentId=freetv", True, note="Amazon Freevee; free with ads. UK storefront."),
+    WebApp("iplayer", "BBC iPlayer", "https://www.bbc.co.uk/iplayer", True, note="UK only; needs a TV licence for live TV."),
+    WebApp("itvx", "ITVX", "https://www.itv.com/", True, note="UK only."),
+    WebApp("channel4", "Channel 4", "https://www.channel4.com/", True, note="UK only."),
+]
+for _sp in STORE_PAGES + FREE_TV:
+    BY_ID[_sp.id] = _sp
 
 
 @dataclass(frozen=True)

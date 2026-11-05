@@ -136,6 +136,7 @@ public class HomeView extends View {
 
     @Override public boolean onTouchEvent(MotionEvent e) {
         float x = e.getX(), y = e.getY(), H = getHeight();
+        if (projector) { x = (x - getWidth() * SAFE) / (1 - 2 * SAFE); y = (y - H * SAFE) / (1 - 2 * SAFE); }
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: if (splash != null) { splash = null; invalidate(); return true; }
                 downX = x; downY = y; dragging = false; dragTiles = 0; return true;
@@ -186,9 +187,24 @@ public class HomeView extends View {
     private float tilesLeft() { return 24 * s; }
 
     // ---------- drawing ----------
+    // 0.9.6 Projector mode: everything inside a 5% overscan-safe frame, tiles and text about 15% bigger (TV remote / D-pad)
+    private boolean projector;
+    public void setProjector(boolean on) { projector = on; invalidate(); }
+    private static final float SAFE = 0.05f;
+
     @Override protected void onDraw(Canvas c) {
+        if (!projector) { drawAll(c); return; }
+        c.save();
+        c.drawColor(0xFF000000);
+        c.translate(getWidth() * SAFE, getHeight() * SAFE); c.scale(1 - 2 * SAFE, 1 - 2 * SAFE);
+        c.clipRect(0, 0, getWidth(), getHeight());
+        drawAll(c);
+        c.restore();
+    }
+
+    private void drawAll(Canvas c) {
         int W = getWidth(), H = getHeight();
-        s = Math.min(W / 1000f, H / 720f);   // 1 on 1280x720, bigger than a plain scale on 4:3 screens (640x480)
+        s = Math.min(W / 1000f, H / 720f) * (projector ? 1.15f : 1f);   // 1 on 1280x720, bigger than a plain scale on 4:3 screens (640x480)
         String fx = host.effects();
         boolean anim = !"off".equals(fx);
         long now = System.nanoTime();
