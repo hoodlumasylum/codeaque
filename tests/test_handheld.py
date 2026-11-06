@@ -16,12 +16,12 @@ def _cats():
 
 def test_categories_match_the_layout_and_games_starts_with_cloud_gaming():
     cats = handheld.categories(demo_library().games)
-    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Downloads",
+    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "World Games", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Downloads",
                                           "All Apps", "Accounts", "Settings"]
-    games = cats[4]["tiles"]
+    games = cats[5]["tiles"]
     assert games[0]["title"] == "Cloud Gaming" and games[0]["kind"] == "list" and games[0]["items"]
     assert all(t["icon"].startswith("g_") for t in games[1:])          # original generic pictures, never logos
-    hub = cats[6]["tiles"]
+    hub = cats[7]["tiles"]
     from atarilauncher import emulators
     assert len(hub) == len(emulators.SYSTEMS) and all(t["icon"].startswith("g_") for t in hub)
 
@@ -45,7 +45,7 @@ def test_installed_emulators_become_tiles(monkeypatch):
 
 def test_no_pc_game_launchers_outside_my_games_and_all_apps():
     for c in handheld.categories(demo_library().games):
-        if c["key"] in ("steam", "pcgames", "store", "mygames", "apps", "accounts"):
+        if c["key"] in ("steam", "pcgames", "store", "world", "mygames", "apps", "accounts"):
             continue
         for t in c["tiles"]:
             gids = [t.get("gid", "")] + [i["gid"] for i in t["items"]]
@@ -95,8 +95,8 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         hs = ui.win.findChild(QQuickItem, "handheldScreen")
         assert hs.property("visible") and ui.mode == "library"
         assert hs.property("zone") == "tiles" and hs.property("cat") == 0     # Steam
-        for _ in range(4): ui.key(Qt.Key_E, 100)
-        assert hs.property("cat") == 4   # Retro: Cloud Gaming first
+        for _ in range(5): ui.key(Qt.Key_E, 100)
+        assert hs.property("cat") == 5   # Retro: Cloud Gaming first
         ui.key(Qt.Key_Return, 100)                       # Cloud Gaming -> its list
         assert hs.property("zone") == "list"
         ui.key(Qt.Key_Return, 100)
@@ -104,10 +104,10 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         ui.key(Qt.Key_Escape, 100)
         assert hs.property("zone") == "tiles"
         ui.key(Qt.Key_E, 100)                            # RB: next category (Cloud)
-        assert hs.property("cat") == 5
+        assert hs.property("cat") == 6
         ui.key(Qt.Key_Up, 100); assert hs.property("zone") == "cats"
-        ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 6
-        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 13  # Y: Settings
+        ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 7
+        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 14  # Y: Settings
         ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100)   # tiles: back to Wi-Fi
         for _ in range(5):
             ui.key(Qt.Key_Right, 60)                     # ... Leave Handheld
@@ -178,3 +178,29 @@ def test_store_has_top_free_and_paid_and_accounts_open_official_apps():
 def test_get_games_tile_in_steam_and_pc_games():
     cats = {c["key"]: c for c in handheld.categories(demo_library().games)}
     assert cats["steam"]["tiles"][-1]["action"] == "getgames" and cats["pcgames"]["tiles"][-1]["action"] == "getgames"
+
+
+def test_world_games_pc_row_uses_only_official_store_pages():
+    from urllib.parse import urlsplit
+    from atarilauncher import webapps
+
+    tiles = _cats()["world"]["tiles"]
+    assert len(tiles) >= 9
+    assert any(t["title"] == "Japanese Games" for t in tiles)
+    assert any(t["title"] == "Chinese Games" for t in tiles)
+    assert any(t["title"] == "Korean Games" for t in tiles)
+    for t in tiles:
+        pid = t["action"].removeprefix("store:")
+        page = webapps.BY_ID[pid]
+        assert t["action"].startswith("store:") and urlsplit(page.url).scheme == "https"
+        assert urlsplit(page.url).hostname == "store.steampowered.com"
+        assert page.browse and not any(symbol in t["title"] for symbol in ("$", "£", "€", "¥"))
+    english = [webapps.BY_ID[t["action"].removeprefix("store:")] for t in tiles if "English support" in t["title"]]
+    assert len(english) >= 3
+    assert all("supported_lang=english" in page.url for page in english)
+
+
+def test_world_games_selected_steam_app_ids():
+    from atarilauncher import webapps
+    for page, appid in zip(webapps.SELECTED_WORLD_GAMES, (650700, 2358720, 1876890, 1868140, 1049590)):
+        assert page.url.startswith(f"https://store.steampowered.com/app/{appid}/")

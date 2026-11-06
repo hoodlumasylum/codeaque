@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.8 — World Games on PC
+
+- **World Games:** a new top row on the PC console home for Chinese, Japanese and Korean games. Publisher catalogue tiles open official Steam store pages; selected games include Yume Nikki, Black Myth: Wukong, Wandering Sword, DAVE THE DIVER and Eternal Return.
+- **English support:** search tiles use Steam's English-language filter. Open a game's Steam page to check whether English subtitles, voice audio or both are listed. Prices stay on Steam, and no third-party artwork is bundled.
+
 ## What's new in 0.9.7 — tap the Update-ready banner
 
 - **PC console home:** the top "Update X ready" notice is now a button. Tap or click it and the same Update screen as Settings > Update CodeAque opens (notes, install, restart). You no longer have to dig through Settings for an update that is already waiting.

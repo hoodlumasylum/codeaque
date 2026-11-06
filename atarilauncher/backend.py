@@ -5371,7 +5371,7 @@ class Backend(QObject):
         """Games Store tile: a store's official page in CodeAque's full-screen browser window (Esc twice comes back). You sign in
         and pay on the store's own page; the game then installs through Steam / Heroic and shows up in CodeAque."""
         from . import webapps as _wa
-        page = next((w for w in _wa.STORE_PAGES + _wa.FREE_TV if w.id == pid), None)
+        page = _wa.BY_ID.get(pid)
         if page is None:
             return
         if not self._running:

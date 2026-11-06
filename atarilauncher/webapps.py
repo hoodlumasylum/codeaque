@@ -104,6 +104,30 @@ STORE_PAGES: list[WebApp] = [
     WebApp("epicstore", "Epic Games Store", "https://store.epicgames.com/", browse=True),
     WebApp("humble", "Humble Store", "https://www.humblebundle.com/store", browse=True),
 ]
+WORLD_PAGES: list[WebApp] = [
+    WebApp("wgjapan", "Japanese Games", "https://store.steampowered.com/search/?developer=KADOKAWA%20CORPORATION", browse=True),
+    WebApp("wgchina", "Chinese Games", "https://store.steampowered.com/search/?developer=Hypergryph", browse=True),
+    WebApp("wgchina2", "More Chinese Games", "https://store.steampowered.com/search/?developer=24%20Entertainment", browse=True),
+    WebApp("wgkorea", "Korean Games", "https://store.steampowered.com/search/?developer=NEOWIZ", browse=True),
+    WebApp("wgkorea2", "More Korean Games", "https://store.steampowered.com/search/?developer=NEXON%20Korea%20Corporation", browse=True),
+    WebApp("wgjapanen", "Japanese · English support", "https://store.steampowered.com/search/?supported_lang=english&developer=KADOKAWA%20CORPORATION", browse=True,
+           note="Steam's English-language filter. The game's own Steam page lists English subtitles and voice audio separately."),
+    WebApp("wgchinaen", "Chinese · English support", "https://store.steampowered.com/search/?supported_lang=english&developer=Hypergryph", browse=True,
+           note="Steam's English-language filter. The game's own Steam page lists English subtitles and voice audio separately."),
+    WebApp("wgchinaen2", "More Chinese · English support", "https://store.steampowered.com/search/?supported_lang=english&developer=24%20Entertainment", browse=True,
+           note="Steam's English-language filter. The game's own Steam page lists English subtitles and voice audio separately."),
+    WebApp("wgkoreaen", "Korean · English support", "https://store.steampowered.com/search/?supported_lang=english&developer=NEOWIZ", browse=True,
+           note="Steam's English-language filter. The game's own Steam page lists English subtitles and voice audio separately."),
+    WebApp("wgkoreaen2", "More Korean · English support", "https://store.steampowered.com/search/?supported_lang=english&developer=NEXON%20Korea%20Corporation", browse=True,
+           note="Steam's English-language filter. The game's own Steam page lists English subtitles and voice audio separately."),
+]
+SELECTED_WORLD_GAMES: list[WebApp] = [
+    WebApp("wgyume", "Japan · Yume Nikki", "https://store.steampowered.com/app/650700/Yume_Nikki/", browse=True),
+    WebApp("wgblackmyth", "China · Black Myth: Wukong", "https://store.steampowered.com/app/2358720/Black_Myth_Wukong/", browse=True),
+    WebApp("wgsword", "China · Wandering Sword", "https://store.steampowered.com/app/1876890/Wandering_Sword/", browse=True),
+    WebApp("wgdave", "Korea · DAVE THE DIVER", "https://store.steampowered.com/app/1868140/DAVE_THE_DIVER/", browse=True),
+    WebApp("wgeternal", "Korea · Eternal Return", "https://store.steampowered.com/app/1049590/Eternal_Return/", browse=True),
+]
 BY_ID = {w.id: w for w in WEBAPPS}
 BY_ID[SUPPORT.id] = SUPPORT
 UNREAL = WebApp("unrealpage", "Unreal Engine for Linux (Epic's page)", "https://www.unrealengine.com/en-US/linux", browse=True,
@@ -122,7 +146,7 @@ FREE_TV: list[WebApp] = [
     WebApp("itvx", "ITVX", "https://www.itv.com/", True, note="UK only."),
     WebApp("channel4", "Channel 4", "https://www.channel4.com/", True, note="UK only."),
 ]
-for _sp in STORE_PAGES + FREE_TV:
+for _sp in STORE_PAGES + WORLD_PAGES + SELECTED_WORLD_GAMES + FREE_TV:
     BY_ID[_sp.id] = _sp
 
 

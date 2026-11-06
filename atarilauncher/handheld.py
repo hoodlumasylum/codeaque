@@ -17,7 +17,7 @@ from . import emulators, webapps
 
 VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
-CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("store", "Games Store", "cart"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
+CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("store", "Games Store", "cart"), ("world", "World Games", "pad"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
               ("streams", "Streams", "stream"), ("media", "Media", "film"), ("music", "Music", "music"),
               ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("accounts", "Accounts", "app"), ("settings", "Settings", "gear"))
 # 0.9.4: PC games already installed on this machine (shown in My Games); retro ROMs, web pages and apps are elsewhere
@@ -138,6 +138,13 @@ def store_tiles(games) -> list:
     return tiles
 
 
+def world_tiles() -> list:
+    """PC World Games: publisher catalogues, English-language searches, and selected games, all on Steam's official store."""
+    pages = webapps.WORLD_PAGES + webapps.SELECTED_WORLD_GAMES
+    return [{"key": "store:" + p.id, "title": p.title, "icon": "c_pc", "kind": "action", "action": "store:" + p.id,
+             "items": [], "hue": 0.3 + i * 0.043} for i, p in enumerate(pages)]
+
+
 def account_tiles(games) -> list:
     by = {g.gid: g for g in games}
     return [{"key": gid, "title": title, "icon": "app", "kind": "launch", "gid": gid, "items": [], "hue": 0.55 + i * 0.07,
@@ -197,6 +204,8 @@ def categories(games, store=None, cfg=None, home=None) -> list:
                                                            key=lambda g: g.title.lower())] + [GET_GAMES]
         elif key == "store":
             tiles = store_tiles(games)
+        elif key == "world":
+            tiles = world_tiles()
         elif key == "accounts":
             tiles = account_tiles(games)
         elif key == "mygames":
