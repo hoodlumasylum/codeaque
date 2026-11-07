@@ -410,6 +410,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public void open(Catalog.Item it) {
         try {
             if (it.isAction()) { action(it.action); return; }
+            if (Catalog.isPspRom(it)) { forceLandscape(); openInPpsspp(it); return; }   // 0.10.7
             if (Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast(it); return; }
             if (it.isRom()) { forceLandscape(); openRom(it); return; }
             if (it.isDeviceApp()) { start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls)); return; }
@@ -435,6 +436,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void action(String a) {
         switch (a) {
             case "wifi": openWifi(); break;
+            case "filemgr": if (!prefs.getBoolean("kidsMode", false)) openFiles(); break;
             case "kidsgames": kidsGamesManage(); break;
             case "files": askFileAccess(); break;
             case "bluetooth": start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); break;
@@ -632,6 +634,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             }
             List<Catalog.Item> out = new ArrayList<>();
             for (java.io.File f : DcScan.scan(roots)) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
+            for (java.io.File f : PspScan.scan(roots)) out.add(Catalog.rom(PspScan.fileName(f), Uri.fromFile(f).toString()));   // 0.10.7 PSP
             String bios = importBios(roots);
             runOnUiThread(() -> { dcScanning = false; boolean changed = out.size() != dcFiles.size(); dcFiles = out; if (changed) rescan();
                 if (bios != null && !prefs.getBoolean("kidsMode", false)) toast(bios); });
@@ -676,6 +679,23 @@ public class MainActivity extends Activity implements HomeView.Host {
             catch (Exception e) { try { start(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)); return; } catch (Exception ignored) { } }
         } else { requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 5); return; }
         toast("Allow file access for CodeAque in Android settings.");
+    }
+
+    /** 0.10.7: opens one PSP game file directly in PPSSPP (Gold if that is the one installed); Play page if neither. */
+    private void openInPpsspp(Catalog.Item it) {
+        String pkg = null;
+        for (String p : new String[]{"org.ppsspp.ppsspp", "org.ppsspp.ppssppgold"}) if (getPackageManager().getLaunchIntentForPackage(p) != null) { pkg = p; break; }
+        if (pkg == null) { store("org.ppsspp.ppsspp"); return; }
+        Uri u = Uri.parse(it.uri);
+        Intent v = new Intent(Intent.ACTION_VIEW).setDataAndType(u, "*/*").setPackage(pkg).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        android.os.StrictMode.VmPolicy old = android.os.StrictMode.getVmPolicy();
+        try {
+            if ("file".equals(u.getScheme())) android.os.StrictMode.setVmPolicy(new android.os.StrictMode.VmPolicy.Builder().build());   // PPSSPP reads the path itself
+            start(v);
+        } catch (Exception e) {
+            toast("PPSSPP could not open it directly. Open PPSSPP and pick the game from its folder.");
+            start(getPackageManager().getLaunchIntentForPackage(pkg));
+        } finally { android.os.StrictMode.setVmPolicy(old); }
     }
 
     /** Opens one game file directly in Flycast (store page if Flycast is missing). */
@@ -754,6 +774,25 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     private boolean isGamePkg(String p) {
         try { return isGame(getPackageManager().getApplicationInfo(p, 0)); } catch (Exception e) { return false; }
+    }
+
+    // ---------- 0.10.7 Files: the system file manager (copy Dreamcast games / BIOS from a USB stick) ----------
+    private void openFiles() {
+        for (String pkg : new String[]{"com.android.documentsui", "com.google.android.documentsui"}) {
+            for (String uri : new String[]{"content://com.android.externalstorage.documents/root/primary", "content://com.android.providers.downloads.documents/root/downloads"}) {
+                Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(uri), "vnd.android.document/root").setPackage(pkg);
+                if (tryStart(i)) return;
+            }
+            Intent l = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (l != null && tryStart(l)) return;
+        }
+        Intent f = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_FILES);
+        if (tryStart(f)) return;
+        if (tryStart(new Intent("android.settings.INTERNAL_STORAGE_SETTINGS"))) { toast("Open Files from here to copy your games"); return; }
+        toast("No file manager found on this device");
+    }
+    private boolean tryStart(Intent i) {
+        try { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); return true; } catch (Exception e) { return false; }
     }
 
     // ---------- 0.10.5 Kids mode Wi-Fi tile ----------

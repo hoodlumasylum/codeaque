@@ -510,7 +510,7 @@ public class HomeView extends View {
         // the focused tile's hint under the row
         if (its.isEmpty()) return;
         Catalog.Item f = its.get(Math.min(tile, its.size() - 1));
-        String hint = "wifi".equals(f.action) ? host.wifi() : f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
+        String hint = "wifi".equals(f.action) ? host.wifi() : Catalog.copyHint(cats.get(cat).id, f) != null ? Catalog.copyHint(cats.get(cat).id, f) : f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
         text(c, hint, W / 2f, top + h + 24 * s, 14 * s, DIM, Paint.Align.CENTER, false);
     }
 
@@ -730,6 +730,10 @@ public class HomeView extends View {
                 path.cubicTo(x0 + 22 * u, y0 + 14 * u, x0 + 23 * u, y0 + 3 * u, cx, y0 + 3 * u); c.drawPath(path, stroke);
                 c.drawCircle(x0 + 8 * u, y0 + 10 * u, 1.2f * u, stroke); c.drawCircle(x0 + 12 * u, y0 + 7 * u, 1.2f * u, stroke);
                 c.drawCircle(x0 + 16 * u, y0 + 9 * u, 1.2f * u, stroke); break;
+            case "folder":
+                path.moveTo(x0 + 3 * u, y0 + 6 * u); path.lineTo(x0 + 9 * u, y0 + 6 * u); path.lineTo(x0 + 11 * u, y0 + 8 * u);
+                path.lineTo(x0 + 21 * u, y0 + 8 * u); path.lineTo(x0 + 21 * u, y0 + 19 * u); path.lineTo(x0 + 3 * u, y0 + 19 * u); path.close();
+                c.drawPath(path, stroke); c.drawLine(x0 + 3 * u, y0 + 11 * u, x0 + 21 * u, y0 + 11 * u, stroke); break;
             case "image":
                 ir.set(x0 + 3 * u, y0 + 5 * u, x0 + 21 * u, y0 + 19 * u); c.drawRoundRect(ir, 2 * u, 2 * u, stroke);
                 path.moveTo(x0 + 4 * u, y0 + 17 * u); path.lineTo(x0 + 10 * u, y0 + 11 * u); path.lineTo(x0 + 14 * u, y0 + 15 * u);

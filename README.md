@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.7
+
+- **Files tile** in the Dreamcast section. It opens the device's own file manager so you can copy games and BIOS from
+  a USB stick: put games in a folder called `Dreamcast` and the BIOS in `BIOS`. If there is no file manager, it opens
+  Settings → Storage instead. The tile is not shown in Kids mode.
+- **PSP section**, on the normal home screen and in Kids mode. The PSP tile opens PPSSPP (or PPSSPP Gold), or its Play
+  Store page if neither is installed. Your own `.iso`, `.cso` and `.pbp` games are added automatically, plus `.chd`
+  files inside PSP folders. CodeAque looks in `ROMs/psp`, `PSP/GAME`, `PSP` and `Download` on internal storage, SD
+  cards and USB sticks, and opens each game directly in PPSSPP. Nothing is downloaded and no art is bundled.
+
 ## What's new in 0.10.6: update pop-up (PC and Android)
 
 - When CodeAque finds a newer release, a big pop-up says **New update ready (vX)**, with a short what's-new line from the

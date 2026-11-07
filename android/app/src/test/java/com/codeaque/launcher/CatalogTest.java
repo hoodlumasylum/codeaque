@@ -56,7 +56,7 @@ public class CatalogTest {
                 && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1; wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true"), "rotation cmd");
         check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
         List<Catalog.Category> km = Catalog.kidsMode();
-        check(km.size() == 5 && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).items.size() == 2 && km.get(4).items.get(0) == Catalog.KIDS_WIFI && km.get(4).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
+        check(km.size() == 6 && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(5).items.size() == 2 && km.get(5).items.get(0) == Catalog.KIDS_WIFI && km.get(5).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
         check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
         for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
@@ -172,10 +172,30 @@ public class CatalogTest {
             for (java.io.File f : got) roms.add(Catalog.rom(f.getName(), "file://" + f.getAbsolutePath()));
             roms.add(Catalog.rom("Mario.sfc", "content://x/Mario.sfc"));
             Catalog.Category d = Catalog.dreamcast(roms);
-            check(d.items.size() == 5 && d.items.get(0) == Catalog.DREAMCAST, "dreamcast tiles " + d.items.size());
+            check(d.items.size() == 6 && d.items.get(0) == Catalog.DREAMCAST && d.items.get(1) == Catalog.FILES, "dreamcast tiles " + d.items.size());
+            {   // 0.10.7 PSP
+                java.io.File pr = java.nio.file.Files.createTempDirectory("psp").toFile();
+                new java.io.File(pr, "PSP/GAME/Hero Run").mkdirs(); new java.io.File(pr, "PSP/GAME/Hero Run/EBOOT.PBP").createNewFile();
+                new java.io.File(pr, "ROMs/psp").mkdirs(); new java.io.File(pr, "ROMs/psp/Kart.cso").createNewFile(); new java.io.File(pr, "ROMs/psp/Tanks.chd").createNewFile();
+                new java.io.File(pr, "Download").mkdirs(); new java.io.File(pr, "Download/Golf.iso").createNewFile(); new java.io.File(pr, "Download/Other.chd").createNewFile();
+                new java.io.File(pr, "PSP/SAVEDATA/x").mkdirs(); new java.io.File(pr, "PSP/SAVEDATA/x/S.iso").createNewFile();
+                List<java.io.File> pf = PspScan.scan(java.util.Arrays.asList(pr));
+                java.util.Set<String> pn = new java.util.TreeSet<>(); for (java.io.File f : pf) pn.add(PspScan.fileName(f));
+                check(pn.equals(new java.util.TreeSet<>(java.util.Arrays.asList("Hero Run.pbp", "Kart.cso", "Tanks.chd", "Golf.iso"))), "psp scan " + pn);
+                List<Catalog.Item> pr2 = new java.util.ArrayList<>();
+                for (java.io.File f : pf) pr2.add(Catalog.rom(PspScan.fileName(f), "file://" + f.getAbsolutePath()));
+                pr2.add(Catalog.rom("Crazy.chd", "file:///sdcard/ROMs/dc/Crazy.chd"));
+                Catalog.Category ps = Catalog.psp(pr2);
+                check(ps.items.size() == 5 && ps.items.get(0) == Catalog.PSP, "psp tiles " + ps.items.size());
+                check(Catalog.dreamcast(pr2).items.size() == 3, "dc keeps its own chd only");
+                List<Catalog.Category> k2 = Catalog.kidsMode(pr2);
+                check(k2.get(Catalog.indexOf(k2, "kpsp")).items.size() == 5, "kids psp");
+                List<Catalog.Category> n2 = Catalog.categories(new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(), pr2, false, false);
+                check(Catalog.indexOf(n2, "psp") > Catalog.indexOf(n2, "dreamcast"), "psp after dreamcast");
+            }
             List<Catalog.Category> km = Catalog.kidsMode(roms);
             check(km.get(Catalog.indexOf(km, "kdc")).items.size() == 5, "kids mode dreamcast games");
-            for (Catalog.Category k : km) for (Catalog.Item i : k.items) check(!"romfolder".equals(i.action) && !"files".equals(i.action), "no import in kids mode");
+            for (Catalog.Category k : km) for (Catalog.Item i : k.items) check(!"romfolder".equals(i.action) && !"files".equals(i.action) && !"filemgr".equals(i.action), "no import in kids mode");
                     java.io.File storage = java.nio.file.Files.createTempDirectory("storage").toFile();
             new java.io.File(storage, "emulated").mkdirs(); new java.io.File(storage, "self").mkdirs(); new java.io.File(storage, "1A2B-3C4D").mkdirs();
             List<java.io.File> vr = DcScan.volumeRoots(storage, new java.io.File("/nonexistent"));

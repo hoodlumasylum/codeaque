@@ -152,10 +152,35 @@ public final class Catalog {
     /** 0.10.5 Dreamcast: Flycast (labelled "Dreamcast") then the player's own .gdi / .cdi / .chd files. No BIOS, no games, no art. */
     public static final Item DREAMCAST = app("Dreamcast", "disc", "com.flycast.emulator");
     public static boolean isDreamcastRom(Item i) {
+        if (isPspRom(i)) return false;
         return i.isRom() && i.cls != null && DcScan.dreamcastFile(i.cls, i.uri != null && i.uri.startsWith("file:"));
     }
-    public static Category dreamcast(List<Item> roms) {
-        List<Item> l = new ArrayList<>(); l.add(DREAMCAST);
+    /** 0.10.7: opens the system file manager, e.g. to copy games / BIOS from a USB stick. Never in Kids mode. */
+    public static final Item FILES = act("Files", "folder", "filemgr");
+    public static final String DC_COPY_HINT = "Copy games to a folder called Dreamcast (PSP games to PSP), BIOS to BIOS";
+    /** 0.10.7 PSP: PPSSPP (or PPSSPP Gold) labelled "PSP", then the player's own .iso / .cso / .pbp (and .chd in PSP folders). */
+    public static final Item PSP = app("PSP", "handheld", "org.ppsspp.ppsspp", "org.ppsspp.ppssppgold");
+    public static final String PSP_HINT = "Copy PSP games to a folder called PSP";
+    /** Hint under the non-game tiles of the Dreamcast / handheld sections (null elsewhere). */
+    public static String copyHint(String catId, Item f) {
+        if (f.isRom()) return null;
+        if ("dreamcast".equals(catId) || "kdc".equals(catId)) return DC_COPY_HINT;
+        if ("psp".equals(catId) || "kpsp".equals(catId)) return PSP_HINT;
+        return null;
+    }
+    public static boolean isPspRom(Item i) {
+        if (!i.isRom() || i.cls == null || i.uri == null || !i.uri.startsWith("file:")) return false;
+        return PspScan.pspFile(i.cls, PspScan.inPspFolder(i.uri));
+    }
+    public static Category psp(List<Item> roms) {
+        List<Item> l = new ArrayList<>(); l.add(PSP);
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (Item r : roms) if (isPspRom(r) && names.add(r.label.toLowerCase(java.util.Locale.ROOT))) l.add(r);
+        return new Category("psp", "PSP", "handheld", l.toArray(new Item[0]));
+    }
+    public static Category dreamcast(List<Item> roms) { return dreamcast(roms, true); }
+    public static Category dreamcast(List<Item> roms, boolean files) {
+        List<Item> l = new ArrayList<>(); l.add(DREAMCAST); if (files) l.add(FILES);
         java.util.Set<String> names = new java.util.HashSet<>();
         for (Item r : roms) if (isDreamcastRom(r) && names.add(r.label.toLowerCase(java.util.Locale.ROOT))) l.add(r);
         return new Category("dreamcast", "Dreamcast", "disc", l.toArray(new Item[0]));
@@ -179,7 +204,8 @@ public final class Catalog {
         if (!added.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", added.toArray(new Item[0])));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
-        Category dc = dreamcast(roms); c.add(new Category("kdc", dc.label, dc.icon, dc.items.toArray(new Item[0])));
+        Category dc = dreamcast(roms, false); c.add(new Category("kdc", dc.label, dc.icon, dc.items.toArray(new Item[0])));
+        Category ps = psp(roms); c.add(new Category("kpsp", ps.label, ps.icon, ps.items.toArray(new Item[0])));   // 0.10.7
         c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
         return c;
     }
@@ -258,6 +284,7 @@ public final class Catalog {
                 app("Flycast", "disc", "com.flycast.emulator"),
                 app("DraStic", "handheld", "com.dsemu.drastic")));
         c.add(dreamcast(roms));   // 0.10.5
+        c.add(psp(roms));         // 0.10.7
         c.add(new Category("streams", "Streams", "stream",
                 app("Netflix", "film", "com.netflix.mediaclient"),
                 app("YouTube", "stream", "com.google.android.youtube", "com.google.android.youtube.tv"),

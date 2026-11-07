@@ -233,3 +233,27 @@ def test_rivals_tile_uses_own_duat_art():
         f = AND / f"app/src/main/res/drawable-nodpi/{r}.webp"
         assert f.is_file() and f.stat().st_size < 120_000
     assert "if (it == Catalog.ROBLOX && cov == null) blockyArt(c);" in (SRC / "HomeView.java").read_text()
+
+
+def test_files_tile_not_in_kids():
+    c = (SRC / "Catalog.java").read_text()
+    assert 'FILES = act("Files", "folder", "filemgr")' in c and "dreamcast(roms, false)" in c
+    assert "Copy games to a folder called Dreamcast (PSP games to PSP), BIOS to BIOS" in c and "Copy PSP games to a folder called PSP" in c
+    m = (SRC / "MainActivity.java").read_text()
+    body = m.split("private void openFiles()", 1)[1].split("private boolean tryStart", 1)[0]
+    i = [body.index(x) for x in ("com.android.documentsui", "vnd.android.document/root", "CATEGORY_APP_FILES", "INTERNAL_STORAGE_SETTINGS")]
+    assert i == sorted(i)
+    assert 'case "filemgr": if (!prefs.getBoolean("kidsMode", false)) openFiles();' in m
+
+
+def test_psp_section_mirrors_dreamcast():
+    c = (SRC / "Catalog.java").read_text()
+    assert 'PSP = app("PSP", "handheld", "org.ppsspp.ppsspp", "org.ppsspp.ppssppgold")' in c
+    assert 'new Category("kpsp"' in c and "c.add(psp(roms));" in c
+    s = (SRC / "PspScan.java").read_text()
+    assert "http" not in s.lower() and '"PSP/GAME"' in s and '"ROMs/psp"' in s
+    m = (SRC / "MainActivity.java").read_text()
+    body = m.split("private void openInPpsspp(", 1)[1].split("/** Opens one game file directly in Flycast", 1)[0]
+    assert "Intent.ACTION_VIEW" in body and 'store("org.ppsspp.ppsspp")' in body and "getLaunchIntentForPackage(pkg)" in body
+    assert m.index("Catalog.isPspRom(it)") < m.index("Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast")
+    assert not any("psp" in p.name.lower() or "sony" in p.name.lower() for p in (AND / "app/src/main/res").rglob("*"))
