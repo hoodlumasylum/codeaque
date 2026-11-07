@@ -63,6 +63,36 @@ public final class DcScan {
         return out;
     }
 
+    /** Android's standard folders on a volume root: never game folders. */
+    static final String[] STANDARD = {"alarms", "dcim", "music", "movies", "pictures", "podcasts", "recordings", "ringtones",
+            "notifications", "audiobooks", "documents", "android", "lost.dir", "system volume information"};
+    static boolean standard(String name) {
+        String n = name.toLowerCase(Locale.ROOT);
+        for (String x : STANDARD) if (x.equals(n)) return true;
+        return n.startsWith(".");
+    }
+
+    /** 0.10.10: game folders at the ROOT of a removable volume (SD card / USB stick), e.g. /storage/CA86-E82D/Crazy Taxi/x.gdi.
+     *  .gdi/.cdi always; .chd only when the volume is labelled Dreamcast or the path says dreamcast. */
+    public static void scanVolumeRoot(File root, String label, List<File> out, List<String> scanned) {
+        File[] fs = root == null ? null : root.listFiles();
+        if (fs == null) return;
+        boolean dcVol = (label != null && label.toLowerCase(Locale.ROOT).contains("dreamcast")) || dcPath(root.getAbsolutePath());
+        java.util.Arrays.sort(fs);
+        if (scanned != null) scanned.add(root.getAbsolutePath() + (dcVol ? " (Dreamcast card)" : ""));
+        for (File f : fs) {
+            if (out.size() >= MAX_FILES) return;
+            if (f.isDirectory()) { if (!standard(f.getName())) walk(f, dcVol || dcPath(f.getName()), 1, out); }
+            else if (dreamcastFile(f.getName(), dcVol)) addOnce(f, out);
+        }
+    }
+    static boolean dcPath(String p) { return p.toLowerCase(Locale.ROOT).contains("dreamcast"); }
+    static void addOnce(File f, List<File> out) {
+        String k = key(f);
+        for (File o : out) if (key(o).equals(k)) return;
+        out.add(f);
+    }
+
     private static void walk(File d, boolean dc, int depth, List<File> out) {
         File[] fs = d.listFiles();
         if (fs == null) return;

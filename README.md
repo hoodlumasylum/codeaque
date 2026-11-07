@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.10
+
+- **Dreamcast games in folders at the root of an SD card or USB stick**, for example `Crazy Taxi/<game>.gdi`. `.gdi` and
+  `.cdi` files are always found. `.chd` files are found when the card is labelled "Dreamcast" or the folder name says
+  Dreamcast. Android's own folders (DCIM, Music, Pictures, Android and so on) are skipped.
+
 ## What's new in 0.10.9
 
 - **Dreamcast and PSP games in `ROMS/Dreamcast` and `ROMS/PSP`** on any SD card or USB stick. Folder names now match

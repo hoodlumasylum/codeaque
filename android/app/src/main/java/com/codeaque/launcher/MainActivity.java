@@ -645,12 +645,17 @@ public class MainActivity extends Activity implements HomeView.Host {
         dcScanning = true;
         new Thread(() -> {
             List<java.io.File> roots = new ArrayList<>();
+            Map<String, String> volLabels = new HashMap<>();   // removable volume root -> its label (e.g. "Dreamcast")
             roots.add(android.os.Environment.getExternalStorageDirectory());
             roots.addAll(DcScan.volumeRoots(new java.io.File("/storage"), new java.io.File("/mnt/media_rw")));   // SD + USB OTG
             if (android.os.Build.VERSION.SDK_INT >= 30) {   // 0.10.9: every mounted volume Android knows about (SD card /storage/XXXX-XXXX, USB)
                 try {
                     android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
-                    for (android.os.storage.StorageVolume v : sm.getStorageVolumes()) { java.io.File dir = v.getDirectory(); if (dir != null) roots.add(dir); }
+                    for (android.os.storage.StorageVolume v : sm.getStorageVolumes()) {
+                        java.io.File dir = v.getDirectory(); if (dir == null) continue;
+                        roots.add(dir);
+                        if (v.isRemovable() || !v.isPrimary()) volLabels.put(DcScan.key(dir), String.valueOf(v.getDescription(this)));
+                    }
                 } catch (Exception ignored) { }
             }
             for (java.io.File f : getExternalFilesDirs(null)) {           // .../Android/data/<pkg>/files on each volume -> its root
@@ -665,6 +670,12 @@ public class MainActivity extends Activity implements HomeView.Host {
             roots = uniq;
             List<String> dcDirs = new ArrayList<>(), pspDirs = new ArrayList<>();
             List<java.io.File> dcFound = DcScan.scan(roots, dcDirs), pspFound = PspScan.scan(roots, pspDirs);
+            String primary = DcScan.key(android.os.Environment.getExternalStorageDirectory());
+            for (java.io.File r : roots) {   // 0.10.10: game folders at the root of each SD card / USB stick
+                String k = DcScan.key(r);
+                if (k.equals(primary) || k.startsWith("/storage/emulated") || k.equals("/storage/self")) continue;
+                DcScan.scanVolumeRoot(r, volLabels.get(k), dcFound, dcDirs);
+            }
             for (java.io.File f : dcFound) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
             for (java.io.File f : pspFound) out.add(Catalog.rom(PspScan.fileName(f), Uri.fromFile(f).toString()));   // 0.10.7 PSP
             String bios = importBios(roots);

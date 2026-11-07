@@ -186,6 +186,20 @@ public class CatalogTest {
                 java.util.Set<String> pn2 = new java.util.TreeSet<>(); for (java.io.File f : PspScan.scan(java.util.Arrays.asList(sdc))) pn2.add(f.getName());
                 check(pn2.equals(new java.util.TreeSet<>(java.util.Arrays.asList("kart.iso"))), "ROMS/PSP " + pn2);
             }
+            {   // 0.10.10: an SD card labelled "Dreamcast" with game folders at its root
+                java.io.File vol = java.nio.file.Files.createTempDirectory("CA86-E82D").toFile();
+                for (String g : new String[]{"Crazy Taxi/ct.gdi", "Shenmue Disc 1/s1.chd", "Rayman 2 - The Great Escape/disc/r2.cdi", "Music/song.chd", "DCIM/x.gdi"}) {
+                    java.io.File f = new java.io.File(vol, g); f.getParentFile().mkdirs(); f.createNewFile();
+                }
+                List<java.io.File> got2 = new java.util.ArrayList<>(); List<String> sc2 = new java.util.ArrayList<>();
+                DcScan.scanVolumeRoot(vol, "Dreamcast", got2, sc2);
+                java.util.Set<String> n2 = new java.util.TreeSet<>(); for (java.io.File f : got2) n2.add(f.getName());
+                check(n2.equals(new java.util.TreeSet<>(java.util.Arrays.asList("ct.gdi", "s1.chd", "r2.cdi"))), "volume root " + n2);
+                List<java.io.File> got3 = new java.util.ArrayList<>();
+                DcScan.scanVolumeRoot(vol, "USB drive", got3, null);
+                java.util.Set<String> n3 = new java.util.TreeSet<>(); for (java.io.File f : got3) n3.add(f.getName());
+                check(n3.equals(new java.util.TreeSet<>(java.util.Arrays.asList("ct.gdi", "r2.cdi"))), "unlabelled volume: no chd " + n3);
+            }
             {   // 0.10.7 PSP
                 java.io.File pr = java.nio.file.Files.createTempDirectory("psp").toFile();
                 new java.io.File(pr, "PSP/GAME/Hero Run").mkdirs(); new java.io.File(pr, "PSP/GAME/Hero Run/EBOOT.PBP").createNewFile();

@@ -266,3 +266,10 @@ def test_rescan_and_empty_note_grown_ups_only():
     assert note.index('prefs.getBoolean("kidsMode", false)') < note.index("scanNotes.get")
     assert '"No games found in: "' in m and "sm.getStorageVolumes()" in m
     assert '"roms/dreamcast"' in (SRC / "DcScan.java").read_text() and "MAX_DEPTH = 3" in (SRC / "PspScan.java").read_text()
+
+
+def test_dreamcast_volume_root_scan():
+    m = (SRC / "MainActivity.java").read_text()
+    assert "DcScan.scanVolumeRoot(r, volLabels.get(k), dcFound, dcDirs);" in m and "v.getDescription(this)" in m
+    sc = (SRC / "DcScan.java").read_text()
+    assert '"dcim"' in sc and '"android"' in sc and '"audiobooks"' in sc
