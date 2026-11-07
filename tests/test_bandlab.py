@@ -94,7 +94,7 @@ def test_launching_the_tile_starts_the_browser_in_its_own_session_with_the_exit_
 
 def test_icon_is_fetched_at_runtime_with_a_coloured_initial_fallback_and_nothing_is_bundled():
     spec = icons.spec_for("web:bandlab")
-    assert spec is not None and spec.site == "https://www.bandlab.com/studio" and spec.kind == "web"
+    assert spec is not None and not spec.site and not icons.downloadable(spec) and spec.kind == "web"
     assert games()["web:bandlab"].cover == ""                        # offline / not fetched yet: the tile draws its initial
     root = Path(__file__).resolve().parents[1] / "atarilauncher"
     assert not [p for p in root.rglob("*") if "bandlab" in p.name.lower()]

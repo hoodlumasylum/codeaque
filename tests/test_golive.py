@@ -26,7 +26,7 @@ def test_the_three_dashboards_open_in_the_browser_window_with_runtime_icons_and_
         w = webapps.BY_ID[wid]
         assert w.browse and w.url.startswith("https://" + host) and not w.drm
         s = icons.spec_for(w.gid)
-        assert s and s.kind == "web" and s.site == w.url                      # favicon is fetched when the app runs
+        assert s and s.kind == "web" and not s.site   # 0.10.0: websites get CodeAque's own icon
     assert "Windows-only" in webapps.BY_ID["tiktoklive"].note
     shipped = [p.name.lower() for p in (Path(golive.__file__).parent / "assets").rglob("*") if p.is_file()]
     assert not any(x in n for n in shipped for x in ("twitch", "tiktok", "youtube", "obs"))

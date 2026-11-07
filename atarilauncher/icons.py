@@ -49,16 +49,24 @@ def icons_dir(root: Path | None = None) -> Path:
     return root or (paths.data_dir() / "icons")
 
 
+_STEAM_APP = re.compile(r"^https://store\.steampowered\.com/app/(\d+)/")
+
+
 def spec_for(gid: str) -> Spec | None:
-    """The icon recipe for one tile (None for tiles that are not apps: ROMs, Studio, Tools ...)."""
+    """The picture recipe for one tile (None for tiles that are not apps / store games: ROMs, Studio, Tools ...).
+    0.10.0 rules: game art only from the game's own official store listing (Steam CDN by appid, Flathub for a Flatpak game);
+    app icons only from what is installed on this computer; websites and catalogue / search pages get CodeAque's own icon."""
     from . import apps, freegames, webapps
     kind, _, ident = gid.partition(":")
-    if kind == "web" and ident in webapps.BY_ID:
+    if kind in ("web", "store") and ident in webapps.BY_ID:
         w = webapps.BY_ID[ident]
-        return Spec(gid, w.title, site=w.url, kind="web")
+        m = _STEAM_APP.match(w.url)
+        if m:
+            return Spec(gid, w.title, steam_appid=m.group(1), kind="store")
+        return Spec(gid, w.title, kind="web")          # nothing is downloaded for a website
     if kind == "app" and ident in apps.BY_ID:
         a = apps.BY_ID[ident]
-        return Spec(gid, a.title, flatpak=a.flatpak, exes=tuple(a.exes), site=APP_SITES.get(ident, ""), kind="app")
+        return Spec(gid, a.title, flatpak=a.flatpak, exes=tuple(a.exes), kind="app")   # installed icon only
     if kind == "free":
         fg = freegames.BY_ID.get(ident)
         if fg is not None and fg.kind == "steam":
@@ -66,6 +74,11 @@ def spec_for(gid: str) -> Spec | None:
         if fg is not None and fg.kind == "flatpak":
             return Spec(gid, fg.title, flatpak=fg.ref, kind="free")
     return None
+
+
+def downloadable(spec: Spec) -> bool:
+    """Only official store art is ever downloaded: Steam by appid, Flathub for a Flatpak game."""
+    return bool(spec.steam_appid) or (spec.kind == "free" and bool(spec.flatpak))
 
 
 # ---------------------------------------------------------------------------------------------- already on this computer
@@ -102,7 +115,22 @@ def _desktop_dirs(home: Path | None) -> list[Path]:
     return dirs
 
 
+_LOCAL_CACHE: dict = {}
+LOCAL_TTL = 60.0
+
+
 def local_icon(spec: Spec, home: Path | None = None) -> str:
+    """Cached for a minute: the console home rebuilds its tiles often and reading every .desktop file each time is slow."""
+    key = (spec.gid, spec.flatpak, spec.exes, str(home))
+    hit = _LOCAL_CACHE.get(key)
+    if hit is not None and time.monotonic() - hit[0] < LOCAL_TTL:
+        return hit[1]
+    got = _local_icon(spec, home)
+    _LOCAL_CACHE[key] = (time.monotonic(), got)
+    return got
+
+
+def _local_icon(spec: Spec, home: Path | None = None) -> str:
     """Path of the app's own icon if it is installed here ('' if not). Flatpak exports first, then .desktop files."""
     if spec.flatpak:
         got = _find_theme_icon(spec.flatpak, home)
@@ -151,7 +179,7 @@ def resolve(spec: Spec, home: Path | None = None, root: Path | None = None) -> t
     if got:
         return got, True
     got = cached(spec.gid, root)
-    return got, spec.kind != "free" or not spec.steam_appid
+    return got, not spec.steam_appid
 
 
 def sniff_ext(data: bytes) -> str:
@@ -252,9 +280,9 @@ class IconFetcher:
         if spec.steam_appid:
             for f in STEAM_FILES:
                 yield f"{self.steam}/{spec.steam_appid}/{f}"
-        if spec.flatpak:
+        if spec.flatpak and spec.kind == "free":
             yield f"{self.flathub}/{urllib.parse.quote(spec.flatpak)}.png"
-        if spec.site:
+        if spec.site and False:          # 0.10.0: no website favicons any more
             html = self.http.get(spec.site, max_bytes=1_500_000)
             if html:
                 yield from page_icons(html.decode("utf-8", "replace"), spec.site)
@@ -302,7 +330,7 @@ class IconFetcher:
         for spec in specs:
             if self.http.cancel.is_set():
                 break
-            if not self.force and (local_icon(spec, home) or cached(spec.gid, self.root)):
+            if not downloadable(spec) or (not self.force and (local_icon(spec, home) or cached(spec.gid, self.root))):
                 rep["skipped"] += 1
                 continue
             ts = self._misses.get(spec.gid)

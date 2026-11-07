@@ -410,7 +410,8 @@ FocusScope {
                     readonly property bool on: index === hh.ti
                     readonly property bool hot: on && hh.zone !== "cats"
                     readonly property string art: tl.modelData.art || ""
-                    readonly property bool pic: hh.covers && art !== "" && artImg.status !== Image.Error
+                    readonly property bool fit: tl.modelData.fit === true || !hh.covers   // an app icon / small picture: shown whole above the name
+                    readonly property bool pic: art !== "" && artImg.status !== Image.Error
                     width: hh.covers ? tileRow.tw : ((index === 0 && hh.cat === 0) || hh.tiles.length <= 7 ? 1.4 : 1) * tileRow.tw; height: tileRow.height
                     scale: hot ? 1.06 : 1.0
                     z: on ? 2 : 0
@@ -430,9 +431,9 @@ FocusScope {
                         }
                         border.width: (tl.hot ? 3 : 1.5) * hh.s
                         border.color: tl.hot ? "#7de5ff" : "#2f6b7a"
-                        clip: hh.covers
+                        clip: true
                         Item {        // 0.9.5: CodeAque's own generic art for a system / emulator tile in My Games (no logos)
-                            visible: hh.covers && !tl.pic
+                            visible: hh.covers && (!tl.pic || tl.fit)
                             anchors.fill: parent; anchors.margins: box.border.width
                             readonly property real hue: tl.modelData.hue !== undefined ? tl.modelData.hue : 0.53
                             Rectangle { anchors.fill: parent; radius: 12 * hh.s
@@ -449,13 +450,16 @@ FocusScope {
                         Image {       // the game's own cover: Steam's library picture, Lutris / Heroic's saved cover, libretro box art
                             id: artImg
                             visible: tl.pic
-                            anchors.fill: parent; anchors.margins: box.border.width
-                            source: hh.covers ? tl.art : ""
-                            fillMode: Image.PreserveAspectCrop; asynchronous: true; cache: true; smooth: true
+                            x: tl.fit ? (parent.width - width) / 2 : box.border.width
+                            y: tl.fit ? (hh.covers ? 40 : 12) * hh.s : box.border.width
+                            width: tl.fit ? 60 * hh.s : parent.width - 2 * box.border.width
+                            height: tl.fit ? 60 * hh.s : parent.height - 2 * box.border.width
+                            source: tl.art
+                            fillMode: tl.fit ? Image.PreserveAspectFit : Image.PreserveAspectCrop; asynchronous: true; cache: true; smooth: true
                             sourceSize: Qt.size(272, 400)
                         }
                         Rectangle {   // dark band so the name stays readable on a picture
-                            visible: tl.pic
+                            visible: tl.pic && !tl.fit
                             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
                             anchors.margins: box.border.width; height: parent.height * 0.3
                             gradient: Gradient { GradientStop { position: 0.0; color: "#00000000" } GradientStop { position: 1.0; color: "#e6000000" } }
@@ -483,7 +487,7 @@ FocusScope {
                             anchors.bottom: parent.bottom; anchors.bottomMargin: 10 * hh.s
                             width: parent.width - 10 * hh.s
                             spacing: 1 * hh.s
-                            Text { visible: !tl.pic; width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "CODEAQUE"
+                            Text { visible: !tl.pic || tl.fit; width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "CODEAQUE"
                                    color: tl.hot ? "#c8f4ff" : "#aab2b8"; font.pixelSize: 9.5 * hh.s; font.letterSpacing: 1.4 * hh.s; font.weight: Font.DemiBold }
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                                    elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.WordWrap; lineHeight: 0.9

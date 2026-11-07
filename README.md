@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.0: pictures on the tiles
+
+- **Game tiles** show the game's own picture. Steam, Lutris, Heroic and retro covers already did this. Now **World Games picks** do too, along with **Free on Steam / free games**: they use the art from the game's own official store listing (Steam by app id, Flathub for a Flatpak game). It is downloaded once when you are online and kept in `~/.local/share/atari/icons/`.
+- **App tiles** show the icon of the app **installed on your computer** (its .desktop Icon= from your icon theme, or the Flatpak export). Nothing is downloaded for apps or websites any more.
+- **Everything else** shows CodeAque's own simple icon: apps not installed yet, websites and streaming services, store catalogue and search tiles, and categories. Every tile keeps its text label.
+- Offline: tiles keep the pictures already saved; anything else shows CodeAque's icon. Nothing third-party is bundled in the app or the release.
+- Android: the launcher already shows the device's own app icons (PackageManager) and CodeAque's icon otherwise. It is unchanged apart from the version.
+
 ## What's new in 0.9.9 — Ask CodeAque (PC, local AI helper)
 
 - **Ask CodeAque** (Settings > Ask CodeAque, or the Ask CodeAque tile in console-home Settings): a chat helper that answers CodeAque questions (adding games, updating, World Games, Get Games, Accounts, CodeAque-only mode, controllers). It runs a small **local, offline** model on this PC: no API key, no account, no online AI service, no per-question cost. It only gives advice; it never asks for passwords and never points to piracy / ROM sites. If it does not know, it says so.

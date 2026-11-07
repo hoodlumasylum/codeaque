@@ -5892,15 +5892,25 @@ class Backend(QObject):
             return
         specs = [s for s in (icons.spec_for(g.gid) for g in self._all
                              if g.gid.partition(":")[0] == "free" and not g.rom_path) if s is not None]
-        if not specs:
-            return
+        from . import webapps as _wa              # 0.10.0: World Games picks etc. - the game's own Steam store art, by appid
+        specs += [sp for sp in (icons.spec_for("store:" + w.id) for w in _wa.STORE_PAGES + _wa.WORLD_PAGES + _wa.SELECTED_WORLD_GAMES)
+                  if sp is not None and icons.downloadable(sp)]
         self._icon_busy = True
         fast = bool(os.environ.get("ATARI_COVERS_FAST"))
         flathub = os.environ.get("ATARI_ICONS_FLATHUB_URL") or icons.FLATHUB_ICONS
         steam_base = os.environ.get("ATARI_COVERS_STEAM_URL") or covers.STEAM_URL
         root = Path(os.environ["ATARI_ICONS_DIR"]) if os.environ.get("ATARI_ICONS_DIR") else None
 
+        apps_here = [sp for sp in (icons.spec_for(g.gid) for g in self._all if g.gid.startswith("app:") and not g.cover) if sp is not None]
+
         def worker():
+            for sp in apps_here:                 # installed apps: their own icon from this computer's icon theme / Flatpak exports
+                try:
+                    got = icons.local_icon(sp)
+                except Exception:
+                    got = ""
+                if got:
+                    self.iconArrived.emit(sp.gid, got, True)
             try:
                 http = covers.Http(pause=0.0 if fast else 0.2, backoff=0.01 if fast else 1.0, timeout=5 if fast else 12)
                 f = icons.IconFetcher(http, root, flathub, steam_base, force=force)
@@ -5917,8 +5927,17 @@ class Backend(QObject):
 
     @Slot(str, str, bool)
     def _on_icon_arrived(self, gid: str, path: str, fit: bool) -> None:
-        if gid.partition(":")[0] in ("web", "app"):
-            return                               # app tiles use CodeAque's own vector pictures
+        if gid.partition(":")[0] in ("web", "store"):
+            self.statsChanged.emit()             # console tiles pick the new picture up when they are rebuilt
+            return
+        if gid.partition(":")[0] == "app":       # 0.10.0: the app's own installed icon (never downloaded)
+            for g in self._all:
+                if g.gid == gid and not g.cover:
+                    g.cover = g.header = path
+                    g.fit = True
+                    self.model.cover_updated(gid)
+            self.statsChanged.emit()
+            return
         for g in self._all:
             if g.gid == gid and (not g.cover or g.cover != path):
                 if g.cover and not g.fit and gid.partition(":")[0] != "free":

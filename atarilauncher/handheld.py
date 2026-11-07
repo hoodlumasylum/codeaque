@@ -57,9 +57,31 @@ def _art_url(g) -> str:
     return ""
 
 
+def picture(gid: str) -> tuple[str, bool]:
+    """(file URL, fit) from the user's own installed icons or official store art cached earlier; ('', True) = CodeAque's own icon."""
+    from . import icons
+    try:
+        spec = icons.spec_for(gid)
+        if spec is None:
+            return "", True
+        path, fit = icons.resolve(spec)
+    except Exception:
+        return "", True
+    return (QUrl.fromLocalFile(path).toString() if path and os.path.isfile(path) else ""), fit
+
+
 def _launch_tile(g, icon: str) -> dict:
+    art, fit = _art_url(g), bool(getattr(g, "fit", False))
+    if not art:
+        art, fit = picture(g.gid)
     return {"key": g.gid, "title": g.title, "icon": icon, "kind": "launch", "gid": g.gid, "items": [],
-            "art": _art_url(g), "hue": _hue(g.title)}
+            "art": art, "fit": fit, "hue": _hue(g.title)}
+
+
+def _with_picture(tile: dict) -> dict:
+    if tile.get("action", "").startswith("store:") and not tile.get("art"):
+        tile["art"], tile["fit"] = picture(tile["action"])
+    return tile
 
 
 def _systems(games, store) -> list:
@@ -128,7 +150,7 @@ def store_tiles(games) -> list:
     (the official stores; you pay the store, the game installs there and shows up in CodeAque). No prices in CodeAque."""
     from . import webapps
     def page(pid, title, icon, hue):
-        return {"key": "store:" + pid, "title": title, "icon": icon, "kind": "action", "action": "store:" + pid, "items": [], "hue": hue}
+        return _with_picture({"key": "store:" + pid, "title": title, "icon": icon, "kind": "action", "action": "store:" + pid, "items": [], "hue": hue})
     tiles = [page("steamtop", "Top Games (Steam)", "star", 0.6)]
     free = [g for g in games if g.gid.startswith("free:") and "does not work" not in g.title.lower()]
     free.sort(key=lambda g: g.gid != "free:rivals")          # pinned: Marvel Rivals (free on Steam, installs through Steam)
@@ -141,8 +163,8 @@ def store_tiles(games) -> list:
 def world_tiles() -> list:
     """PC World Games: publisher catalogues, English-language searches, and selected games, all on Steam's official store."""
     pages = webapps.WORLD_PAGES + webapps.SELECTED_WORLD_GAMES
-    return [{"key": "store:" + p.id, "title": p.title, "icon": "c_pc", "kind": "action", "action": "store:" + p.id,
-             "items": [], "hue": 0.3 + i * 0.043} for i, p in enumerate(pages)]
+    return [_with_picture({"key": "store:" + p.id, "title": p.title, "icon": "c_pc", "kind": "action", "action": "store:" + p.id,
+             "items": [], "hue": 0.3 + i * 0.043}) for i, p in enumerate(pages)]
 
 
 def account_tiles(games) -> list:
