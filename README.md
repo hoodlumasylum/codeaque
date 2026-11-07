@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.14
+
+- **Dreamcast and PSP games in Kids mode.** The last good game scan is saved and shown straight away, on the normal home
+  screen and in Kids mode. A fresh scan then runs in the background. Once Magisk has allowed CodeAque, that scan uses
+  root without asking again. If a scan finds nothing, the last good list is kept.
+
 ## What's new in 0.10.13
 
 - A PSP game with "Vice City" in its name uses Hoodlum Asylum's own "Vice City" cover art, cropped so no console or

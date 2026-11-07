@@ -278,7 +278,7 @@ def test_dreamcast_volume_root_scan():
 def test_scan_fallbacks_and_details():
     m = (SRC / "MainActivity.java").read_text()
     assert "MediaStore.Files.getContentUri(\"external\")" in m and "find /data/media/0 /mnt/media_rw" in m
-    assert m.index("&& rescanAsked) {   // root") > 0   # su only on a grown-up's Rescan
+    assert "(rescanAsked || prefs.getBoolean(\"rootScanOk\", false))) {   // root" in m   # su: a grown-up's Rescan, or once Magisk has said yes
     assert 'case "scandetails": if (!prefs.getBoolean("kidsMode", false)) showScanDetails();' in m
     assert 'android:name="android.permission.MANAGE_EXTERNAL_STORAGE"' in (AND / "app/src/main/AndroidManifest.xml").read_text()
 
@@ -300,3 +300,11 @@ def test_vice_city_own_cover():
     assert body.index("pick = f") < body.index("R.drawable.ha_vice_city") and "if (b == null && Catalog.isPspRom(it)" in body
     f = AND / "app/src/main/res/drawable-nodpi/ha_vice_city.webp"
     assert f.is_file() and f.stat().st_size < 120_000
+
+
+def test_scan_cache_shared_with_kids_rows():
+    m = (SRC / "MainActivity.java").read_text()
+    sd = m.split("private void scanDreamcast()", 1)[1]
+    assert sd.index('prefs.getStringSet("gameScanCache"') < sd.index("if (dcScanning || !canReadFiles()) return;")
+    assert 'prefs.edit().putStringSet("gameScanCache", cache)' in m and "kept the last good list" in m
+    assert "Catalog.kidsMode(allRoms, kidsNew)" in m and "allRoms.addAll(dcFiles)" in m

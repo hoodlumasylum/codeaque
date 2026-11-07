@@ -693,6 +693,11 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void scanDreamcast() {
+        if (dcFiles.isEmpty()) {   // 0.10.14: last good scan, shared by the normal and Kids mode rows, shown at once
+            List<Catalog.Item> cached = new ArrayList<>();
+            for (String e : prefs.getStringSet("gameScanCache", Collections.<String>emptySet())) cached.add(Catalog.gameRom(PspScan.fileName(new java.io.File(e)), Uri.fromFile(new java.io.File(e)).toString()));
+            if (!cached.isEmpty()) { java.util.Collections.sort(cached, (x, y) -> x.label.compareToIgnoreCase(y.label)); dcFiles = cached; rescan(); }
+        }
         if (dcScanning || !canReadFiles()) return;
         dcScanning = true;
         new Thread(() -> {
@@ -750,22 +755,28 @@ public class MainActivity extends Activity implements HomeView.Host {
                     diag.append("MediaStore: ").append(n).append(" matching files\n");
                 } catch (Exception e) { diag.append("MediaStore: ").append(e.getClass().getSimpleName()).append('\n'); }
             }
-            if ((dcFound.isEmpty() || pspFound.isEmpty()) && rescanAsked) {   // root (Magisk asks first) - only on a grown-up's Rescan
+            if ((dcFound.isEmpty() || pspFound.isEmpty()) && (rescanAsked || prefs.getBoolean("rootScanOk", false))) {   // root (Magisk asks first) - a grown-up's Rescan, or silently once Magisk has said yes
                 StringBuilder o2 = new StringBuilder();
                 int rc = su("find /data/media/0 /mnt/media_rw -maxdepth 7 -type f \\( -iname '*.gdi' -o -iname '*.cdi' -o -iname '*.chd' -o -iname '*.iso' -o -iname '*.cso' -o -iname '*.pbp' \\) 2>/dev/null | head -n 600", o2);
                 int n = 0;
                 for (String line : o2.toString().split("\n")) { line = line.trim(); if (!line.startsWith("/")) continue; n++;
                     String path = DcScan.fromRootPath(line); DcScan.classify(path, anyDcCard && !path.startsWith("/storage/emulated"), dcFound, pspFound); }
                 diag.append("Root find: exit ").append(rc).append(", ").append(n).append(" files\n");
+                if (rc == 0) prefs.edit().putBoolean("rootScanOk", true).apply();
             }
             diag.append("Total: ").append(dcFound.size()).append(" Dreamcast, ").append(pspFound.size()).append(" PSP");
             out.clear();
             for (java.io.File f : dcFound) out.add(Catalog.gameRom(f.getName(), Uri.fromFile(f).toString()));
             for (java.io.File f : pspFound) out.add(Catalog.gameRom(PspScan.fileName(f), Uri.fromFile(f).toString()));
+            java.util.Set<String> cache = new java.util.HashSet<>();
+            for (java.io.File f : dcFound) cache.add(f.getAbsolutePath());
+            for (java.io.File f : pspFound) cache.add(f.getAbsolutePath());
+            if (!cache.isEmpty()) prefs.edit().putStringSet("gameScanCache", cache).apply();
+            else if (!dcFiles.isEmpty()) { out.clear(); out.addAll(dcFiles); diag.append("\nNothing found this time - kept the last good list (").append(dcFiles.size()).append(" games)"); }
             scanDetails = diag.toString();
             String vols = android.text.TextUtils.join(", ", rs);
-            String dcNote = dcFound.isEmpty() ? "No games found in: " + (dcDirs.isEmpty() ? "no Dreamcast / ROMS folders on " + vols : shortList(dcDirs)) + " - Settings > Scan details" : null;
-            String pspNote = pspFound.isEmpty() ? "No games found in: " + (pspDirs.isEmpty() ? "no PSP / ROMS folders on " + vols : shortList(pspDirs)) + " - Settings > Scan details" : null;
+            String dcNote = dcFound.isEmpty() && out.isEmpty() ? "No games found in: " + (dcDirs.isEmpty() ? "no Dreamcast / ROMS folders on " + vols : shortList(dcDirs)) + " - Settings > Scan details" : null;
+            String pspNote = pspFound.isEmpty() && out.isEmpty() ? "No games found in: " + (pspDirs.isEmpty() ? "no PSP / ROMS folders on " + vols : shortList(pspDirs)) + " - Settings > Scan details" : null;
             final boolean manual = rescanAsked; rescanAsked = false;
             runOnUiThread(() -> { dcScanning = false; scanNotes.put("dreamcast", dcNote); scanNotes.put("psp", pspNote);
                 boolean changed = out.size() != dcFiles.size(); dcFiles = out; if (changed) rescan(); view.invalidate();
