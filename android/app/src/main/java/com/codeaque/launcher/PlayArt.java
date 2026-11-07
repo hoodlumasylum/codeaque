@@ -78,7 +78,7 @@ public final class PlayArt {
         } finally { c.disconnect(); }
     }
 
-    static boolean save(String url, File f) {
+    public static boolean save(String url, File f) {
         File tmp = new File(f.getPath() + ".part");
         try {
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();

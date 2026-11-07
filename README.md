@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.4: Marvel Rivals on GeForce NOW (Android)
+
+- **Marvel Rivals tile** on the Featured row and in the Kids mode Play row. It opens the game's official GeForce NOW
+  deep link (https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4).
+  - On RK3566 / Anbernic handhelds it opens in Chrome (or the default browser).
+  - Elsewhere it uses the GeForce NOW app if it is installed (or just opens the app if it can't take the link),
+    otherwise the browser.
+- The tile picture is the official Steam store header for app 2767030. It is fetched while the app runs and cached, and
+  never bundled. Offline, the tile shows CodeAque's icon and the label "Marvel Rivals".
+
 ## What's new in 0.10.3: pictures on Android game tiles
 
 - Play games that aren't installed yet (Featured, Kids, Kids mode, GeForce NOW) now show the game's own picture from

@@ -191,6 +191,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     @Override public android.graphics.Bitmap appIcon(Catalog.Item it) {
+        if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
         if (!it.isDeviceApp()) return playArt(it, false);
         String k = it.key();
         if (icons.containsKey(k)) return icons.get(k);
@@ -237,6 +238,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public android.graphics.Bitmap cover(Catalog.Item it) {
         String k = it.key();
         if (coverCache.containsKey(k)) return coverCache.get(k);
+        if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp() && launchIntent(it) == null) return playArt(it, true);   // 0.10.3
         android.graphics.Bitmap b = null;
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp()) {     // a catalogue tile (Steam, Steam Link): the installed app's own banner
@@ -424,6 +426,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "bootanim": bootAnim(); break;
             case "rotation": rotationToggle(); break;
             case "kids": kidsMode(true); break;
+            case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
             case "theme": {
                 String n = Palette.next(theme().id);
@@ -568,6 +571,34 @@ public class MainActivity extends Activity implements HomeView.Host {
         try { getPackageManager().getPackageInfo("com.android.chrome", 0); start(new Intent(v).setPackage("com.android.chrome")); return; }
         catch (Exception ignored) { }
         start(v);
+    }
+
+    // ---------- 0.10.4 Marvel Rivals on GeForce NOW ----------
+    /** Handhelds (GammaOS): the GFN web client in Chrome. Elsewhere: the GFN app with the game's deep link, else its
+     *  home screen, else the web link. */
+    private void openRivals() {
+        if (Catalog.gfnInBrowser(handheld())) { openWeb(Catalog.RIVALS_GFN); return; }
+        Intent app = getPackageManager().getLaunchIntentForPackage("com.nvidia.geforcenow");
+        if (app != null) {
+            try { start(new Intent(Intent.ACTION_VIEW, Uri.parse(Catalog.RIVALS_GFN)).setPackage("com.nvidia.geforcenow")); return; }
+            catch (Exception ignored) { }
+            toast("Opening GeForce NOW: search for Marvel Rivals."); start(app); return;
+        }
+        openWeb(Catalog.RIVALS_GFN);
+    }
+
+    private android.graphics.Bitmap rivalsPic;
+    private boolean rivalsTried;
+    /** The official Steam header, fetched once at runtime and cached; null (CodeAque icon + label) until then or offline. */
+    private android.graphics.Bitmap rivalsHeader() {
+        if (rivalsPic != null) return rivalsPic;
+        java.io.File f = new java.io.File(new java.io.File(getCacheDir(), "playart"), "steam-2767030.header.jpg");
+        if (f.isFile()) return rivalsPic = decodeCover(f);
+        if (!rivalsTried && online()) {
+            rivalsTried = true;
+            new Thread(() -> { f.getParentFile().mkdirs(); boolean ok = PlayArt.save(Catalog.RIVALS_HEADER, f); if (ok) runOnUiThread(view::invalidate); }).start();
+        }
+        return null;
     }
 
     // ---------- 0.10.2 Kids mode ----------

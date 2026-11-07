@@ -131,12 +131,20 @@ public final class Catalog {
     public static final String GFN_WEB = "https://play.geforcenow.com";
     public static boolean gfnInBrowser(boolean handheld) { return handheld; }
 
+    /** 0.10.4: Marvel Rivals on GeForce NOW. Official GFN deep-link format (NVIDIA GeForceNOW-SDK, GfnSdk-Deep-Linking.md);
+     *  game-id from GFN's own catalogue (Steam 2767030), checked 7 Nov 2026: the page is "Play Marvel Rivals | NVIDIA GeForce NOW". */
+    public static final String RIVALS_GFN_ID = "4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4";
+    public static final String RIVALS_GFN = GFN_WEB + "/games?game-id=" + RIVALS_GFN_ID + "&utm_source=codeaque&utm_campaign=launcher";
+    /** Runtime-only picture: the official Steam store header for app 2767030 (never bundled). */
+    public static final String RIVALS_HEADER = "https://cdn.cloudflare.steamstatic.com/steam/apps/2767030/header.jpg";
+    public static final Item MARVEL_RIVALS = act("Marvel Rivals", "cloud", "gfn:rivals");
+
     /** 0.10.2 Kids mode: only these big rows, nothing retro / ROM / BIOS / Ask / projector / advanced.
      *  Grown-ups leave it by holding Select (or Y / Menu) for a second, which opens KIDS_OFF. */
     public static final Item KIDS_OFF = act("Turn off Kids mode", "gear", "kidsoff");
     public static List<Category> kidsMode() {
         List<Category> c = new ArrayList<>();
-        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW));
+        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW, MARVEL_RIVALS));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
         return c;
@@ -199,7 +207,7 @@ public final class Catalog {
         List<Category> c = new ArrayList<>();
         // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
-        c.add(new Category("steam", "Featured", "display", ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, app("Steam Link", "display", "com.valvesoftware.steamlink"),
+        c.add(new Category("steam", "Featured", "display", ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community")));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.

@@ -149,3 +149,14 @@ def test_roblox_tile_is_original_drawn_art():
     assert "if (it == Catalog.ROBLOX) blockyArt(c);" in h and "private void buddy(" in h
     assets = [p.name.lower() for p in (AND / "app/src/main").rglob("*")]
     assert not any("roblox" in n for n in assets)
+
+
+def test_marvel_rivals_gfn_tile():
+    c = (SRC / "Catalog.java").read_text()
+    assert 'act("Marvel Rivals", "cloud", "gfn:rivals")' in c and "GEFORCE_NOW, MARVEL_RIVALS" in c
+    assert "game-id=" in c and "utm_source=codeaque&utm_campaign=launcher" in c
+    m = (SRC / "MainActivity.java").read_text()
+    body = m.split("private void openRivals()", 1)[1].split("\n    }\n", 1)[0]
+    assert body.index("gfnInBrowser(handheld())") < body.index('getLaunchIntentForPackage("com.nvidia.geforcenow")') < body.rindex("openWeb(Catalog.RIVALS_GFN)")
+    assert 'case "gfn:rivals": openRivals();' in m
+    assert not any("rivals" in p.name.lower() or "2767030" in p.name for p in (AND / "app/src/main").rglob("*"))
