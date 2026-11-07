@@ -96,6 +96,7 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override protected void onResume() {
         super.onResume();
+        scanDreamcast();
         installedCache.clear();       // apps may have been installed while we were away
         immersive();
         rescan();
@@ -186,7 +187,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         view.setProjector(proj);
         boolean kidsOn = prefs.getBoolean("kidsMode", false);
         view.setKids(kidsOn);
-        view.setCategories(kidsOn ? Catalog.kidsMode() : Catalog.categories(games, apps, emus, roms, proj, bootAnimAvailable()));
+        List<Catalog.Item> allRoms = new ArrayList<>(roms); allRoms.addAll(dcFiles);
+        view.setCategories(kidsOn ? Catalog.kidsMode(allRoms) : Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()));
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
 
@@ -379,6 +381,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public void open(Catalog.Item it) {
         try {
             if (it.isAction()) { action(it.action); return; }
+            if (Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast(it); return; }
             if (it.isRom()) { forceLandscape(); openRom(it); return; }
             if (it.isDeviceApp()) { start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls)); return; }
             if (it == Catalog.GEFORCE_NOW && Catalog.gfnInBrowser(handheld())) { openWeb(Catalog.GFN_WEB); return; }
@@ -401,7 +404,8 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     private void action(String a) {
         switch (a) {
-            case "wifi": start(new Intent(Settings.ACTION_WIFI_SETTINGS)); break;
+            case "wifi": openWifi(); break;
+            case "files": askFileAccess(); break;
             case "bluetooth": start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); break;
             case "display": start(new Intent(Settings.ACTION_DISPLAY_SETTINGS)); break;
             case "settings": start(new Intent(Settings.ACTION_SETTINGS)); break;
@@ -571,6 +575,113 @@ public class MainActivity extends Activity implements HomeView.Host {
         try { getPackageManager().getPackageInfo("com.android.chrome", 0); start(new Intent(v).setPackage("com.android.chrome")); return; }
         catch (Exception ignored) { }
         start(v);
+    }
+
+    // ---------- 0.10.5 Dreamcast: the player's own files on internal storage / SD ----------
+    private volatile List<Catalog.Item> dcFiles = new ArrayList<>();
+    private volatile boolean dcScanning;
+
+    private boolean canReadFiles() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) return android.os.Environment.isExternalStorageManager();
+        return checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void scanDreamcast() {
+        if (dcScanning || !canReadFiles()) return;
+        dcScanning = true;
+        new Thread(() -> {
+            List<java.io.File> roots = new ArrayList<>();
+            roots.add(android.os.Environment.getExternalStorageDirectory());
+            roots.addAll(DcScan.volumeRoots(new java.io.File("/storage"), new java.io.File("/mnt/media_rw")));   // SD + USB OTG
+            for (java.io.File f : getExternalFilesDirs(null)) {           // .../Android/data/<pkg>/files on each volume -> its root
+                if (f == null) continue;
+                String p = f.getAbsolutePath(); int i = p.indexOf("/Android/data/");
+                if (i > 0) roots.add(new java.io.File(p.substring(0, i)));
+            }
+            List<Catalog.Item> out = new ArrayList<>();
+            for (java.io.File f : DcScan.scan(roots)) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
+            String bios = importBios(roots);
+            runOnUiThread(() -> { dcScanning = false; boolean changed = out.size() != dcFiles.size(); dcFiles = out; if (changed) rescan();
+                if (bios != null && !prefs.getBoolean("kidsMode", false)) toast(bios); });
+        }).start();
+    }
+
+    /** The player's own dc_boot.bin / dc_flash.bin, copied into Flycast's data folder once. Returns a message or null. */
+    private String importBios(List<java.io.File> roots) {
+        List<java.io.File> found = DcScan.findBios(roots);
+        if (found.isEmpty()) return null;
+        java.io.File data = new java.io.File(android.os.Environment.getExternalStorageDirectory(), DcScan.FLYCAST_DATA);
+        java.util.Set<String> done = new java.util.HashSet<>(prefs.getStringSet("dcBios", new java.util.HashSet<>()));
+        List<String> copied = new ArrayList<>(), failed = new ArrayList<>();
+        for (java.io.File b : found) {
+            java.io.File dst = new java.io.File(data, DcScan.targetName(b));
+            if (done.contains(b.getAbsolutePath()) || (dst.isFile() && dst.length() == b.length())) continue;
+            boolean ok = false;
+            try {                                                      // works where Android still lets us write there (Android 10 and older)
+                data.mkdirs();
+                try (java.io.InputStream in = new java.io.FileInputStream(b); java.io.OutputStream o = new java.io.FileOutputStream(dst)) {
+                    byte[] buf = new byte[65536]; int n; while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                }
+                ok = dst.length() == b.length();
+            } catch (Exception ignored) { }
+            if (!ok && bootAnimAvailable()) {                          // Android 11+: only root can write into another app's folder
+                String c = DcScan.rootCopyCmd(b.getAbsolutePath(), data.getAbsolutePath());
+                ok = c != null && su(c, null) == 0;
+            }
+            if (ok) { copied.add(b.getName()); done.add(b.getAbsolutePath()); } else failed.add(b.getAbsolutePath());
+        }
+        prefs.edit().putStringSet("dcBios", done).apply();
+        if (!failed.isEmpty()) return "Found your Dreamcast BIOS but Android doesn't let CodeAque copy it into Flycast. In Flycast: Settings > "
+                + "Custom Paths > BIOS Folders > Add, and pick " + new java.io.File(failed.get(0)).getParent();
+        return copied.isEmpty() ? null : "Copied your Dreamcast BIOS (" + String.join(", ", copied) + ") into Flycast.";
+    }
+
+    /** Grown-up Settings: let CodeAque read game files (Android's "All files access"); hidden in Kids mode. */
+    private void askFileAccess() {
+        if (canReadFiles()) { toast("CodeAque can already read your game files."); scanDreamcast(); return; }
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            try { start(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + getPackageName()))); return; }
+            catch (Exception e) { try { start(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)); return; } catch (Exception ignored) { } }
+        } else { requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 5); return; }
+        toast("Allow file access for CodeAque in Android settings.");
+    }
+
+    /** Opens one game file directly in Flycast (store page if Flycast is missing). */
+    private void openInFlycast(Catalog.Item it) {
+        if (getPackageManager().getLaunchIntentForPackage("com.flycast.emulator") == null) { store("com.flycast.emulator"); return; }
+        Uri u = Uri.parse(it.uri);
+        Intent v = new Intent(Intent.ACTION_VIEW).setDataAndType(u, "*/*").setPackage("com.flycast.emulator")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        android.os.StrictMode.VmPolicy old = android.os.StrictMode.getVmPolicy();
+        try {
+            if ("file".equals(u.getScheme())) android.os.StrictMode.setVmPolicy(new android.os.StrictMode.VmPolicy.Builder().build());  // Flycast reads the path itself
+            start(v);
+        } catch (Exception e) {
+            toast("Flycast could not open it directly. Open Flycast and add the folder with your games.");
+            start(getPackageManager().getLaunchIntentForPackage("com.flycast.emulator"));
+        } finally { android.os.StrictMode.setVmPolicy(old); }
+    }
+
+    // ---------- 0.10.5 Kids mode Wi-Fi tile ----------
+    private void openWifi() {
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            try { startActivity(new Intent(Settings.Panel.ACTION_WIFI)); return; } catch (Exception ignored) { }
+        }
+        try { start(new Intent(Settings.ACTION_WIFI_SETTINGS)); } catch (Exception e) { toast("Wi-Fi settings are not available here"); }
+    }
+
+    /** Shown under the Wi-Fi tile. The network name needs location access on Android 10+, so it may just say "Connected". */
+    @Override public String wifi() {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null && !wm.isWifiEnabled()) return "Wi-Fi is off - press A to turn it on";
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkCapabilities nc = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
+            if (nc == null || !nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return "Not connected - press A to pick a Wi-Fi";
+            String ssid = wm == null || wm.getConnectionInfo() == null ? null : wm.getConnectionInfo().getSSID();
+            ssid = Catalog.cleanSsid(ssid);
+            return ssid == null ? "Connected to Wi-Fi" : "Connected to " + ssid;
+        } catch (Exception e) { return "Press A for Wi-Fi"; }
     }
 
     // ---------- 0.10.4 Marvel Rivals on GeForce NOW ----------

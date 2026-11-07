@@ -1,0 +1,118 @@
+package com.codeaque.launcher;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/** 0.10.5: the player's own Dreamcast game files on internal storage and SD cards (common folders only).
+ *  Nothing is downloaded and no source is linked. Plain Java for the build-time checks. */
+public final class DcScan {
+    private DcScan() { }
+
+    /** Relative to each storage root. "Download" is checked too; .chd only counts inside a Dreamcast folder. */
+    public static final String[] FOLDERS = {"ROMs/dc", "ROMs/dreamcast", "ROMs/Dreamcast", "roms/dc", "roms/dreamcast", "Roms/dc",
+            "Roms/Dreamcast", "Dreamcast", "dreamcast", "Download", "Downloads"};
+    static final int MAX_FILES = 300, MAX_DEPTH = 2;
+
+    public static boolean dreamcastFile(String name, boolean inDcFolder) {
+        String n = name.toLowerCase(Locale.ROOT);
+        if (n.startsWith(".")) return false;
+        return n.endsWith(".gdi") || n.endsWith(".cdi") || (inDcFolder && n.endsWith(".chd"));
+    }
+
+    static boolean dcFolder(String rel) {
+        String r = rel.toLowerCase(Locale.ROOT);
+        return r.endsWith("/dc") || r.endsWith("dreamcast");
+    }
+
+    public static List<File> scan(List<File> roots) {
+        List<File> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (File root : roots) {
+            if (root == null) continue;
+            for (String rel : FOLDERS) {
+                File d = new File(root, rel);
+                String key; try { key = d.getCanonicalPath(); } catch (Exception e) { key = d.getAbsolutePath(); }
+                if (!seen.add(key)) continue;   // ROMs/dc and roms/dc are the same folder on FAT/sdcardfs
+                walk(d, dcFolder(rel), 0, out);
+                if (out.size() >= MAX_FILES) return out;
+            }
+        }
+        return out;
+    }
+
+    private static void walk(File d, boolean dc, int depth, List<File> out) {
+        File[] fs = d.listFiles();
+        if (fs == null) return;
+        java.util.Arrays.sort(fs);
+        for (File f : fs) {
+            if (out.size() >= MAX_FILES) return;
+            if (f.isDirectory()) { if (depth < MAX_DEPTH && !f.getName().startsWith(".")) walk(f, dc, depth + 1, out); }
+            else if (dreamcastFile(f.getName(), dc)) {
+                // a .gdi's own .bin/.raw tracks sit next to it; the .gdi is the one file to open
+                boolean dup = false; for (File o : out) if (o.getAbsolutePath().equals(f.getAbsolutePath())) dup = true;
+                if (!dup) out.add(f);
+            }
+        }
+    }
+
+    /** USB OTG sticks and SD cards: every volume under /storage (not the emulated one) and /mnt/media_rw (often root-only). */
+    public static List<File> volumeRoots(File storage, File mediaRw) {
+        List<File> out = new ArrayList<>();
+        for (File base : new File[]{storage, mediaRw}) {
+            File[] fs = base == null ? null : base.listFiles();
+            if (fs == null) continue;
+            java.util.Arrays.sort(fs);
+            for (File f : fs) {
+                String n = f.getName();
+                if (n.equals("emulated") || n.equals("self") || n.startsWith(".") || !f.isDirectory()) continue;
+                out.add(f);
+            }
+        }
+        return out;
+    }
+
+    // ---------- the player's OWN Dreamcast BIOS (never bundled or downloaded) ----------
+    public static final String[] BIOS_NAMES = {"dc_boot.bin", "dc_bios.bin", "dc_flash.bin"};
+    public static final String[] BIOS_FOLDERS = {"", "BIOS", "bios", "BIOS/dc", "bios/dc", "Bios", "ROMs/dc", "roms/dc", "ROMs/dreamcast",
+            "roms/dreamcast", "Dreamcast", "Download", "Downloads", "RetroArch/system/dc", "system/dc"};
+    /** Flycast's data folder (its default home on Android); BIOS files go in here. */
+    public static final String FLYCAST_DATA = "Android/data/com.flycast.emulator/files/data";
+
+    /** First copy of each BIOS name found, plausible size only (dc_boot 2 MB, dc_flash 128 KB). */
+    public static List<File> findBios(List<File> roots) {
+        List<File> out = new ArrayList<>(); java.util.Set<String> got = new java.util.HashSet<>();
+        for (File root : roots) {
+            if (root == null) continue;
+            for (String rel : BIOS_FOLDERS) for (String n : BIOS_NAMES) {
+                File f = new File(rel.isEmpty() ? root : new File(root, rel), n);
+                String key = n.equals("dc_bios.bin") ? "dc_boot.bin" : n;
+                if (got.contains(key) || !f.isFile()) continue;
+                long len = f.length();
+                boolean ok = key.equals("dc_boot.bin") ? len == 2097152 : len == 131072;
+                if (ok) { got.add(key); out.add(f); }
+            }
+        }
+        return out;
+    }
+
+    /** Flycast looks for dc_boot.bin (dc_bios.bin is an alias, copied under its own name). */
+    public static String targetName(File bios) { return bios.getName(); }
+
+    static boolean safe(String p) { return p != null && p.startsWith("/") && p.matches("[A-Za-z0-9/._()+-]+") && !p.contains(".."); }
+
+    /** Root copy into Flycast's data folder, owned by Flycast (other apps can't write there on Android 11+). Null = unsafe path. */
+    public static String rootCopyCmd(String src, String dataDir) {
+        if (!safe(src) || !safe(dataDir)) return null;
+        String dst = dataDir + "/" + new File(src).getName();
+        return "mkdir -p '" + dataDir + "' && cp '" + src + "' '" + dst + "' && chown $(stat -c %u:%g '" + new File(dataDir).getParent() + "') '"
+                + dataDir + "' '" + dst + "' && chmod 660 '" + dst + "'";
+    }
+
+    /** "Crazy Taxi (USA).gdi" -> "Crazy Taxi (USA)". */
+    public static String title(File f) {
+        String n = f.getName(); int i = n.lastIndexOf('.');
+        return i > 0 ? n.substring(0, i) : n;
+    }
+}

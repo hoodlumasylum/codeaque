@@ -141,12 +141,36 @@ public final class Catalog {
 
     /** 0.10.2 Kids mode: only these big rows, nothing retro / ROM / BIOS / Ask / projector / advanced.
      *  Grown-ups leave it by holding Select (or Y / Menu) for a second, which opens KIDS_OFF. */
+    /** "\"Home\"" -> Home; Android's placeholders ("<unknown ssid>", empty) -> null. */
+    public static String cleanSsid(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) s = s.substring(1, s.length() - 1);
+        if (s.isEmpty() || s.equalsIgnoreCase("<unknown ssid>") || s.equals("0x")) return null;
+        return s.length() > 32 ? s.substring(0, 32) : s;
+    }
+    /** 0.10.5 Dreamcast: Flycast (labelled "Dreamcast") then the player's own .gdi / .cdi / .chd files. No BIOS, no games, no art. */
+    public static final Item DREAMCAST = app("Dreamcast", "disc", "com.flycast.emulator");
+    public static boolean isDreamcastRom(Item i) {
+        return i.isRom() && i.cls != null && DcScan.dreamcastFile(i.cls, i.uri != null && i.uri.startsWith("file:"));
+    }
+    public static Category dreamcast(List<Item> roms) {
+        List<Item> l = new ArrayList<>(); l.add(DREAMCAST);
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (Item r : roms) if (isDreamcastRom(r) && names.add(r.label.toLowerCase(java.util.Locale.ROOT))) l.add(r);
+        return new Category("dreamcast", "Dreamcast", "disc", l.toArray(new Item[0]));
+    }
+    public static final Item KIDS_WIFI = act("Wi-Fi", "wifi", "wifi");
     public static final Item KIDS_OFF = act("Turn off Kids mode", "gear", "kidsoff");
-    public static List<Category> kidsMode() {
+    public static List<Category> kidsMode() { return kidsMode(Collections.<Item>emptyList()); }
+    /** roms = the player's own game files; only the Dreamcast ones are shown, and no folder-import tiles. */
+    public static List<Category> kidsMode(List<Item> roms) {
         List<Category> c = new ArrayList<>();
         c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW, MARVEL_RIVALS));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
+        Category dc = dreamcast(roms); c.add(new Category("kdc", dc.label, dc.icon, dc.items.toArray(new Item[0])));
+        c.add(new Category("kwifi", "Wi-Fi", "wifi", KIDS_WIFI));   // 0.10.5: just the Wi-Fi tile
         return c;
     }
 
@@ -223,6 +247,7 @@ public final class Catalog {
                 app("Mupen64Plus FZ", "cart", "org.mupen64plusae.v3.fzurita"),
                 app("Flycast", "disc", "com.flycast.emulator"),
                 app("DraStic", "handheld", "com.dsemu.drastic")));
+        c.add(dreamcast(roms));   // 0.10.5
         c.add(new Category("streams", "Streams", "stream",
                 app("Netflix", "film", "com.netflix.mediaclient"),
                 app("YouTube", "stream", "com.google.android.youtube", "com.google.android.youtube.tv"),
@@ -255,7 +280,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
         return c;
     }
 

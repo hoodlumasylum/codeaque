@@ -111,7 +111,7 @@ def test_kids_mode_big_and_locked_down():
     assert "onKeyLongPress" in h and "host.open(Catalog.KIDS_OFF)" in h and "e.startTracking()" in h
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
-    assert 'kidsOn ? Catalog.kidsMode() :' in m and 'getBoolean("kidsMode", false)' in m
+    assert 'kidsOn ? Catalog.kidsMode(allRoms) :' in m and 'getBoolean("kidsMode", false)' in m
 
 
 def test_geforce_now_web_client_on_handhelds():
@@ -160,3 +160,35 @@ def test_marvel_rivals_gfn_tile():
     assert body.index("gfnInBrowser(handheld())") < body.index('getLaunchIntentForPackage("com.nvidia.geforcenow")') < body.rindex("openWeb(Catalog.RIVALS_GFN)")
     assert 'case "gfn:rivals": openRivals();' in m
     assert not any("rivals" in p.name.lower() or "2767030" in p.name for p in (AND / "app/src/main").rglob("*"))
+
+
+def test_kids_mode_wifi_tile_only():
+    c = (SRC / "Catalog.java").read_text()
+    km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
+    assert 'new Category("kwifi", "Wi-Fi", "wifi", KIDS_WIFI)' in km and 'KIDS_WIFI = act("Wi-Fi", "wifi", "wifi")' in c
+    m = (SRC / "MainActivity.java").read_text()
+    body = m.split("private void openWifi()", 1)[1].split("\n    }\n", 1)[0]
+    assert body.index("Settings.Panel.ACTION_WIFI") < body.index("Settings.ACTION_WIFI_SETTINGS") and "SDK_INT >= 29" in body
+    assert "@Override public String wifi()" in m and "ACCESS_WIFI_STATE" in (AND / "app/src/main/AndroidManifest.xml").read_text()
+    assert '"wifi".equals(f.action) ? host.wifi()' in (SRC / "HomeView.java").read_text()
+
+
+def test_dreamcast_section_own_files_only():
+    c = (SRC / "Catalog.java").read_text()
+    assert 'DREAMCAST = app("Dreamcast", "disc", "com.flycast.emulator")' in c and "c.add(dreamcast(roms));" in c
+    sc = (SRC / "DcScan.java").read_text()
+    assert '"ROMs/dc"' in sc and '"roms/dreamcast"' in sc and '"Download"' in sc and ".gdi" in sc and ".cdi" in sc and ".chd" in sc
+    m = (SRC / "MainActivity.java").read_text()
+    assert "scanDreamcast();" in m and 'setPackage("com.flycast.emulator")' in m and "isExternalStorageManager()" in m
+    assert "http" not in sc.lower() and "download(" not in sc.lower()
+    names = [p.name.lower() for p in (AND / "app/src/main").rglob("*")]
+    assert not any(n.endswith((".gdi", ".cdi", ".chd", ".bin")) or "dc_boot" in n for n in names)
+
+
+def test_dreamcast_usb_and_own_bios_import():
+    sc = (SRC / "DcScan.java").read_text()
+    assert '"/storage"' not in sc  # roots come from MainActivity
+    m = (SRC / "MainActivity.java").read_text()
+    assert 'DcScan.volumeRoots(new java.io.File("/storage"), new java.io.File("/mnt/media_rw"))' in m
+    assert "importBios(roots)" in m and "Custom Paths > BIOS Folders" in m
+    assert 'FLYCAST_DATA = "Android/data/com.flycast.emulator/files/data"' in sc and '"dc_boot.bin"' in sc and '"dc_flash.bin"' in sc

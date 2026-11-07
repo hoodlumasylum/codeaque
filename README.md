@@ -31,6 +31,24 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.5
+
+- **Kids mode Wi-Fi tile:** a big Wi-Fi row in Kids mode. It opens Android's Wi-Fi panel on Android 10+, or Wi-Fi settings on
+  older versions. Under the tile it shows whether Wi-Fi is off, not connected, or connected (and the network name when
+  Android allows it). No other grown-up settings are shown.
+
+- **Dreamcast section** (normal home, after Retro, and in Kids mode). A "Dreamcast" tile opens Flycast, or its Play page if
+  it isn't installed. Next to it are your own Dreamcast game files (.gdi / .cdi, and .chd in Dreamcast folders), found
+  automatically in ROMs/dc, roms/dreamcast, Dreamcast and Download on internal storage and SD cards. Each one opens in
+  Flycast. On Android 11+ this needs "All files access": grown-ups can turn it on in Settings > Find Dreamcast games.
+  The scan also covers SD cards and USB OTG sticks (/storage/..., and /mnt/media_rw when Android allows it).
+  Nothing is downloaded or linked, and no BIOS, games or Sega art are bundled. Kids mode never shows file import.
+- **Your own Dreamcast BIOS:** if CodeAque finds your dc_boot.bin (or dc_bios.bin) and dc_flash.bin, at the correct sizes,
+  in a storage root, BIOS, BIOS/dc, ROMs/dc, Download or RetroArch/system/dc, it copies them into Flycast's data folder
+  (Android/data/com.flycast.emulator/files/data). Android 11+ only allows that with root (Magisk). Without root, CodeAque
+  tells you to add that folder in Flycast > Settings > Custom Paths > BIOS Folders instead. BIOS files are never bundled or
+  downloaded.
+
 ## What's new in 0.10.4: Marvel Rivals on GeForce NOW (Android)
 
 - **Marvel Rivals tile** on the Featured row and in the Kids mode Play row. It opens the game's official GeForce NOW
