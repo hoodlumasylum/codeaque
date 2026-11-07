@@ -242,12 +242,12 @@ public class CatalogTest {
                 for (Catalog.Category k : Catalog.kidsMode(pr2)) check(!k.items.contains(Catalog.FILES) && !k.items.contains(Catalog.RESCAN), "no Files in kids mode");
                 check(Catalog.dreamcast(pr2).items.size() == 4, "dc keeps its own chd only");
                 List<Catalog.Category> k2 = Catalog.kidsMode(pr2);
-                check(k2.get(Catalog.indexOf(k2, "kpsp")).items.size() == 5, "kids psp");
+                check(k2.get(Catalog.indexOf(k2, "kpsp")).items.size() == 4 && !k2.get(Catalog.indexOf(k2, "kpsp")).items.contains(Catalog.PSP), "kids psp games only");
                 List<Catalog.Category> n2 = Catalog.categories(new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(), pr2, false, false);
                 check(Catalog.indexOf(n2, "psp") > Catalog.indexOf(n2, "dreamcast"), "psp after dreamcast");
             }
             List<Catalog.Category> km = Catalog.kidsMode(roms);
-            check(km.get(Catalog.indexOf(km, "kdc")).items.size() == 5, "kids mode dreamcast games");
+            check(km.get(Catalog.indexOf(km, "kdc")).items.size() == 4 && !km.get(Catalog.indexOf(km, "kdc")).items.contains(Catalog.DREAMCAST), "kids mode dreamcast games only");
             for (Catalog.Category k : km) for (Catalog.Item i : k.items) check(!"romfolder".equals(i.action) && !"files".equals(i.action) && !"filemgr".equals(i.action), "no import in kids mode");
                     java.io.File storage = java.nio.file.Files.createTempDirectory("storage").toFile();
             new java.io.File(storage, "emulated").mkdirs(); new java.io.File(storage, "self").mkdirs(); new java.io.File(storage, "1A2B-3C4D").mkdirs();

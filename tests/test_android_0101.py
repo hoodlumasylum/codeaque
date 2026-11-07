@@ -308,3 +308,9 @@ def test_scan_cache_shared_with_kids_rows():
     assert sd.index('prefs.getStringSet("gameScanCache"') < sd.index("if (dcScanning || !canReadFiles()) return;")
     assert 'prefs.edit().putStringSet("gameScanCache", cache)' in m and "kept the last good list" in m
     assert "Catalog.kidsMode(allRoms, kidsNew)" in m and "allRoms.addAll(dcFiles)" in m
+
+
+def test_kids_rows_games_only():
+    c = (SRC / "Catalog.java").read_text()
+    assert 'new Category("kdc", dc.label, dc.icon, kidsGamesOnly(dc.items))' in c and 'new Category("kpsp", ps.label, ps.icon, kidsGamesOnly(ps.items))' in c
+    assert "return (g.isEmpty() ? items : g).toArray(new Item[0]);" in c

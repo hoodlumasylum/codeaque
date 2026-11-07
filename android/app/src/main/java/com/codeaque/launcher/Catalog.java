@@ -61,6 +61,12 @@ public final class Catalog {
 
     /** A game file from a folder the user chose (Android's folder picker); opened with an installed emulator. */
     /** 0.10.12: a Dreamcast / PSP game found by the scan, labelled with its clean name. */
+    /** 0.10.15 Kids mode: a Dreamcast / PSP row shows only its games; the emulator tile only when there are none. */
+    static Item[] kidsGamesOnly(List<Item> items) {
+        List<Item> g = new ArrayList<>();
+        for (Item i : items) if (i.isRom()) g.add(i);
+        return (g.isEmpty() ? items : g).toArray(new Item[0]);
+    }
     public static boolean isViceCity(String label) { return label != null && label.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", "").contains("vicecity"); }
     public static Item gameRom(String name, String uri) {
         return new Item(cleanTitle(stripExt(name)), "cart", new String[0], null, null, null, name, uri);
@@ -227,8 +233,8 @@ public final class Catalog {
         if (!added.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", added.toArray(new Item[0])));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
-        Category dc = dreamcast(roms, false); c.add(new Category("kdc", dc.label, dc.icon, dc.items.toArray(new Item[0])));
-        Category ps = psp(roms, false); c.add(new Category("kpsp", ps.label, ps.icon, ps.items.toArray(new Item[0])));   // 0.10.7
+        Category dc = dreamcast(roms, false); c.add(new Category("kdc", dc.label, dc.icon, kidsGamesOnly(dc.items)));   // 0.10.15: games only
+        Category ps = psp(roms, false); c.add(new Category("kpsp", ps.label, ps.icon, kidsGamesOnly(ps.items)));   // 0.10.7 / 0.10.15
         c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
         return c;
     }

@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.15
+
+- **Kids mode:** the Dreamcast and PSP rows show only games. The emulator tile appears only when a row has no games.
+  The normal home screen is unchanged.
+
 ## What's new in 0.10.14
 
 - **Dreamcast and PSP games in Kids mode.** The last good game scan is saved and shown straight away, on the normal home
