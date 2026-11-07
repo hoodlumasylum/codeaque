@@ -89,6 +89,8 @@ class Backend(QObject):
     updateChanged = Signal()
     updateEvent = Signal(str, str, float)       # state, text, fraction (from the worker thread)
     updateChecked = Signal(object, str, bool)   # release or None, error text, was it asked for by the user
+    askChanged = Signal()
+    askEvent = Signal(str, str, str)   # kind, status; reply stays in memory, never a Store value
     uiPrefsChanged = Signal()
     robloxFixDone = Signal(object, str)         # (steps, verdict) from the Roblox fix thread
     pageChanged = Signal()                      # the rows of the help / fix / Windows pages changed
@@ -320,6 +322,13 @@ class Backend(QObject):
         self._win_cancel = threading.Event()
         self._win_reset()
         self.winEvent.connect(self._on_win_event, Qt.QueuedConnection)
+        # Local-only chat: no server process, model or download until the user acts.
+        self._ask_history = []
+        self._ask_message = ""
+        self._ask_busy = False
+        self._ask_cancel = threading.Event()
+        self._ask_state = "idle"
+        self.askEvent.connect(self._ask_finished, Qt.QueuedConnection)
         # self-update
         self._upd_state = "idle"
         self._upd_text = ""
@@ -4271,6 +4280,128 @@ class Backend(QObject):
             self._input_next()
 
 
+    # ----- Ask CodeAque: PC local model, not available on Android / K56 / projector -----
+    @Property("QVariantList", notify=askChanged)
+    def askHistory(self):
+        return self._ask_history
+
+    @Property(bool, notify=askChanged)
+    def askWorking(self):
+        return self._ask_busy
+
+    @Property(str, notify=askChanged)
+    def askStatus(self):
+        if self._ask_message:
+            return self._ask_message
+        from . import askcode
+        try:
+            return askcode.status()
+        except Exception:
+            return "The local helper needs starting. Ask, or choose IF IT DOES NOT WORK / REPAIR below."
+
+    @Property(str, notify=askChanged)
+    def askState(self):
+        return self._ask_state
+
+    def _ask_grounding(self):
+        terms = ("add game", "update codeaque", "projector", "world games", "get games", "accounts", "codeaque-only", "controller")
+        text = ("You are Ask CodeAque, a small advice-only helper inside the Linux Mint PC CodeAque launcher. "
+                "ONLY use the supplied official Help rows and World Games tile names from this app. "
+                "Answer in at most three short numbered steps. If the ground text does not contain the answer, say: 'I don't know; please check CodeAque Help.' "
+                "Never guess or invent facts, features, pricing, system requirements, supported languages or subtitles. "
+                "NEVER ask for or offer to store a password, administrator password, API key, login or other secret. "
+                "NEVER suggest piracy, ROM websites, BIOS downloads or unlicensed copies. "
+                "Do not claim to make changes, install, update, purchase, run, configure, or sign in: you give advice only and the user acts in the app. "
+                "AI can be wrong; point users to CodeAque Help or the official store page. "
+                "Setup includes official Ollama and Qwen2.5 1.5B Instruct Q4_K_M, 986 MB, Apache 2.0, works locally offline afterward. "
+                "You may explain the supplied best-effort setup limits but don't invent other platforms. Android Projector mode is NOT in this PC feature. "
+                "K56, Android and projector releases are unchanged. OUTPUT advice text only, never tool abilities or instructions to run terminal commands.\n\n"
+                "CODEAQUE'S OWN DOCUMENTATION (Help rows and existing world tiles):\n")
+        for row in self._help_rows():
+            fragment = row.get("title", "") + ": " + row.get("detail", "")
+            if any(t in fragment.lower() for t in terms):
+                text += fragment + "\n"
+        for row in self.setupRows():
+            fragment = row.get("title", "") + ": " + row.get("detail", "")
+            if fragment.startswith("Get games (Steam"):
+                text += fragment + "\n"
+        from . import handheld
+        text += "World Games: " + " | ".join(t["title"] for t in handheld.world_tiles())
+        return text
+
+    @Slot()
+    def startAskSetup(self):
+        if self._ask_busy:
+            return
+        from . import askcode
+        self._ask_state = "setup"
+        self._ask_busy = True
+        self._ask_cancel = threading.Event()
+        self._ask_message = "Preparing one-time setup..."
+        self.askChanged.emit()
+        cancel = self._ask_cancel
+        def work():
+            try:
+                askcode.ask_setup(lambda t: self.askEvent.emit("setup", str(t), ""), cancel)
+                self.askEvent.emit("ready", "Your local model is ready. Chat now works fully offline on this computer.", "")
+            except updater.Cancelled:
+                self.askEvent.emit("idle", "Setup cancelled. Retry when you have time; partial files are not used.", "")
+            except Exception as exc:
+                self.askEvent.emit("setup_error", str(exc), "")
+        threading.Thread(target=work, daemon=True, name="ask-codeaque-setup").start()
+
+    @Slot()
+    def cancelAskSetup(self):
+        self._ask_cancel.set()
+        self._ask_message = "Cancelling. Wait while the download or local server is safely stopped."
+        self.askChanged.emit()
+
+    @Slot(str, str, str)
+    def _ask_finished(self, kind, message, answer):
+        self._ask_busy = False
+        self._ask_state = kind
+        if answer:
+            self._ask_history.append({"role": "assistant", "content": answer})
+        if message:
+            self._ask_message = message
+        self.askChanged.emit()
+        self.pageChanged.emit()
+
+    @Slot(str)
+    def submitAsk(self, question):
+        question = question.strip()
+        if self._ask_busy:
+            self._ask_message = "Setup or an answer is already in progress. Please wait."
+            self.askChanged.emit()
+            return
+        if not question:
+            self._ask_message = "Type a question first. Nothing was sent anywhere."
+            self.askChanged.emit()
+            return
+        from . import askcode
+        self._ask_busy = True
+        self._ask_state = "asking"
+        self._ask_message = "Thinking locally on this PC with Qwen2.5..."
+        past = self._ask_history[-8:]
+        self._ask_history.append({"role": "user", "content": question})
+        self.askChanged.emit()
+        prompt = self._ask_grounding()
+        def work():
+            try:
+                # Server is 127.0.0.1:11434; never cloud inference nor a credential field.
+                answer = askcode.ask(question, past, prompt)
+                self.askEvent.emit("answer", "Answered locally. The model can make mistakes - verify advice with CodeAque Help.", answer)
+            except Exception as exc:
+                self.askEvent.emit("chat_error", str(exc), "")
+        threading.Thread(target=work, daemon=True, name="ask-codeaque-chat").start()
+
+    @Slot()
+    def clearAsk(self):
+        if not self._ask_busy:
+            self._ask_history = []
+            self._ask_message = "Conversation cleared. Until you type again this screen keeps no chat in memory."
+            self.askChanged.emit()
+
     # ----- file viewer: ~/Downloads, ~/Games, ~/Videos -------------------------------------
     def _fm_home(self) -> Path:
         return Path.home()
@@ -5905,6 +6036,7 @@ class Backend(QObject):
                      "value": ("New: " + self._upd_release.version) if self._upd_release else "Version " + __version__,
                      "detail": ("A newer version is ready to install." if self._upd_release else
                                 "Checks for a newer version and installs it. Your games and settings are kept.")})
+        rows.append({"kind": "askcode", "title": "Ask CodeAque - local AI helper", "value": "", "detail": "Chat with a small local CodeAque help model: offline after a clearly explained, one-time Ollama download. No keys, accounts or root password."})
         rows.append({"kind": "updateauto", "title": "Check for updates automatically",
                      "value": "ON" if self.cfg.update_check else "OFF",
                      "detail": "At most once a day, quietly, only when the internet is reachable."})
@@ -6124,7 +6256,7 @@ class Backend(QObject):
                 "install": "INSTALL", "installmenu": "INSTALL EMULATORS & APPS", "steam": "STEAM",
                 "recordings": "RECORDINGS", "coverpick": "PICK A COVER", "nocovers": "COVERS NOT FOUND",
                 "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX",
-                "dlsystem": "WHICH SYSTEM IS THIS FILE FOR?", "files": "MY FILES", "fileact": "WHAT TO DO WITH IT", "deletegame": "DELETE GAME", "about": "ABOUT CODEAQUE"}.get(name, name.upper())
+                "ask": "ASK CODEAQUE", "dlsystem": "WHICH SYSTEM IS THIS FILE FOR?", "files": "MY FILES", "fileact": "WHAT TO DO WITH IT", "deletegame": "DELETE GAME", "about": "ABOUT CODEAQUE"}.get(name, name.upper())
 
     @Property(str, notify=padStyleChanged)
     def padStyle(self):
@@ -6362,6 +6494,11 @@ class Backend(QObject):
 
     @Slot(str, result="QVariantList")
     def pageRows(self, name: str):
+        if name == "ask":
+            from . import askcode
+            return [self._info("Setup checks your usable memory (8 GB recommended) and disk before downloading. Ollama plus Qwen2.5 model: " + askcode.download_size() + ". No keys or root password."),
+                    {"kind": "item", "id": "install", "title": "SET UP LOCAL AI" if not self._ask_busy else "CANCEL LOCAL AI SETUP", "detail": "Only after this is pressed are the official Ollama downloads used. Setup needed internet; chat afterward is offline."},
+                    {"kind": "item", "id": "back", "title": "Back"}]
         if name == "addgames":
             return self._addgames_rows()
         if name == "robloxfix":
@@ -6667,6 +6804,12 @@ class Backend(QObject):
             return "page:biosfind"
         if rid == "findgames" and name != "findgames":
             return "page:findgames"
+        if name == "ask":
+            if not self._ask_busy:
+                self.startAskSetup()
+            else:
+                self.cancelAskSetup()
+            return "refresh"
         if name == "help":
             return self._help_activate(rid)
         if name == "robloxfix":

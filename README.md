@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.9.9 — Ask CodeAque (PC, local AI helper)
+
+- **Ask CodeAque** (Settings > Ask CodeAque, or the Ask CodeAque tile in console-home Settings): a chat helper that answers CodeAque questions (adding games, updating, World Games, Get Games, Accounts, CodeAque-only mode, controllers). It runs a small **local, offline** model on this PC: no API key, no account, no online AI service, no per-question cost. It only gives advice; it never asks for passwords and never points to piracy / ROM sites. If it does not know, it says so.
+- **One-time setup, one press, no terminal, no administrator password:** downloads the official Ollama runtime from ollama.com and the **Qwen2.5 1.5B Instruct (Q4_K_M, 986 MB, Apache 2.0)** model from Ollama — about **2.5 GB in total**, into `~/.local/share/atari/local-ai/`. Nothing is bundled in the release and nothing downloads until you press Set up. Setup first checks for **8 GB of available memory** (skip it on smaller PCs) and **7 GB free disk**.
+- After setup it works with no internet; it talks only to 127.0.0.1. Chats stay in memory and are not saved to disk.
+- PC only: Android, K56 and Projector mode are unchanged.
+- Not tested on real hardware: the full download, answer quality and speed on an 8 GB laptop.
+
 ## What's new in 0.9.8 — World Games on PC
 
 - **World Games:** a new top row on the PC console home for Chinese, Japanese and Korean games. Publisher catalogue tiles open official Steam store pages; selected games include Yume Nikki, Black Myth: Wukong, Wandering Sword, DAVE THE DIVER and Eternal Return.

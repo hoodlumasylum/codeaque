@@ -1,0 +1,85 @@
+// Local-only PC AI helper. No network permission beyond the localhost API.
+import QtQuick
+import QtQuick.Layouts
+
+Item {
+    id: askScreen
+    anchors.fill: parent
+    signal typeRequested()
+    signal closed()
+    property real u: 1
+    property int selected: 0
+    property bool showSetup: false
+    objectName: "askScreen"
+
+    function reset() { selected = 0; showSetup = false; pageScroll.contentY = 0 }
+    function handleKey(e) {
+        var k = e.key
+        if (k === Qt.Key_Escape || k === Qt.Key_Backspace) { askScreen.closed(); return }
+        if (backend.askWorking && backend.askState === "setup") {
+            if (k === Qt.Key_X) backend.cancelAskSetup()
+            return
+        }
+        if (k === Qt.Key_PageUp) { historyScroll.contentY -= historyScroll.height * .8; return }
+        if (k === Qt.Key_PageDown) { historyScroll.contentY += historyScroll.height * .8; return }
+        if (k === Qt.Key_T) { askScreen.typeRequested(); return }
+        if (k === Qt.Key_Up) { historyScroll.contentY -= 80; return }
+        if (k === Qt.Key_Down) { historyScroll.contentY += 80; return }
+        else if (k === Qt.Key_Left || k === Qt.Key_Right) selected += (k === Qt.Key_Left ? -1 : 1)
+        selected = Math.max(0, Math.min(4, selected))
+        if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) {
+            if (selected === 0) askScreen.typeRequested()
+            else if (selected === 1) backend.startAskSetup()
+            else if (selected === 2) showSetup = !showSetup
+            else if (selected === 3) backend.clearAsk()
+            else { historyScroll.contentY = 0; askScreen.closed() }
+        }
+    }
+    Rectangle {
+        anchors.fill: parent
+        color: "#060e18"
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24*u
+            anchors.bottomMargin: 105*u
+            spacing: 12*u
+            RowLayout {
+                Layout.fillWidth: true
+                Text { text: "ASK CODEAQUE"; font.pixelSize: 34*u; font.bold: true; color: Theme.accent; font.letterSpacing: 4*u }
+                Text { text: "ON THIS PC"; font.pixelSize: 17*u; font.bold: true; color: "#c2f3ce" }
+            }
+            Text { text: "Local help - offline after setup - no key or account - chats not saved to disk"; font.pixelSize: 17*u; color: Theme.dim }
+            Rectangle {
+                Layout.fillWidth: true
+                color: "#142232"; border.width: 2*u; border.color: showSetup ? Theme.accent : "#35475c"; radius: 9*u
+                implicitHeight: info.implicitHeight + 24*u
+                Text { id: info; anchors.fill: parent; anchors.margins: 12*u; text: showSetup ? "One-time setup: choose SET UP / RETRY LOCAL AI below.\n\nQwen2.5 1.5B Instruct Q4_K_M (986 MB, Apache 2.0) plus the official Ollama runtime. About 2.5 GB is downloaded in total. Setup checks for at least 8 GB available RAM and 7 GB free disk before download.\n\nWorks offline after setup. No API key, online AI account, terminal or administrator password. Ollama is downloaded from ollama.com and the model from Ollama. Conversations are in memory only." : backend.askStatus; color: Theme.text; font.pixelSize: 18*u; wrapMode: Text.Wrap; Layout.fillWidth: true }
+            }
+            Rectangle { visible: backend.askWorking; Layout.fillWidth: true; height: 8*u; color: "#1d3040"; radius: 4*u; Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 150*u; height: parent.height; radius: 4*u; color: Theme.accent; SequentialAnimation on x { running: backend.askWorking; loops: Animation.Infinite; NumberAnimation { from: 0; to: Math.max(0, askScreen.width - 200*u); duration: 1600 } } } }
+            Flickable {
+                id: historyScroll
+                Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: width; contentHeight: historyText.implicitHeight + 26*u; clip: true; boundsBehavior: Flickable.StopAtBounds
+                Text {
+                    id: historyText; x: 12*u; y: 12*u; width: historyScroll.width - 24*u; wrapMode: Text.Wrap; font.pixelSize: 21*u; color: Theme.text
+                    text: backend.askHistory.length === 0 ? "Ask how to add games, update CodeAque, use controllers or World Games. This is a real, small local AI and may get things wrong.\n\nIt only gives advice; use CodeAque's own menus to act.\n\nType with T or Enter. You can also choose SETUP / MODEL INFO before anything is downloaded." : backend.askHistory.map(function(m) { return (m.role === "user" ? "YOU\n" : "ASK CODEAQUE\n") + m.content }).join("\n\n────────────────────────────────\n\n")
+                    onTextChanged: historyScroll.contentY = Math.max(0, historyScroll.contentHeight-height)
+                    onHeightChanged: if (!backend.askWorking) historyScroll.contentY = Math.max(0, historyScroll.contentHeight-height)
+                }
+            }
+            Text { text: "Answers are generated by a small model and may be wrong - check CodeAque Help.\nUp/Down/PageUp/PageDown scroll older chat\nEnter or T: Type | Left/Right: choose controls on this screen | Up/Down: scroll older chat | Esc / B: Back\nWhile installing: X cancels safely"; color: Theme.dim; font.pixelSize: 16*u; wrapMode: Text.Wrap }
+            Row {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 12*u
+                Repeater {
+                    model: ["TYPE QUESTION", "SET UP / RETRY", "MODEL INFO", "CLEAR", "BACK"]
+                    delegate: Rectangle {
+                        required property string modelData; required property int index
+                        width: 186*u; height: 62*u; radius: 10*u; color: selected === index ? Theme.accent : "#192230"; border.width: selected === index ? 3*u : 1*u; border.color: selected === index ? "white" : Theme.dim
+                        Text { anchors.centerIn: parent; text: modelData; color: selected === index ? "#00110b" : Theme.text; font.bold: true; font.pixelSize: 16*u }
+                        MouseArea { anchors.fill: parent; onClicked: { selected = index; if (selected === 0) askScreen.typeRequested(); else if (selected === 1) backend.startAskSetup(); else if (selected === 2) showSetup = !showSetup; else if (selected === 3) backend.clearAsk(); else askScreen.closed() } }
+                    }
+                }
+            }
+        }
+    }
+}

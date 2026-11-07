@@ -195,9 +195,13 @@ Window {
         sortList.currentIndex = at
         mode = "sort"
     }
+    function openAsk() {
+        mode = "ask"
+        askScreen.selected = 0
+    }
     function openOsk(purpose) {
         oskPurpose = purpose
-        searchText = purpose === "sgdbkey" ? backend.steamGridKey() : backend.winName()
+        searchText = purpose === "askquestion" ? "" : purpose === "sgdbkey" ? backend.steamGridKey() : backend.winName()
         typedSearch = false
         oskRow = 0; oskCol = 0
         mode = "search"
@@ -212,9 +216,11 @@ Window {
     function closeSearch() {
         if (oskPurpose === "winname") { oskPurpose = "search"; openPage("winform"); return }
         if (oskPurpose === "sgdbkey") { oskPurpose = "search"; refreshSetup(true); mode = "setup"; return }
+        if (oskPurpose === "askquestion") { oskPurpose = "search"; openAsk(); return }
         mode = "library"; area = grid.count > 0 ? "grid" : "tiles"
     }
     function setSearch(t) {
+        if (oskPurpose === "askquestion") { searchText = t.substring(0, 4000); return }
         if (oskPurpose === "winname") { searchText = t; backend.winSetName(t); return }
         if (oskPurpose === "sgdbkey") { searchText = t; backend.setSteamGridKey(t); return }
         searchText = t
@@ -502,6 +508,7 @@ Window {
             else if (oskRow < 3) oskRow++
         }
         else if (isEnter(k)) {
+            if (oskPurpose === "askquestion") { var question = searchText.trim(); closeSearch(); if (question) backend.submitAsk(question); return }
             if (typedSearch && searchText !== "") { closeSearch(); return }
             if (oskRow < 4) setSearch(searchText + oskChars.charAt(oskRow * 10 + oskCol))
             else if (oskCol === 0) setSearch(searchText + " ")
@@ -577,6 +584,7 @@ Window {
         else if (r.kind === "import") openImport("setup")
         else if (r.kind === "bios") openImport("setup", "bios")
         else if (r.kind === "update") openUpdate("setup")
+        else if (r.kind === "askcode") openAsk()
         else if (r.kind === "updateauto") { backend.toggleUpdateCheck(); refreshSetup(true) }
         else if (r.kind === "sfx") { backend.toggleSoundEffects(); refreshSetup(true) }
         else if (r.kind === "music") { backend.toggleMusic(); refreshSetup(true) }
@@ -737,7 +745,8 @@ Window {
             else if (win.mode === "page") pageKey(e)
             else if (win.mode === "import") importScreen.handleKey(e)
             else if (win.mode === "studio") studioScreen.handleKey(e)
-            else if (win.mode === "wifi") wifiScreen.handleKey(e)
+            else if (win.mode === "ask") askScreen.handleKey(e)
+        else if (win.mode === "wifi") wifiScreen.handleKey(e)
             if (snd !== "" && !backend.running) backend.playSound(snd)
         }
 
@@ -783,6 +792,7 @@ Window {
             visible: backend.handheld && win.mode === "library" && !backend.running
             onMenuAction: function (id) {
                 if (id === "wifi") win.openWifi("library")
+                else if (id === "ask") win.openAsk()
                 else if (id === "controllers") win.openPage("controllers")
                 else if (id === "addgames") win.openPage("addgames")
                 else if (id === "settings") win.openSetup()
@@ -1362,7 +1372,7 @@ Window {
                 spacing: 18 * win.u
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: win.oskPurpose === "winname" ? "NAME THE GAME" : "SEARCH"
+                    text: win.oskPurpose === "askquestion" ? "ASK CODEAQUE (LOCAL)" : win.oskPurpose === "winname" ? "NAME THE GAME" : "SEARCH"
                     color: Theme.redBright
                     font.pixelSize: 40 * win.u
                     font.bold: true
@@ -1383,7 +1393,7 @@ Window {
                         anchors.leftMargin: 16 * win.u
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: win.searchText === "" ? (win.oskPurpose === "winname" ? "Type the game's name..." : "Type to filter games...") : win.searchText + "\u258c"
+                        text: win.searchText === "" ? (win.oskPurpose === "askquestion" ? "Type your local help question..." : win.oskPurpose === "winname" ? "Type the game's name..." : "Type to filter games...") : win.searchText + "\u258c"
                         color: win.searchText === "" ? Theme.faint : Theme.text
                         font.pixelSize: 40 * win.u
                     }
@@ -1914,6 +1924,10 @@ Window {
                 }
             }
         }
+
+        AskScreen { id: askScreen; objectName: "askScreen"; u: win.u; z: 20; visible: win.mode === "ask"
+            onTypeRequested: win.openOsk("askquestion")
+            onClosed: { win.mode = "library" } }
 
         // ------------------------------------------------- overlay: running
         Rectangle {

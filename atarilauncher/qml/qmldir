@@ -25,3 +25,4 @@ HandheldScreen 1.0 HandheldScreen.qml
 HandButton 1.0 HandButton.qml
 ChromeText 1.0 ChromeText.qml
 Snow 1.0 Snow.qml
+AskScreen 1.0 AskScreen.qml

@@ -24,7 +24,7 @@ CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("
 PC_GAME_PLATFORMS = ("steam", "heroic", "lutris", "windows", "epic", "gog", "amazon")
 SETTINGS_TILES = (("wifi", "Wi-Fi", "wifi"), ("controllers", "Controllers", "pad"), ("addgames", "Add games", "usb"),
                   ("effects", "Reduce effects", "sparkle"), ("settings", "All settings", "gear"),
-                  ("leave", "Classic home", "exit"), ("power", "Power", "power"),
+                  ("leave", "Classic home", "exit"), ("power", "Power", "power"), ("ask", "Ask CodeAque", "app"),
                   ("update", "Update CodeAque", "download"))
 
 
