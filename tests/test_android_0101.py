@@ -78,7 +78,7 @@ def test_force_landscape_is_opt_in_root_only():
     r = (SRC / "Rotation.java").read_text()
     assert "accelerometer_rotation 0" in r and "wm fixed-to-user-rotation enabled" in r and "user_rotation" in r and 'MODES = {"off", "0", "1", "3"}' in r
     m = (SRC / "MainActivity.java").read_text()
-    assert 'prefs.getString("rotation", "off")' in m and m.count("forceLandscape();") >= 2
+    assert 'prefs.getString("rotation", "off")' in m and m.count("forceLandscape();") >= 1 and "forceLandscapeThen(i)" in m
     body = m.split("private void forceLandscape()", 1)[1].split("\n    }\n", 1)[0]
     assert "c == null || !bootAnimAvailable()" in body
     sug = m.split("private void maybeSuggestRotation()", 1)[1].split("\n    }\n", 1)[0]
@@ -120,3 +120,32 @@ def test_geforce_now_web_client_on_handhelds():
     assert m.index("Catalog.gfnInBrowser(handheld())") < m.index("Intent i = launchIntent(it);")
     assert 'setPackage("com.android.chrome")' in m
     assert '<package android:name="com.android.chrome" />' in (AND / "app/src/main/AndroidManifest.xml").read_text()
+
+
+def test_play_listing_art_runtime_only():
+    a = (SRC / "PlayArt.java").read_text()
+    assert 'PLAY = "https://play.google.com"' in a and 'IMG_HOST = "https://play-lh.googleusercontent.com/"' in a
+    m = (SRC / "MainActivity.java").read_text()
+    assert 'new java.io.File(getCacheDir(), "playart")' in m and "PlayArt.fetch(PlayArt.PLAY, pkg, dir)" in m
+    assert "if (!it.isDeviceApp()) return playArt(it, false);" in m
+    t = (AND / "app/src/test/java/com/codeaque/launcher/CatalogTest.java").read_text()
+    assert "com.sun.net.httpserver.HttpServer" in t and "playArtChecks();" in t
+    for p in (AND / "app/src/main").rglob("*"):
+        assert not p.name.endswith((".icon.png", ".feature.png"))
+
+
+def test_rotation_ignores_app_orientation_and_runs_before_launch():
+    r = (SRC / "Rotation.java").read_text()
+    assert "wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true" in r
+    assert "Orientation Manager" in r
+    m = (SRC / "MainActivity.java").read_text()
+    body = m.split("private boolean forceLandscapeThen(Intent i)", 1)[1].split("\n    }\n", 1)[0]
+    assert body.index("su(c, null)") < body.index("start(i)")
+    assert "if (!forceLandscapeThen(i)) start(i);" in m
+
+
+def test_roblox_tile_is_original_drawn_art():
+    h = (SRC / "HomeView.java").read_text()
+    assert "if (it == Catalog.ROBLOX) blockyArt(c);" in h and "private void buddy(" in h
+    assets = [p.name.lower() for p in (AND / "app/src/main").rglob("*")]
+    assert not any("roblox" in n for n in assets)

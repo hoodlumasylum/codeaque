@@ -191,7 +191,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     @Override public android.graphics.Bitmap appIcon(Catalog.Item it) {
-        if (!it.isDeviceApp()) return null;
+        if (!it.isDeviceApp()) return playArt(it, false);
         String k = it.key();
         if (icons.containsKey(k)) return icons.get(k);
         android.graphics.Bitmap b = null;
@@ -206,6 +206,30 @@ public class MainActivity extends Activity implements HomeView.Host {
         return b;
     }
 
+    // ---------- 0.10.3: pictures from the game's own Google Play listing (runtime only, cached, never bundled) ----------
+    private final Map<String, android.graphics.Bitmap> playArtCache = new HashMap<>();
+
+    /** Not-installed Play tiles: the listing's icon (or feature graphic when wide); installed ones keep their own icon. */
+    private android.graphics.Bitmap playArt(Catalog.Item it, boolean feature) {
+        if (it.isAction() || it.isRom() || it.webUrl != null || it.storePackage() == null) return null;
+        Intent li = launchIntent(it);
+        if (li != null && li.getComponent() != null)
+            return feature ? null : appIcon(Catalog.deviceApp(it.label, li.getComponent().getPackageName(), li.getComponent().getClassName()));
+        String pkg = it.storePackage(), k = pkg + (feature ? "#f" : "#i");
+        if (playArtCache.containsKey(k)) return playArtCache.get(k);
+        java.io.File dir = new java.io.File(getCacheDir(), "playart");
+        java.io.File f = feature ? PlayArt.featureFile(dir, pkg) : PlayArt.iconFile(dir, pkg);
+        android.graphics.Bitmap b = null;
+        if (f.isFile()) b = decodeCover(f);
+        else if (!PlayArt.missFile(dir, pkg).exists() && online() && fetching.add("play:" + pkg))
+            new Thread(() -> {
+                boolean ok = PlayArt.fetch(PlayArt.PLAY, pkg, dir);
+                runOnUiThread(() -> { fetching.remove("play:" + pkg); if (ok) { playArtCache.remove(pkg + "#i"); playArtCache.remove(pkg + "#f"); } else { playArtCache.put(pkg + "#i", null); playArtCache.put(pkg + "#f", null); } view.invalidate(); });
+            }).start();
+        if (b != null || f.isFile() || PlayArt.missFile(dir, pkg).exists()) playArtCache.put(k, b);
+        return b;
+    }
+
     // ---------- 0.9.5: game pictures ----------
     private final Map<String, android.graphics.Bitmap> coverCache = new HashMap<>();
     private final java.util.Set<String> fetching = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
@@ -213,6 +237,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public android.graphics.Bitmap cover(Catalog.Item it) {
         String k = it.key();
         if (coverCache.containsKey(k)) return coverCache.get(k);
+        if (!it.isRom() && !it.isAction() && !it.isDeviceApp() && launchIntent(it) == null) return playArt(it, true);   // 0.10.3
         android.graphics.Bitmap b = null;
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp()) {     // a catalogue tile (Steam, Steam Link): the installed app's own banner
             Intent li = launchIntent(it);
@@ -356,7 +381,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (it.isDeviceApp()) { start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls)); return; }
             if (it == Catalog.GEFORCE_NOW && Catalog.gfnInBrowser(handheld())) { openWeb(Catalog.GFN_WEB); return; }
             Intent i = launchIntent(it);
-            if (i != null) { forceLandscape(); start(i); return; }
+            if (i != null) { if (!forceLandscapeThen(i)) start(i); return; }
             if (it.webUrl != null) { openWeb(it.webUrl); return; }
             if (it == Catalog.PLAY_STORE) { Toast.makeText(this, "Play Store not installed on this device", Toast.LENGTH_LONG).show(); return; }
             store(it.storePackage());
@@ -562,10 +587,18 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (!bootAnimAvailable()) { toast("Force landscape needs a rooted device (Magisk). Nothing was changed."); return; }
         String m = Rotation.next(prefs.getString("rotation", "off"));
         prefs.edit().putString("rotation", m).apply();
-        toast(Rotation.label(m) + (m.equals("off") ? "" : ". If games are still sideways, choose it again for the next rotation."));
+        toast(Rotation.label(m) + (m.equals("off") ? "" : ". If games are still sideways, choose it again for the next rotation. " + Rotation.ORIENTATION_MANAGER_TIP));
     }
 
     /** Before a game opens: lock the rotation with root, only when the user switched it on. Never restores (not needed). */
+    /** 0.10.3: lock the rotation first, then open the game, so it starts already landscape. False = nothing to do. */
+    private boolean forceLandscapeThen(Intent i) {
+        String c = Rotation.cmd(prefs.getString("rotation", "off"));
+        if (c == null || !bootAnimAvailable()) return false;
+        new Thread(() -> { su(c, null); runOnUiThread(() -> { try { start(i); } catch (Exception e) { toast("Could not open it"); } }); }).start();
+        return true;
+    }
+
     private void forceLandscape() {
         String c = Rotation.cmd(prefs.getString("rotation", "off"));
         if (c == null || !bootAnimAvailable()) return;

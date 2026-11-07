@@ -4,6 +4,7 @@ package com.codeaque.launcher;
  *  GammaOS 1.5 (RG353M) has no built-in forced-landscape switch; this locks the rotation with root before a game opens.
  *  UNTESTED ON A REAL DEVICE: which user_rotation value is right for a given panel is a guess, so the user picks it. */
 public final class Rotation {
+    public static final String ORIENTATION_MANAGER_TIP = "Still sideways? Try the Play Store app \"Orientation Manager\" (forced landscape).";
     private Rotation() { }
 
     /** Off, then the three landscape-ish fixed rotations (Surface.ROTATION_0 / 90 / 270). */
@@ -28,8 +29,11 @@ public final class Rotation {
         if (!"0".equals(m) && !"1".equals(m) && !"3".equals(m)) return null;
         // Roblox asks for its own orientation, so Auto-rotate alone doesn't help. On Android 10+
         // "wm fixed-to-user-rotation enabled" makes every app follow the locked user rotation. The settings are kept as a fallback.
+        // 0.10.3 (RG353M field report: CodeAque turned, Roblox didn't): also tell the window manager to ignore the
+        // orientation an app asks for (Android 12: "wm set-ignore-orientation-request", or "cmd window ..." on some builds).
         return "settings put system accelerometer_rotation 0; settings put system user_rotation " + m
-                + "; wm fixed-to-user-rotation enabled; wm user-rotation lock " + m;
+                + "; wm fixed-to-user-rotation enabled; wm user-rotation lock " + m
+                + "; wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true";
     }
 
     /** Suggest (never switch on) for RK3566 / Anbernic handhelds such as the RG353M. */

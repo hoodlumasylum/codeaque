@@ -192,7 +192,7 @@ public class HomeView extends View {
     public void setKids(boolean k) { kids = k; invalidate(); }
     static final float KIDS_SCALE = 1.7f;
     private float big() { return kids ? KIDS_SCALE : 1f; }
-    private boolean covers() { if (kids) return false; String id = cats.get(cat).id; return id.equals("mygames") || id.equals("steam"); }      // 0.9.5: portrait box-art tiles
+    private boolean covers() { String id = cats.get(cat).id; if (kids) return id.equals("kplay"); id = cats.get(cat).id; return id.equals("mygames") || id.equals("steam"); }      // 0.9.5: portrait box-art tiles
     private float tileH() { return (covers() ? 190 : 112) * s * big(); }
     private float tileW() { return (covers() ? 128 : 156) * s * big(); }
     private float tileGap() { return 14 * s * big(); }
@@ -484,7 +484,7 @@ public class HomeView extends View {
             }
             Bitmap ai = host.appIcon(it);
             if (ai != null) {                                   // the app's own icon, as Android shows it
-                float is = 40 * s; iconRect.set(r.centerX() - is / 2, r.top + h * 0.30f - is / 2 - 4 * s, r.centerX() + is / 2, r.top + h * 0.30f + is / 2 - 4 * s);
+                float is = 40 * s * big(); iconRect.set(r.centerX() - is / 2, r.top + h * 0.30f - is / 2 - 4 * s, r.centerX() + is / 2, r.top + h * 0.30f + is / 2 - 4 * s);
                 p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(ai, null, iconRect, p);
             } else icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
             spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
@@ -518,7 +518,8 @@ public class HomeView extends View {
         float rad = 12 * s;
         Bitmap cov = host.cover(it), ai = cov == null ? host.appIcon(it) : null;
         c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
-        if (cov != null) {
+        if (it == Catalog.ROBLOX) blockyArt(c);          // 0.10.3: CodeAque's own original art, drawn here (no Roblox characters or logo)
+        else if (cov != null) {
             float sc = Math.max(r.width() / cov.getWidth(), r.height() / cov.getHeight());
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
             src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
@@ -554,6 +555,43 @@ public class HomeView extends View {
         } else text(c, lab, r.centerX(), r.bottom - 12 * s, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
     }
     private final RectF r2 = new RectF();
+
+    /** Original CodeAque art for the Roblox tile: a bright sky, a grass block world and two of our own blocky buddies. */
+    private void blockyArt(Canvas c) {
+        float W = r.width(), H = r.height(), x0 = r.left, y0 = r.top;
+        p.setShader(new LinearGradient(0, y0, 0, y0 + H, new int[]{0xFF39C6FF, 0xFF8FE3FF, 0xFFFFE27A}, null, Shader.TileMode.CLAMP));
+        c.drawRect(r, p); p.setShader(null);
+        p.setColor(0xFFFFFFFF);                                          // square clouds
+        c.drawRect(x0 + W * 0.08f, y0 + H * 0.10f, x0 + W * 0.30f, y0 + H * 0.15f, p);
+        c.drawRect(x0 + W * 0.14f, y0 + H * 0.07f, x0 + W * 0.24f, y0 + H * 0.10f, p);
+        c.drawRect(x0 + W * 0.62f, y0 + H * 0.16f, x0 + W * 0.90f, y0 + H * 0.21f, p);
+        float g = y0 + H * 0.66f, b = W / 8f;                          // grass + dirt blocks
+        for (int k = 0; k < 8; k++) {
+            p.setColor(k % 2 == 0 ? 0xFF4CD964 : 0xFF3BC453); c.drawRect(x0 + k * b, g, x0 + (k + 1) * b, g + b * 0.5f, p);
+            p.setColor(k % 2 == 0 ? 0xFFB5793F : 0xFFA26A35); c.drawRect(x0 + k * b, g + b * 0.5f, x0 + (k + 1) * b, y0 + H, p);
+        }
+        buddy(c, x0 + W * 0.30f, g, W * 0.24f, 0xFFFF4FA3, 0xFF2D7DFF, false);
+        buddy(c, x0 + W * 0.68f, g, W * 0.26f, 0xFFFFC23A, 0xFF8A4DFF, true);
+    }
+
+    /** One blocky buddy standing on y: square head with a smile, shirt, arms (one waving), legs. */
+    private void buddy(Canvas c, float cx, float y, float u, int shirt, int pants, boolean wave) {
+        float hs = u * 0.62f, bw = u * 0.62f, bh = u * 0.62f, lh = u * 0.5f, aw = u * 0.2f;
+        float legTop = y - lh, bodyTop = legTop - bh, headTop = bodyTop - hs;
+        p.setColor(pants); c.drawRect(cx - bw / 2, legTop, cx - 0.02f * u, y, p); c.drawRect(cx + 0.02f * u, legTop, cx + bw / 2, y, p);
+        p.setColor(shirt); c.drawRect(cx - bw / 2, bodyTop, cx + bw / 2, legTop, p);
+        p.setColor(0xFFFFD9A8);
+        c.drawRect(cx - bw / 2 - aw, bodyTop, cx - bw / 2, legTop - bh * 0.1f, p);
+        if (wave) c.drawRect(cx + bw / 2, bodyTop - bh * 0.8f, cx + bw / 2 + aw, bodyTop + bh * 0.1f, p);
+        else c.drawRect(cx + bw / 2, bodyTop, cx + bw / 2 + aw, legTop - bh * 0.1f, p);
+        c.drawRect(cx - hs / 2, headTop, cx + hs / 2, bodyTop, p);
+        p.setColor(0xFF202020);
+        c.drawRect(cx - hs * 0.25f, headTop + hs * 0.30f, cx - hs * 0.12f, headTop + hs * 0.45f, p);
+        c.drawRect(cx + hs * 0.12f, headTop + hs * 0.30f, cx + hs * 0.25f, headTop + hs * 0.45f, p);
+        c.drawRect(cx - hs * 0.22f, headTop + hs * 0.62f, cx + hs * 0.22f, headTop + hs * 0.70f, p);
+        c.drawRect(cx - hs * 0.22f, headTop + hs * 0.55f, cx - hs * 0.14f, headTop + hs * 0.65f, p);
+        c.drawRect(cx + hs * 0.14f, headTop + hs * 0.55f, cx + hs * 0.22f, headTop + hs * 0.65f, p);
+    }
 
     private void hints(Canvas c, int W, int H) {
         float y = H - 24 * s;

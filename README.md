@@ -31,6 +31,19 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.3: pictures on Android game tiles
+
+- Play games that aren't installed yet (Featured, Kids, Kids mode, GeForce NOW) now show the game's own picture from
+  its official Google Play listing. CodeAque fetches it over HTTPS while running and keeps it in the app's cache. Nothing
+  is bundled. A wider feature graphic is used only when the listing clearly marks one; otherwise the listing icon is used.
+- **A Roblox tile with new art:** a bright blocky scene with two of CodeAque's own characters, drawn by the app
+  itself. It has no Roblox characters or logo.
+- **Force landscape, second try (RG353M):** before the game opens, CodeAque now also tells Android to ignore the
+  orientation an app asks for (`wm set-ignore-orientation-request true`). The game only opens after the lock is in place.
+  If a game is still sideways, the Play Store app "Orientation Manager" is suggested.
+- Installed games keep their own installed icon. Offline, or if a listing can't be read, the tile shows CodeAque's icon
+  and label as before. Labels are always shown.
+
 ## What's new in 0.10.2
 
 - **GeForce NOW on the Featured row** (after Roblox, Minecraft and the Play Store). The app opens with its own icon when
