@@ -114,9 +114,17 @@ public class HomeView extends View {
                 if (!inCats) inCats = true; else setCat(0);
                 host.sound("hhback"); invalidate(); return true;    // a home screen never closes
             case KeyEvent.KEYCODE_BUTTON_Y: case KeyEvent.KEYCODE_MENU: case KeyEvent.KEYCODE_BUTTON_SELECT:
+                if (kids) { if (e.getRepeatCount() == 0) e.startTracking(); return true; }   // only a long hold, see onKeyLongPress
                 setCat(Catalog.indexOf(cats, "settings")); inCats = false; return true;
         }
         return super.onKeyDown(code, e);
+    }
+
+    @Override public boolean onKeyLongPress(int code, KeyEvent e) {
+        if (kids && (code == KeyEvent.KEYCODE_BUTTON_SELECT || code == KeyEvent.KEYCODE_BUTTON_Y || code == KeyEvent.KEYCODE_MENU)) {
+            host.open(Catalog.KIDS_OFF); return true;
+        }
+        return super.onKeyLongPress(code, e);
     }
 
     @Override public boolean onGenericMotionEvent(MotionEvent e) {   // left stick / hat as a D-pad, with repeat delay
@@ -179,10 +187,15 @@ public class HomeView extends View {
 
     // ---------- geometry (scaled from the 1280x720 design) ----------
     private float catsBottom() { return getHeight() * 0.26f; }
-    private boolean covers() { String id = cats.get(cat).id; return id.equals("mygames") || id.equals("steam"); }      // 0.9.5: portrait box-art tiles
-    private float tileH() { return (covers() ? 190 : 112) * s; }
-    private float tileW() { return (covers() ? 128 : 156) * s; }
-    private float tileGap() { return 14 * s; }
+    // 0.10.2 Kids mode: bigger tiles and labels (readable at 640x480), hold Select to reach the grown-up switch
+    private boolean kids;
+    public void setKids(boolean k) { kids = k; invalidate(); }
+    static final float KIDS_SCALE = 1.7f;
+    private float big() { return kids ? KIDS_SCALE : 1f; }
+    private boolean covers() { if (kids) return false; String id = cats.get(cat).id; return id.equals("mygames") || id.equals("steam"); }      // 0.9.5: portrait box-art tiles
+    private float tileH() { return (covers() ? 190 : 112) * s * big(); }
+    private float tileW() { return (covers() ? 128 : 156) * s * big(); }
+    private float tileGap() { return 14 * s * big(); }
     private float tilesTop() { return getHeight() - 80 * s - tileH(); }
     private float tilesLeft() { return 24 * s; }
 
@@ -476,7 +489,7 @@ public class HomeView extends View {
             } else icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
             spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
             String lab = it.label.toUpperCase(Locale.ROOT);
-            float ts = 15 * s; p.setTextSize(ts); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            float ts = (kids ? 26 : 15) * s; p.setTextSize(ts); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
             while (p.measureText(lab) > w - 14 * s && ts > 10 * s) { ts -= 0.5f * s; p.setTextSize(ts); }
             if (p.measureText(lab) > w - 14 * s && lab.contains(" ")) {
                 int sp = lab.lastIndexOf(' ');

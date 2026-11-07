@@ -38,8 +38,9 @@ def test_themes_are_original_and_default_is_unchanged():
     cat = (SRC / "Catalog.java").read_text()
     kids = "Item[] KIDS = {" + cat.split("Item[] KIDS = {", 1)[1].split("};", 1)[0]
     readme = (ROOT / "README.md").read_text()
-    note = "- **Kids row**" + readme.split("- **Kids row**", 1)[1].split("\n- **", 1)[0]
-    everything = everything.replace(kids, "").replace(note, "")
+    everything = everything.replace(kids, "")
+    for part in readme.split("- **Kids row")[1:]:
+        everything = everything.replace("- **Kids row" + part.split("\n- **", 1)[0].split("\n## ", 1)[0], "")
     assert "pokémon" not in kids.lower().replace('app("pokémon', "") and "goku" not in kids.lower()
     low = everything.lower()
     for bad in ("dragon ball", "dbz", "goku", "saiyan", "kamehameha", "pokemon", "pokémon", "poke ball", "pokeball", "pikachu"):

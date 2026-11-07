@@ -184,7 +184,9 @@ public class MainActivity extends Activity implements HomeView.Host {
         for (Catalog.Item e : Catalog.emulators()) if (launchIntent(e) != null) emus.add(e);
         boolean proj = prefs.getBoolean("projector", false);
         view.setProjector(proj);
-        view.setCategories(Catalog.categories(games, apps, emus, roms, proj, bootAnimAvailable()));
+        boolean kidsOn = prefs.getBoolean("kidsMode", false);
+        view.setKids(kidsOn);
+        view.setCategories(kidsOn ? Catalog.kidsMode() : Catalog.categories(games, apps, emus, roms, proj, bootAnimAvailable()));
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
 
@@ -352,9 +354,10 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (it.isAction()) { action(it.action); return; }
             if (it.isRom()) { forceLandscape(); openRom(it); return; }
             if (it.isDeviceApp()) { start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls)); return; }
+            if (it == Catalog.GEFORCE_NOW && Catalog.gfnInBrowser(handheld())) { openWeb(Catalog.GFN_WEB); return; }
             Intent i = launchIntent(it);
             if (i != null) { forceLandscape(); start(i); return; }
-            if (it.webUrl != null) { start(new Intent(Intent.ACTION_VIEW, Uri.parse(it.webUrl))); return; }
+            if (it.webUrl != null) { openWeb(it.webUrl); return; }
             if (it == Catalog.PLAY_STORE) { Toast.makeText(this, "Play Store not installed on this device", Toast.LENGTH_LONG).show(); return; }
             store(it.storePackage());
         } catch (Exception e) {
@@ -395,6 +398,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "update": checkUpdate(true); break;
             case "bootanim": bootAnim(); break;
             case "rotation": rotationToggle(); break;
+            case "kids": kidsMode(true); break;
+            case "kidsoff": kidsMode(false); break;
             case "theme": {
                 String n = Palette.next(theme().id);
                 prefs.edit().putString("theme", n).apply();
@@ -527,6 +532,29 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME))
                 startActivityForResult(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME), REQ_HOME_ROLE);
         } catch (Exception ignored) { }
+    }
+
+    // ---------- 0.10.2 GeForce NOW web client ----------
+    private boolean handheld() { return Rotation.suggest(android.os.Build.MANUFACTURER, android.os.Build.MODEL, android.os.Build.HARDWARE, android.os.Build.BOARD); }
+
+    /** Chrome when installed (GeForce NOW's web client supports it), otherwise the default browser. */
+    private void openWeb(String url) {
+        Intent v = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        try { getPackageManager().getPackageInfo("com.android.chrome", 0); start(new Intent(v).setPackage("com.android.chrome")); return; }
+        catch (Exception ignored) { }
+        start(v);
+    }
+
+    // ---------- 0.10.2 Kids mode ----------
+    private void kidsMode(boolean on) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(on ? "Turn on Kids mode?" : "Turn off Kids mode?")
+                .setMessage(on ? "The home shows only Play, Kids Games and the Play Store, with big tiles. Retro, game files, Ask and "
+                        + "Settings are hidden. To get Settings back, hold Select (or Y / Menu) for a second."
+                        + (Rotation.suggest(android.os.Build.MANUFACTURER, android.os.Build.MODEL, android.os.Build.HARDWARE, android.os.Build.BOARD) ? " Recommended on this handheld." : "")
+                        : "This brings back all rows and Settings.")
+                .setPositiveButton(on ? "Turn on" : "Turn off", (d, w) -> { prefs.edit().putBoolean("kidsMode", on).apply(); rescan(); })
+                .setNegativeButton("Cancel", null).show();
     }
 
     // ---------- 0.10.1 Force landscape for games (root only, off by default). UNTESTED ON A REAL DEVICE. ----------

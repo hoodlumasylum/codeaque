@@ -45,6 +45,8 @@ public class CatalogTest {
         check(c.get(0).items.get(0).label.equals("Roblox") && c.get(0).items.get(1).label.equals("Minecraft"), "Roblox, Minecraft first");
         check("com.roblox.client".equals(c.get(0).items.get(0).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(1).storePackage()), "featured packages");
         check(c.get(0).items.get(2) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store third on Featured");
+        check(c.get(0).items.get(3) == Catalog.GEFORCE_NOW && Catalog.GEFORCE_NOW.webUrl == null && "com.nvidia.geforcenow".equals(Catalog.GEFORCE_NOW.storePackage()), "GeForce NOW fourth, Play page fallback");
+        check(Catalog.GFN_WEB.equals("https://play.geforcenow.com") && Catalog.gfnInBrowser(true) && !Catalog.gfnInBrowser(false), "GFN web on handhelds");
         check(c.get(0).items.get(0).webUrl == null && c.get(0).items.get(1).webUrl == null, "featured fall back to the Play Store");
         List<Catalog.Item> kids = c.get(Catalog.indexOf(c, "kids")).items;
         check(kids.size() >= 8 && kids.get(0) == Catalog.KIDS[0], "Kids row");
@@ -53,9 +55,13 @@ public class CatalogTest {
         check(Rotation.cmd("off") == null && Rotation.cmd("2") == null && Rotation.cmd("0;reboot") == null
                 && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1"), "rotation cmd");
         check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
+        List<Catalog.Category> km = Catalog.kidsMode();
+        check(km.size() == 3 && km.get(0).items.get(0) == Catalog.ROBLOX && km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
+        check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
+        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check(!i.isAction() && !i.isRom(), "kids mode has only games: " + i.label);
         // 0.10.1 boot animation
         List<String> sa = new java.util.ArrayList<>(); for (Catalog.Item i : c.get(Catalog.indexOf(c, "settings")).items) sa.add(i.action);
-        check(sa.contains("bootanim") && sa.indexOf("bootanim") == sa.indexOf("update") + 1, "boot animation after Update");
+        check(sa.contains("kids") && sa.contains("bootanim") && sa.indexOf("bootanim") == sa.indexOf("update") + 1, "boot animation after Update");
         List<Catalog.Category> nm = Catalog.categories(List.of(), List.of(), List.of(), List.of(), false, false);
         for (Catalog.Item i : nm.get(Catalog.indexOf(nm, "settings")).items) check(!"bootanim".equals(i.action), "hidden without Magisk");
         check(nm.size() == c.size() && Catalog.categories(List.of(), List.of(), List.of(), List.of(), false, true).get(Catalog.indexOf(c, "settings")).items.size() == sa.size(), "shown with Magisk");

@@ -125,7 +125,24 @@ public final class Catalog {
     /** 0.10.1: the Play Store itself on the Featured row (its own installed icon). */
     public static final Item PLAY_STORE = app("Play Store", "grid", "com.android.vending");
 
-    /** 0.10.1 Kids row (package, PEGI): all PEGI 3 except Subway Surfers (PEGI 7). */
+    /** 0.10.2: GeForce NOW on Featured: the app when installed, else its Play page (the Cloud row keeps the web version). */
+    public static final Item GEFORCE_NOW = app("GeForce NOW", "cloud", "com.nvidia.geforcenow");
+    /** On RK3566 / Anbernic (GammaOS) the app's sign-in fails (nvidia://auth_redirect), so the tile opens the web client. */
+    public static final String GFN_WEB = "https://play.geforcenow.com";
+    public static boolean gfnInBrowser(boolean handheld) { return handheld; }
+
+    /** 0.10.2 Kids mode: only these big rows, nothing retro / ROM / BIOS / Ask / projector / advanced.
+     *  Grown-ups leave it by holding Select (or Y / Menu) for a second, which opens KIDS_OFF. */
+    public static final Item KIDS_OFF = act("Turn off Kids mode", "gear", "kidsoff");
+    public static List<Category> kidsMode() {
+        List<Category> c = new ArrayList<>();
+        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW));
+        c.add(new Category("kgames", "Kids Games", "invader", KIDS));
+        c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
+        return c;
+    }
+
+    /** Kids row (package, PEGI): PEGI 3, except Subway Surfers (PEGI 7) and the three Bandai Namco games below (PEGI 16, 0.10.2). */
     public static final Item[] KIDS = {
             app("Pokémon Playhouse", "cube", "com.pokemon.pokemonplayhouse"),
             app("Pokémon Quest", "cube", "jp.pokemon.pokemonquest"),
@@ -136,6 +153,10 @@ public final class Catalog {
             app("PAW Patrol Rescue World", "cube", "com.budgestudios.googleplay.PawPatrolRescueWorld"),
             app("Toca Boca World", "cube", "com.tocaboca.tocalifeworld"),
             app("Subway Surfers", "cube", "com.kiloo.subwaysurf"),
+            // 0.10.2: official Bandai Namco Dragon Ball games, PEGI 16 on Google Play UK, added with the parent's OK
+            app("Dragon Ball Z Dokkan Battle", "cube", "com.bandainamcogames.dbzdokkanww"),
+            app("Dragon Ball Legends", "cube", "com.bandainamcoent.dblegends_ww"),
+            app("Dragon Ball Gekishin Squadra", "cube", "com.bandainamcoent.dbgekishinsquadra"),
     };
 
     public static List<Category> categories() {
@@ -178,7 +199,7 @@ public final class Catalog {
         List<Category> c = new ArrayList<>();
         // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
-        c.add(new Category("steam", "Featured", "display", ROBLOX, MINECRAFT, PLAY_STORE, app("Steam Link", "display", "com.valvesoftware.steamlink"),
+        c.add(new Category("steam", "Featured", "display", ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community")));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.
@@ -226,7 +247,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
         return c;
     }
 

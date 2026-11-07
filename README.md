@@ -31,6 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.2
+
+- **GeForce NOW on the Featured row** (after Roblox, Minecraft and the Play Store). The app opens with its own icon when
+  installed; otherwise the tile opens its official Google Play page. The Cloud row still has the web version.
+  On RK3566 / Anbernic handhelds (GammaOS), where the app's sign-in fails (`nvidia://auth_redirect`), the tile opens the official
+  web client https://play.geforcenow.com instead, in Chrome if installed, otherwise the default browser.
+- **Kids mode** (Settings > Kids mode, recommended on the RG353M): the home shows only three big rows: Play (Roblox,
+  Minecraft, GeForce NOW), Kids Games and Play Store, with larger tiles and labels for 640x480. Retro, game files, Ask,
+  projector and Settings are hidden. Grown-ups hold Select (or Y / Menu) for a second to turn it off.
+- **Kids row: Dragon Ball.** Dragon Ball Z Dokkan Battle, Dragon Ball Legends and Dragon Ball Gekishin Squadra (official
+  Bandai Namco listings, PEGI 16 on Google Play UK) were added with the parent's OK. No other PEGI 16 titles.
+
 ## What's new in 0.10.1: boot animation and Featured tiles (Android)
 
 - **Featured row first on the Android home:** Roblox, Minecraft and the Play Store. The Play Store tile says "Play Store not installed" if it's missing. Installed apps open with their own icon. If they're

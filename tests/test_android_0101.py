@@ -44,16 +44,18 @@ KIDS = {  # package: PEGI rating read from play.google.com (en_GB) on 7 Nov 2026
     "com.pokemon.pokemonplayhouse": 3, "jp.pokemon.pokemonquest": 3, "jp.pokemon.pokemonsmile": 3,
     "jp.pokemon.poketoru": 3, "com.sega.sonicdash": 3, "com.budgestudios.googleplay.HotWheelsUnlimited": 3,
     "com.budgestudios.googleplay.PawPatrolRescueWorld": 3, "com.tocaboca.tocalifeworld": 3, "com.kiloo.subwaysurf": 7,
+    "com.bandainamcogames.dbzdokkanww": 16, "com.bandainamcoent.dblegends_ww": 16, "com.bandainamcoent.dbgekishinsquadra": 16,
 }
 
 
-def test_kids_row_official_pegi_3_or_7_only():
+def test_kids_row_official_listings_only():
     c = (SRC / "Catalog.java").read_text()
     assert 'new Category("kids", "Kids", "pad", KIDS)' in c
     block = c.split("Item[] KIDS = {", 1)[1].split("};", 1)[0]
     pkgs = [l.split('"')[-2] for l in block.splitlines() if 'app("' in l]
-    assert pkgs == list(KIDS) and all(v in (3, 7) for v in KIDS.values())
-    for bad in ("dokkan", "dblegends", "pokemonunite", "pokemongo", "pokemoncafemix", "rom", "emu"):
+    assert pkgs == list(KIDS)
+    assert [p for p, v in KIDS.items() if v not in (3, 7)] == ["com.bandainamcogames.dbzdokkanww", "com.bandainamcoent.dblegends_ww", "com.bandainamcoent.dbgekishinsquadra"]
+    for bad in ("pokemonunite", "pokemongo", "pokemoncafemix", "rom", "emu"):
         assert bad not in block.lower()
 
 
@@ -90,3 +92,31 @@ def test_play_store_tile_on_featured():
     m = (SRC / "MainActivity.java").read_text()
     assert "Play Store not installed" in m
     assert '<package android:name="com.android.vending" />' in (AND / "app/src/main/AndroidManifest.xml").read_text()
+
+
+def test_geforce_now_on_featured():
+    c = (SRC / "Catalog.java").read_text()
+    assert "ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW," in c and 'app("GeForce NOW", "cloud", "com.nvidia.geforcenow")' in c
+    assert '<package android:name="com.nvidia.geforcenow" />' in (AND / "app/src/main/AndroidManifest.xml").read_text()
+
+
+def test_kids_mode_big_and_locked_down():
+    c = (SRC / "Catalog.java").read_text()
+    km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
+    assert '"Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW' in km and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" in km
+    for bad in ("RETROARCH", "romfolder", "settings", "ask", "projector", "k56", "bios"):
+        assert bad not in km.lower().replace("kids games", "")
+    h = (SRC / "HomeView.java").read_text()
+    assert "KIDS_SCALE = 1.7f" in h and "(kids ? 26 : 15) * s" in h
+    assert "onKeyLongPress" in h and "host.open(Catalog.KIDS_OFF)" in h and "e.startTracking()" in h
+    m = (SRC / "MainActivity.java").read_text()
+    assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
+    assert 'kidsOn ? Catalog.kidsMode() :' in m and 'getBoolean("kidsMode", false)' in m
+
+
+def test_geforce_now_web_client_on_handhelds():
+    m = (SRC / "MainActivity.java").read_text()
+    assert "it == Catalog.GEFORCE_NOW && Catalog.gfnInBrowser(handheld())" in m
+    assert m.index("Catalog.gfnInBrowser(handheld())") < m.index("Intent i = launchIntent(it);")
+    assert 'setPackage("com.android.chrome")' in m
+    assert '<package android:name="com.android.chrome" />' in (AND / "app/src/main/AndroidManifest.xml").read_text()
