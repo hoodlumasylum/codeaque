@@ -215,6 +215,15 @@ public class CatalogTest {
                         && DcScan.fromRootPath("/mnt/media_rw/CA86-E82D/a.gdi").equals("/storage/CA86-E82D/a.gdi"), "root paths");
                 check(DcScan.probe(new java.io.File("/nonexistent/x")).contains("exists=false") && DcScan.probe(new java.io.File("/nonexistent/x")).contains("list=null"), "probe");
             }
+            {   // 0.10.12 clean names + player cover names
+                check(Catalog.cleanTitle("Crazy_Taxi (USA) [!]").equals("Crazy Taxi"), "clean " + Catalog.cleanTitle("Crazy_Taxi (USA) [!]"));
+                check(Catalog.cleanTitle("Shenmue Disc 1").equals("Shenmue Disc 1") && Catalog.cleanTitle("(USA)").equals("(USA)"), "clean disc");
+                check(Catalog.gameRom("Rayman 2 (Europe) (En,Fr).cdi", "file:///x/Rayman 2 (Europe) (En,Fr).cdi").label.equals("Rayman 2"), "gameRom label");
+                java.util.List<String> cn = Catalog.coverNames("Shenmue Disc 1.cdi", "Shenmue Disc 1");
+                check(cn.get(0).equals("cover.png") && cn.contains("folder.jpg") && cn.contains("boxart.webp") && cn.contains("shenmue disc 1.jpg"), "cover names " + cn);
+                Catalog.Item gr = Catalog.gameRom("ct.gdi", "file:///storage/emulated/0/ROMS/Dreamcast/Crazy Taxi/ct.gdi");
+                check(Catalog.isDreamcastRom(gr), "gameRom stays a Dreamcast game");
+            }
             {   // 0.10.7 PSP
                 java.io.File pr = java.nio.file.Files.createTempDirectory("psp").toFile();
                 new java.io.File(pr, "PSP/GAME/Hero Run").mkdirs(); new java.io.File(pr, "PSP/GAME/Hero Run/EBOOT.PBP").createNewFile();

@@ -31,6 +31,15 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.12
+
+- **Game covers on Dreamcast and PSP tiles**, in Kids mode too. If a game's folder has your own picture, it is shown:
+  `cover.png/jpg/webp`, `folder.jpg`, `boxart.*`, or a picture with the game's or folder's name. Otherwise CodeAque
+  draws its own title card with the game's name in big bold text and a colour picked from the name. No box art is
+  downloaded or bundled.
+- **Cleaner game names**: region and bracket tags are removed, for example "Crazy Taxi (USA) [!]" becomes "Crazy
+  Taxi". "Disc 1" and "Disc 2" are kept.
+
 ## What's new in 0.10.11
 
 - **More ways to find Dreamcast and PSP games.** If listing folders finds nothing, CodeAque asks Android's file index

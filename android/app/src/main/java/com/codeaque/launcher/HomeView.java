@@ -194,7 +194,9 @@ public class HomeView extends View {
     public void setKids(boolean k) { kids = k; invalidate(); }
     static final float KIDS_SCALE = 1.7f;
     private float big() { return kids ? KIDS_SCALE : 1f; }
-    private boolean covers() { String id = cats.get(cat).id; if (kids) return id.equals("kplay"); id = cats.get(cat).id; return id.equals("mygames") || id.equals("steam"); }      // 0.9.5: portrait box-art tiles
+    private boolean covers() { String id = cats.get(cat).id; if (kids) return id.equals("kplay") || gameRow(id); return id.equals("mygames") || id.equals("steam") || gameRow(id); }
+    /** 0.10.12: the Dreamcast and handheld game rows use portrait covers (player's own picture or a title card). */
+    private static boolean gameRow(String id) { return id.equals("dreamcast") || id.equals("kdc") || id.equals("psp") || id.equals("kpsp"); }      // 0.9.5: portrait box-art tiles
     /** 0.10.6: the Featured / Kids Play row uses wide 16:9-ish covers (feature graphics, Roblox art). */
     private boolean wide() { String id = cats.get(cat).id; return id.equals("steam") || id.equals("kplay"); }
     private float tileH() { return (wide() ? (kids ? 118 : 150) : covers() ? 190 : 112) * s * big(); }
@@ -515,6 +517,38 @@ public class HomeView extends View {
         text(c, hint, W / 2f, top + h + 24 * s, 14 * s, DIM, Paint.Align.CENTER, false);
     }
 
+    /** 0.10.12: CodeAque's own title card for a game without a picture: name-coloured, big bold name. No platform marks. */
+    private void titleCard(Canvas c, Catalog.Item it, boolean sel) {
+        float hue = (Math.abs(it.label.toLowerCase(Locale.ROOT).hashCode()) % 360);
+        int a = Color.HSVToColor(new float[]{hue, 0.75f, 0.70f}), b = Color.HSVToColor(new float[]{(hue + 40) % 360, 0.85f, 0.28f});
+        p.setShader(new LinearGradient(r.left, r.top, r.right, r.bottom, new int[]{a, b, 0xFF06080C}, new float[]{0, 0.65f, 1}, Shader.TileMode.CLAMP));
+        c.drawRect(r, p); p.setShader(null);
+        p.setColor(0x18FFFFFF);   // CodeAque chevrons
+        for (int k = 0; k < 4; k++) { float y = r.top + r.height() * (0.08f + k * 0.07f); path.reset(); path.moveTo(r.left, y); path.lineTo(r.centerX(), y + r.width() * 0.25f);
+            path.lineTo(r.right, y); path.lineTo(r.right, y + 3 * s); path.lineTo(r.centerX(), y + r.width() * 0.25f + 3 * s); path.lineTo(r.left, y + 3 * s); path.close(); c.drawPath(path, p); }
+        p.setColor(GOLD); c.drawRect(r.left + 10 * s, r.top + r.height() * 0.42f, r.left + 10 * s + r.width() * 0.3f, r.top + r.height() * 0.42f + 3 * s, p);
+        String[] words = it.label.toUpperCase(Locale.ROOT).split(" ");
+        float maxW = r.width() - 16 * s, ts = 26 * s;
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        while (true) {
+            p.setTextSize(ts); lines.clear(); String cur = "";
+            for (String w : words) { String t = cur.isEmpty() ? w : cur + " " + w; if (p.measureText(t) <= maxW || cur.isEmpty()) cur = t; else { lines.add(cur); cur = w; } }
+            if (!cur.isEmpty()) lines.add(cur);
+            boolean fits = lines.size() <= 5 && ts * 1.1f * lines.size() < r.height() * 0.5f;
+            for (String l : lines) if (p.measureText(l) > maxW) fits = false;
+            if (fits || ts <= 9 * s) break;
+            ts -= 1 * s;
+        }
+        float y = r.top + r.height() * 0.42f + 8 * s + ts;
+        for (String l : lines) { text(c, l, r.left + 10 * s, y, ts, 0xFFFFFFFF, Paint.Align.LEFT, true); y += ts * 1.1f; }
+    }
+    private void drawCoverFrame(Canvas c, boolean sel) {
+        stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
+        stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
+        c.drawRoundRect(r, 12 * s, 12 * s, stroke); stroke.setShader(null);
+    }
+
     private final Path clip = new Path();
     private final RectF src = new RectF();
     /** A portrait My Games tile in r: the game's picture (centre-cropped), else CodeAque's own generic art with the app icon. */
@@ -528,6 +562,10 @@ public class HomeView extends View {
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
             src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
             p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(cov, null, src, p);
+        } else if (it.isRom()) {
+            titleCard(c, it, sel);
+            c.restore(); drawCoverFrame(c, sel);
+            return;
         } else {
             float hue = (Math.abs(it.key().hashCode()) % 360);
             int top = Color.HSVToColor(new float[]{hue, 0.7f, 0.55f}), mid = Color.HSVToColor(new float[]{hue, 0.8f, 0.22f});

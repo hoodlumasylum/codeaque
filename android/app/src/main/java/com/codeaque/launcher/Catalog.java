@@ -60,6 +60,26 @@ public final class Catalog {
     }
 
     /** A game file from a folder the user chose (Android's folder picker); opened with an installed emulator. */
+    /** 0.10.12: a Dreamcast / PSP game found by the scan, labelled with its clean name. */
+    public static Item gameRom(String name, String uri) {
+        return new Item(cleanTitle(stripExt(name)), "cart", new String[0], null, null, null, name, uri);
+    }
+    /** "Crazy_Taxi (USA) [!]" -> "Crazy Taxi"; keeps "Disc 1" so multi-disc games stay apart. */
+    public static String cleanTitle(String n) {
+        String t = n.replace('_', ' ').replaceAll("\\s*[\\(\\[][^\\)\\]]*[\\)\\]]", " ");
+        t = t.replaceAll("(?i)\\b(gdi|cdi|chd|iso|cso)\\b$", "").replaceAll("\\s+", " ").trim();
+        t = t.replaceAll("\\s*-\\s*$", "");
+        return t.isEmpty() ? n : t;
+    }
+    /** 0.10.12: player-supplied cover file names next to a game (checked case-insensitively, in this order). */
+    public static java.util.List<String> coverNames(String fileName, String folderName) {
+        String stem = stripExt(fileName);
+        java.util.List<String> l = new java.util.ArrayList<>();
+        for (String b : new String[]{"cover", "folder", "boxart", stem, folderName})
+            for (String e : new String[]{"png", "jpg", "jpeg", "webp"}) if (b != null && !b.isEmpty()) l.add((b + "." + e).toLowerCase(java.util.Locale.ROOT));
+        return l;
+    }
+
     public static Item rom(String name, String uri) {
         return new Item(stripExt(name), "cart", new String[0], null, null, null, name, uri);   // cls = the file name (for box art)
     }

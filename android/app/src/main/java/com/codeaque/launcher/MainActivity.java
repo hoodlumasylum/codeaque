@@ -262,6 +262,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public android.graphics.Bitmap cover(Catalog.Item it) {
         String k = it.key();
         if (coverCache.containsKey(k)) return coverCache.get(k);
+        if (Catalog.isDreamcastRom(it) || Catalog.isPspRom(it)) return gameCover(it);   // 0.10.12: the player's own cover, else a title card
         if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it); if (w != null) return w; }   // 0.10.6 wide covers
         int own = it == Catalog.MARVEL_RIVALS ? R.drawable.duat_realm_s1 : it == Catalog.MINECRAFT ? R.drawable.duat_realm_blocks
                 : it == Catalog.ROBLOX ? R.drawable.duat_realm_bricks : 0;   // 0.10.6: Hoodlum Asylum's own "Duat Realm" art, logos cropped out
@@ -294,6 +295,43 @@ public class MainActivity extends Activity implements HomeView.Host {
         }
         coverCache.put(k, b);
         return b;
+    }
+
+    /** 0.10.12: cover.png / folder.jpg / boxart.* / <game>.png next to the game file (the player's own pictures only).
+     *  Found and decoded in the background, cached in memory; root copy when the folder can't be listed. null = title card. */
+    private final Map<String, android.graphics.Bitmap> gameCovers = new HashMap<>();
+    private android.graphics.Bitmap gameCover(Catalog.Item it) {
+        String k = it.uri;
+        if (gameCovers.containsKey(k)) return gameCovers.get(k);
+        if (!fetching.add("gc:" + k)) return null;
+        new Thread(() -> {
+            android.graphics.Bitmap b = null;
+            try {
+                java.io.File game = new java.io.File(Uri.parse(it.uri).getPath()), dir = game.getParentFile();
+                java.util.List<String> want = Catalog.coverNames(game.getName(), dir == null ? null : dir.getName());
+                java.io.File[] fs = dir == null ? null : dir.listFiles();
+                java.io.File pick = null;
+                if (fs != null) {
+                    for (String w : want) { for (java.io.File f : fs) if (f.isFile() && f.getName().toLowerCase(java.util.Locale.ROOT).equals(w)) { pick = f; break; } if (pick != null) break; }
+                } else if (dir != null) {   // unreadable folder (found via root): copy the picture out with su
+                    StringBuilder ls = new StringBuilder();
+                    String rdir = dir.getAbsolutePath().replaceFirst("^/storage/emulated/0", "/data/media/0").replaceFirst("^/storage/(?!emulated)", "/mnt/media_rw/");
+                    if (su("ls -1 '" + rdir.replace("'", "'\\''") + "'", ls) == 0) {
+                        String hit = null;
+                        for (String w : want) { for (String l : ls.toString().split("\n")) if (l.trim().toLowerCase(java.util.Locale.ROOT).equals(w)) { hit = l.trim(); break; } if (hit != null) break; }
+                        if (hit != null) {
+                            java.io.File dst = new java.io.File(getCacheDir(), "gamecover-" + Integer.toHexString(k.hashCode()));
+                            String src = (rdir + "/" + hit).replace("'", "'\\''");
+                            if (su("cat '" + src + "' > '" + dst.getAbsolutePath() + "' && chmod 644 '" + dst.getAbsolutePath() + "'", null) == 0 && dst.length() > 0) pick = dst;
+                        }
+                    }
+                }
+                if (pick != null && pick.length() < 20_000_000) b = decodeCover(pick);
+            } catch (Exception ignored) { }
+            final android.graphics.Bitmap fb = b;
+            runOnUiThread(() -> { gameCovers.put(k, fb); fetching.remove("gc:" + k); if (fb != null) view.invalidate(); });
+        }).start();
+        return null;
     }
 
     private java.io.File coverFile(Catalog.Item it) {
@@ -720,8 +758,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             }
             diag.append("Total: ").append(dcFound.size()).append(" Dreamcast, ").append(pspFound.size()).append(" PSP");
             out.clear();
-            for (java.io.File f : dcFound) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
-            for (java.io.File f : pspFound) out.add(Catalog.rom(PspScan.fileName(f), Uri.fromFile(f).toString()));
+            for (java.io.File f : dcFound) out.add(Catalog.gameRom(f.getName(), Uri.fromFile(f).toString()));
+            for (java.io.File f : pspFound) out.add(Catalog.gameRom(PspScan.fileName(f), Uri.fromFile(f).toString()));
             scanDetails = diag.toString();
             String vols = android.text.TextUtils.join(", ", rs);
             String dcNote = dcFound.isEmpty() ? "No games found in: " + (dcDirs.isEmpty() ? "no Dreamcast / ROMS folders on " + vols : shortList(dcDirs)) + " - Settings > Scan details" : null;

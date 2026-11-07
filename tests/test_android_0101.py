@@ -281,3 +281,14 @@ def test_scan_fallbacks_and_details():
     assert m.index("&& rescanAsked) {   // root") > 0   # su only on a grown-up's Rescan
     assert 'case "scandetails": if (!prefs.getBoolean("kidsMode", false)) showScanDetails();' in m
     assert 'android:name="android.permission.MANAGE_EXTERNAL_STORAGE"' in (AND / "app/src/main/AndroidManifest.xml").read_text()
+
+
+def test_game_covers_own_pictures_or_title_card():
+    m = (SRC / "MainActivity.java").read_text()
+    assert "if (Catalog.isDreamcastRom(it) || Catalog.isPspRom(it)) return gameCover(it);" in m
+    body = m.split("private android.graphics.Bitmap gameCover(", 1)[1].split("private java.io.File coverFile(", 1)[0]
+    assert "http" not in body and "su(\"ls -1" in body
+    h = (SRC / "HomeView.java").read_text()
+    card = h.split("private void titleCard(", 1)[1].split("private void drawCoverFrame(", 1)[0]
+    assert "drawBitmap" not in card and "Sega" not in card and "Sony" not in card
+    assert 'id.equals("kdc")' in h and 'id.equals("kpsp")' in h
