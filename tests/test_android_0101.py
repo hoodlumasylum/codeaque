@@ -103,7 +103,7 @@ def test_geforce_now_on_featured():
 def test_kids_mode_big_and_locked_down():
     c = (SRC / "Catalog.java").read_text()
     km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
-    assert '"Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW' in km and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" in km
+    assert '"Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS)' in km and "GEFORCE_NOW" not in km.split("KIDS_WIFI", 1)[0] and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" in km
     for bad in ("RETROARCH", "romfolder", "settings", "ask", "projector", "k56", "bios"):
         assert bad not in km.lower().replace("kids games", "")
     h = (SRC / "HomeView.java").read_text()
@@ -249,7 +249,7 @@ def test_files_tile_not_in_kids():
 def test_psp_section_mirrors_dreamcast():
     c = (SRC / "Catalog.java").read_text()
     assert 'PSP = app("PSP", "handheld", "org.ppsspp.ppsspp", "org.ppsspp.ppssppgold")' in c
-    assert 'new Category("kpsp"' in c and "c.add(psp(roms));" in c
+    assert 'new Category("kpsp"' in c and "psp(roms, false)" in c and "if (files) l.add(FILES);   // 0.10.8" in c and "c.add(psp(roms));" in c
     s = (SRC / "PspScan.java").read_text()
     assert "http" not in s.lower() and '"PSP/GAME"' in s and '"ROMs/psp"' in s
     m = (SRC / "MainActivity.java").read_text()

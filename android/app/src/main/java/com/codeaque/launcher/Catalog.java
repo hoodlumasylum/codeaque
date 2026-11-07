@@ -172,8 +172,9 @@ public final class Catalog {
         if (!i.isRom() || i.cls == null || i.uri == null || !i.uri.startsWith("file:")) return false;
         return PspScan.pspFile(i.cls, PspScan.inPspFolder(i.uri));
     }
-    public static Category psp(List<Item> roms) {
-        List<Item> l = new ArrayList<>(); l.add(PSP);
+    public static Category psp(List<Item> roms) { return psp(roms, true); }
+    public static Category psp(List<Item> roms, boolean files) {
+        List<Item> l = new ArrayList<>(); l.add(PSP); if (files) l.add(FILES);   // 0.10.8: Files here too (never in Kids mode)
         java.util.Set<String> names = new java.util.HashSet<>();
         for (Item r : roms) if (isPspRom(r) && names.add(r.label.toLowerCase(java.util.Locale.ROOT))) l.add(r);
         return new Category("psp", "PSP", "handheld", l.toArray(new Item[0]));
@@ -200,12 +201,12 @@ public final class Catalog {
     /** added = games installed during a Kids mode session (0.10.6), shown as their own row. */
     public static List<Category> kidsMode(List<Item> roms, List<Item> added) {
         List<Category> c = new ArrayList<>();
-        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW, MARVEL_RIVALS));
+        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS));
         if (!added.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", added.toArray(new Item[0])));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
         Category dc = dreamcast(roms, false); c.add(new Category("kdc", dc.label, dc.icon, dc.items.toArray(new Item[0])));
-        Category ps = psp(roms); c.add(new Category("kpsp", ps.label, ps.icon, ps.items.toArray(new Item[0])));   // 0.10.7
+        Category ps = psp(roms, false); c.add(new Category("kpsp", ps.label, ps.icon, ps.items.toArray(new Item[0])));   // 0.10.7
         c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
         return c;
     }

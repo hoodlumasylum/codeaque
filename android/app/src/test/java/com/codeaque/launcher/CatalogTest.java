@@ -56,7 +56,7 @@ public class CatalogTest {
                 && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1; wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true"), "rotation cmd");
         check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
         List<Catalog.Category> km = Catalog.kidsMode();
-        check(km.size() == 6 && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(5).items.size() == 2 && km.get(5).items.get(0) == Catalog.KIDS_WIFI && km.get(5).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
+        check(km.size() == 6 && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(5).items.size() == 2 && km.get(5).items.get(0) == Catalog.KIDS_WIFI && km.get(5).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
         check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
         for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
@@ -186,7 +186,8 @@ public class CatalogTest {
                 for (java.io.File f : pf) pr2.add(Catalog.rom(PspScan.fileName(f), "file://" + f.getAbsolutePath()));
                 pr2.add(Catalog.rom("Crazy.chd", "file:///sdcard/ROMs/dc/Crazy.chd"));
                 Catalog.Category ps = Catalog.psp(pr2);
-                check(ps.items.size() == 5 && ps.items.get(0) == Catalog.PSP, "psp tiles " + ps.items.size());
+                check(ps.items.size() == 6 && ps.items.get(0) == Catalog.PSP && ps.items.get(1) == Catalog.FILES, "psp tiles " + ps.items.size());
+                for (Catalog.Category k : Catalog.kidsMode(pr2)) check(!k.items.contains(Catalog.FILES), "no Files in kids mode");
                 check(Catalog.dreamcast(pr2).items.size() == 3, "dc keeps its own chd only");
                 List<Catalog.Category> k2 = Catalog.kidsMode(pr2);
                 check(k2.get(Catalog.indexOf(k2, "kpsp")).items.size() == 5, "kids psp");

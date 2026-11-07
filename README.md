@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.8
+
+- **Files tile in the PSP section** as well, so you can copy PSP games from a USB stick. It is not shown in Kids mode.
+- **Kids mode:** the GeForce NOW tile is gone from the Play row. Marvel Rivals stays (it opens through the GeForce NOW
+  web link), and GeForce NOW is still on the normal home screen.
+- **Kids mode:** the GeForce NOW tile is gone from the Play row. Marvel Rivals stays (it opens through the GeForce NOW
+  web link), and GeForce NOW is still on the normal home screen.
+
 ## What's new in 0.10.7
 
 - **Files tile** in the Dreamcast section. It opens the device's own file manager so you can copy games and BIOS from
