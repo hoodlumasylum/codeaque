@@ -44,7 +44,7 @@ public class HomeView extends View {
         tile = Math.max(0, Math.min(tile, items().size() - 1));
         invalidate();
     }
-    private int cat = 0, tile = 1;       // Games, focused on the first real tile after "Cloud Gaming"? start on Cloud Gaming:
+    private int cat = 0, tile = 0;       // 0.10.1: start on the Featured row, Roblox first
     private boolean inCats = false;
     private float catAnim = 0, scrollAnim = 0, t = 0;
     private long last = 0, lastFrame = 0;
@@ -62,7 +62,7 @@ public class HomeView extends View {
     public HomeView(Context c, Host host) {
         super(c);
         this.host = host;
-        tile = 0; cat = 1; catAnim = 1;          // start on My Games (Steam is the first tab, one to the left)
+        tile = 0; cat = 0; catAnim = 0;          // 0.10.1: start on Featured (Roblox, Minecraft, then Steam)
         setFocusable(true); setFocusableInTouchMode(true);
         try {
             logo = BitmapFactory.decodeStream(c.getAssets().open("logo.png"));

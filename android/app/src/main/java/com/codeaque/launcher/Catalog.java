@@ -122,6 +122,22 @@ public final class Catalog {
         return Collections.emptyList();
     }
 
+    /** 0.10.1: the Play Store itself on the Featured row (its own installed icon). */
+    public static final Item PLAY_STORE = app("Play Store", "grid", "com.android.vending");
+
+    /** 0.10.1 Kids row (package, PEGI): all PEGI 3 except Subway Surfers (PEGI 7). */
+    public static final Item[] KIDS = {
+            app("Pokémon Playhouse", "cube", "com.pokemon.pokemonplayhouse"),
+            app("Pokémon Quest", "cube", "jp.pokemon.pokemonquest"),
+            app("Pokémon Smile", "cube", "jp.pokemon.pokemonsmile"),
+            app("Pokémon Shuffle", "cube", "jp.pokemon.poketoru"),
+            app("Sonic Dash", "cube", "com.sega.sonicdash"),
+            app("Hot Wheels Unlimited", "cube", "com.budgestudios.googleplay.HotWheelsUnlimited"),
+            app("PAW Patrol Rescue World", "cube", "com.budgestudios.googleplay.PawPatrolRescueWorld"),
+            app("Toca Boca World", "cube", "com.tocaboca.tocalifeworld"),
+            app("Subway Surfers", "cube", "com.kiloo.subwaysurf"),
+    };
+
     public static List<Category> categories() {
         return categories(Collections.<Item>emptyList(), Collections.<Item>emptyList(), Collections.<Item>emptyList(), Collections.<Item>emptyList());
     }
@@ -129,6 +145,20 @@ public final class Catalog {
     /** 0.9.4 home: My Games (installed games with their icons, installed emulators, the user's own game files) first,
      *  All Apps before Settings. games / apps / emus / roms come from the device and may be empty. */
     /** Projector mode: Cloud (GeForce NOW, Xbox) and Media (Kodi, Free Movies & TV) come first. */
+    /** 0.10.1: the boot animation entry only shows where Magisk / root is present. */
+    public static List<Category> categories(List<Item> games, List<Item> apps, List<Item> emus, List<Item> roms, boolean projector, boolean magisk) {
+        List<Category> c = categories(games, apps, emus, roms, projector);
+        if (magisk) return c;
+        List<Category> out = new ArrayList<>();
+        for (Category k : c) {
+            if (!k.id.equals("settings")) { out.add(k); continue; }
+            List<Item> keep = new ArrayList<>();
+            for (Item i : k.items) if (!"bootanim".equals(i.action)) keep.add(i);
+            out.add(new Category(k.id, k.label, k.icon, keep.toArray(new Item[0])));
+        }
+        return out;
+    }
+
     public static List<Category> categories(List<Item> games, List<Item> apps, List<Item> emus, List<Item> roms, boolean projector) {
         List<Category> c = categories(games, apps, emus, roms);
         if (!projector) return c;
@@ -147,8 +177,12 @@ public final class Catalog {
         if (all.isEmpty()) all.add(act("All apps", "grid", "allapps"));
         List<Category> c = new ArrayList<>();
         // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
-        c.add(new Category("steam", "Steam", "display", app("Steam Link", "display", "com.valvesoftware.steamlink"),
+        // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
+        c.add(new Category("steam", "Featured", "display", ROBLOX, MINECRAFT, PLAY_STORE, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community")));
+        // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
+        // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.
+        c.add(new Category("kids", "Kids", "pad", KIDS));
         c.add(new Category("mygames", "My Games", "pad", mine.toArray(new Item[0])));
         c.add(new Category("games", "Games", "cloud",
                 act("Cloud Gaming", "cloud", "goto:cloud"), XBOX, GFN, LUNA, RETROARCH, MINECRAFT, ROBLOX));
@@ -192,7 +226,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Android settings", "gear", "settings")));
         return c;
     }
 

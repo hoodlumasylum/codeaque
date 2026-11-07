@@ -10,8 +10,8 @@ public class CatalogTest {
 
     public static void main(String[] a) {
         List<Catalog.Category> c = Catalog.categories();
-        check(c.get(0).id.equals("steam") && c.get(1).id.equals("mygames") && c.get(2).id.equals("games") && c.get(2).items.get(0).action.equals("goto:cloud"), "Steam, My Games, then Games with Cloud Gaming");
-        check(Catalog.indexOf(c, "cloud") == 3 && Catalog.indexOf(c, "retro") == 4, "Cloud then Retro");
+        check(c.get(0).id.equals("steam") && c.get(1).id.equals("kids") && c.get(2).id.equals("mygames") && c.get(3).id.equals("games") && c.get(3).items.get(0).action.equals("goto:cloud"), "Featured, Kids, My Games, then Games with Cloud Gaming");
+        check(Catalog.indexOf(c, "cloud") == 4 && Catalog.indexOf(c, "retro") == 5, "Cloud then Retro");
         List<Catalog.Category> pj = Catalog.categories(List.of(), List.of(), List.of(), List.of(), true);
         check(pj.get(0).id.equals("cloud") && pj.get(1).id.equals("media") && pj.size() == c.size(), "projector order");
         check(Catalog.indexOf(c, "store") > 0 && Catalog.indexOf(c, "accounts") > 0, "Games Store and Accounts");
@@ -21,7 +21,7 @@ public class CatalogTest {
         Catalog.Item g = Catalog.deviceApp("Some Game", "com.example.game", "com.example.game.Main");
         Catalog.Item rom = Catalog.rom("My Game.sfc", "content://x/1");
         List<Catalog.Category> d = Catalog.categories(List.of(g), List.of(g), List.of(Catalog.emulators().get(0)), List.of(rom));
-        List<Catalog.Item> mine = d.get(1).items;
+        List<Catalog.Item> mine = d.get(Catalog.indexOf(d, "mygames")).items;
         check(mine.get(0) == g && mine.get(1).label.equals("RetroArch") && mine.get(2).label.equals("My Game") && mine.get(2).isRom(), "My Games order");
         check("romfolder".equals(mine.get(mine.size() - 1).action), "My Games ends with Add game folder");
         check(d.get(Catalog.indexOf(d, "allapps")).items.get(0).isDeviceApp(), "All Apps lists device apps");
@@ -41,6 +41,33 @@ public class CatalogTest {
         check(c.get(Catalog.indexOf(c, "retro")).items.get(0).label.equals("RetroArch"), "Retro opens RetroArch first");
         check(Catalog.nextEffects("auto").equals("on") && Catalog.nextEffects("off").equals("auto"), "effects cycle");
         // themes: default unchanged and first, Power Up available, picker cycles
+        // 0.10.1 Featured: Roblox, Minecraft first; store link when missing, no logos
+        check(c.get(0).items.get(0).label.equals("Roblox") && c.get(0).items.get(1).label.equals("Minecraft"), "Roblox, Minecraft first");
+        check("com.roblox.client".equals(c.get(0).items.get(0).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(1).storePackage()), "featured packages");
+        check(c.get(0).items.get(2) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store third on Featured");
+        check(c.get(0).items.get(0).webUrl == null && c.get(0).items.get(1).webUrl == null, "featured fall back to the Play Store");
+        List<Catalog.Item> kids = c.get(Catalog.indexOf(c, "kids")).items;
+        check(kids.size() >= 8 && kids.get(0) == Catalog.KIDS[0], "Kids row");
+        for (Catalog.Item i : kids) check(i.webUrl == null && i.storePackage() != null && !i.isAction() && !i.icon.contains("logo"), i.label + " is a Play Store app tile");
+        check(Rotation.next("off").equals("0") && Rotation.next("3").equals("off") && Rotation.next(null).equals("0"), "rotation cycle");
+        check(Rotation.cmd("off") == null && Rotation.cmd("2") == null && Rotation.cmd("0;reboot") == null
+                && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1"), "rotation cmd");
+        check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
+        // 0.10.1 boot animation
+        List<String> sa = new java.util.ArrayList<>(); for (Catalog.Item i : c.get(Catalog.indexOf(c, "settings")).items) sa.add(i.action);
+        check(sa.contains("bootanim") && sa.indexOf("bootanim") == sa.indexOf("update") + 1, "boot animation after Update");
+        List<Catalog.Category> nm = Catalog.categories(List.of(), List.of(), List.of(), List.of(), false, false);
+        for (Catalog.Item i : nm.get(Catalog.indexOf(nm, "settings")).items) check(!"bootanim".equals(i.action), "hidden without Magisk");
+        check(nm.size() == c.size() && Catalog.categories(List.of(), List.of(), List.of(), List.of(), false, true).get(Catalog.indexOf(c, "settings")).items.size() == sa.size(), "shown with Magisk");
+        check(BootAnim.URL.equals("https://github.com/hoodlumasylum/codeaque/releases/download/bootanim-v1.0/codeaque-bootanim-v1.0.zip"), "bootanim url");
+        check(BootAnim.SHA256.equals("b1616fad964be479a5c125505defbd1b9b99fa3cef97cff3f09b5ea35b3600c1"), "bootanim sha");
+        check(BootAnim.installCmd("/storage/emulated/0/Download/codeaque-bootanim-v1.0 (1).zip".replace(" ", "")).equals("magisk --install-module '/storage/emulated/0/Download/codeaque-bootanim-v1.0(1).zip'"), "install cmd");
+        boolean threw = false; try { BootAnim.installCmd("/sdcard/x';reboot;'.zip"); } catch (IllegalArgumentException e) { threw = true; }
+        check(threw && !BootAnim.safePath("/a/../b.zip") && !BootAnim.safePath("/a b.zip"), "unsafe paths refused");
+        check(BootAnim.removeCmd().endsWith("touch /data/adb/modules/codeaque-bootanim/remove"), "remove cmd");
+        check(!BootAnim.available(false, x -> false) && BootAnim.available(true, x -> false) && BootAnim.available(false, x -> x.equals("/system/xbin/su")), "magisk detection");
+        try { check(BootAnim.matches(java.security.MessageDigest.getInstance("SHA-256").digest(new byte[0])) == false
+                && BootAnim.hex(new byte[]{0, (byte) 255}).equals("00ff"), "sha hex"); } catch (Exception e) { throw new AssertionError(e); }
         check(Palette.byId("nope") == Palette.NEON && Palette.ALL[0] == Palette.NEON, "default theme is Neon");
         check(Palette.NEON.gold == 0xFF3FD4FF && !Palette.NEON.aura && !Palette.NEON.burst, "Neon: cyan accent, calm background");
         check(Palette.POWERUP.name.equals("Power Up") && Palette.POWERUP.aura, "Power Up theme");

@@ -33,6 +33,14 @@ def test_themes_are_original_and_default_is_unchanged():
     assert "ALL = {NEON, POWERUP, CATCH, XMAS}" in pal                  # Neon is the default
     everything = " ".join(p.read_text(errors="ignore") for p in AND.rglob("*") if p.is_file() and p.suffix in (".java", ".xml", ".md", ".gradle", ".sh"))
     everything += (ROOT / "docs/android.md").read_text() + (ROOT / "README.md").read_text()
+    # 0.10.1: the Kids row names official Play Store apps by their store titles (text labels only, no art);
+    # that list and its README note are the only allowed mentions, the themes stay original.
+    cat = (SRC / "Catalog.java").read_text()
+    kids = "Item[] KIDS = {" + cat.split("Item[] KIDS = {", 1)[1].split("};", 1)[0]
+    readme = (ROOT / "README.md").read_text()
+    note = "- **Kids row**" + readme.split("- **Kids row**", 1)[1].split("\n- **", 1)[0]
+    everything = everything.replace(kids, "").replace(note, "")
+    assert "pokémon" not in kids.lower().replace('app("pokémon', "") and "goku" not in kids.lower()
     low = everything.lower()
     for bad in ("dragon ball", "dbz", "goku", "saiyan", "kamehameha", "pokemon", "pokémon", "poke ball", "pokeball", "pikachu"):
         assert bad not in low, bad

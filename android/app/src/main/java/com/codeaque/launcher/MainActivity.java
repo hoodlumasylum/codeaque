@@ -59,6 +59,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         view.setTheme(Palette.byId(prefs.getString("theme", "neon")));
         loadWallpaper();
         maybeDailyCheck();
+        maybeAskHomeOnce();
+        maybeSuggestRotation();
         PackageManager pm0 = getPackageManager();        // a TV box / projector: suggest Projector mode once
         if (!prefs.contains("projector") && !prefs.getBoolean("projHint", false)
                 && (pm0.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || !pm0.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN))) {
@@ -182,7 +184,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         for (Catalog.Item e : Catalog.emulators()) if (launchIntent(e) != null) emus.add(e);
         boolean proj = prefs.getBoolean("projector", false);
         view.setProjector(proj);
-        view.setCategories(Catalog.categories(games, apps, emus, roms, proj));
+        view.setCategories(Catalog.categories(games, apps, emus, roms, proj, bootAnimAvailable()));
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
 
@@ -348,11 +350,12 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public void open(Catalog.Item it) {
         try {
             if (it.isAction()) { action(it.action); return; }
-            if (it.isRom()) { openRom(it); return; }
+            if (it.isRom()) { forceLandscape(); openRom(it); return; }
             if (it.isDeviceApp()) { start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls)); return; }
             Intent i = launchIntent(it);
-            if (i != null) { start(i); return; }
+            if (i != null) { forceLandscape(); start(i); return; }
             if (it.webUrl != null) { start(new Intent(Intent.ACTION_VIEW, Uri.parse(it.webUrl))); return; }
+            if (it == Catalog.PLAY_STORE) { Toast.makeText(this, "Play Store not installed on this device", Toast.LENGTH_LONG).show(); return; }
             store(it.storePackage());
         } catch (Exception e) {
             Toast.makeText(this, "Could not open " + it.label, Toast.LENGTH_SHORT).show();
@@ -372,7 +375,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "bluetooth": start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); break;
             case "display": start(new Intent(Settings.ACTION_DISPLAY_SETTINGS)); break;
             case "settings": start(new Intent(Settings.ACTION_SETTINGS)); break;
-            case "home": start(new Intent(Settings.ACTION_HOME_SETTINGS)); break;
+            case "home": if (isDefaultHome()) toast("CodeAque is already your Home app."); else start(new Intent(Settings.ACTION_HOME_SETTINGS)); break;
             case "browser": start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))); break;
             case "effects": {
                 String n = Catalog.nextEffects(effects());
@@ -390,6 +393,8 @@ public class MainActivity extends Activity implements HomeView.Host {
                 rescan(); break;
             }
             case "update": checkUpdate(true); break;
+            case "bootanim": bootAnim(); break;
+            case "rotation": rotationToggle(); break;
             case "theme": {
                 String n = Palette.next(theme().id);
                 prefs.edit().putString("theme", n).apply();
@@ -496,6 +501,186 @@ public class MainActivity extends Activity implements HomeView.Host {
         } catch (Exception e) {
             toast("The update could not be installed: " + e.getMessage());
         }
+    }
+
+    // ---------- 0.10.1 Home app: never re-prompt once CodeAque is the default ----------
+    static final int REQ_HOME_ROLE = 41;
+
+    boolean isDefaultHome() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                android.app.role.RoleManager rm = getSystemService(android.app.role.RoleManager.class);
+                if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME)) return rm.isRoleHeld(android.app.role.RoleManager.ROLE_HOME);
+            }
+            ResolveInfo r = getPackageManager().resolveActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY);
+            return r != null && r.activityInfo != null && getPackageName().equals(r.activityInfo.packageName);
+        } catch (Exception e) { return true; }   // unsure: never nag
+    }
+
+    /** Asks at most once, ever, and only on API 29+ through RoleManager; never fires a HOME intent or chooser itself. */
+    private void maybeAskHomeOnce() {
+        if (prefs.getBoolean("homeAsked", false) || android.os.Build.VERSION.SDK_INT < 29) return;
+        prefs.edit().putBoolean("homeAsked", true).apply();
+        if (isDefaultHome()) return;
+        try {
+            android.app.role.RoleManager rm = getSystemService(android.app.role.RoleManager.class);
+            if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME))
+                startActivityForResult(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME), REQ_HOME_ROLE);
+        } catch (Exception ignored) { }
+    }
+
+    // ---------- 0.10.1 Force landscape for games (root only, off by default). UNTESTED ON A REAL DEVICE. ----------
+    private void rotationToggle() {
+        if (!bootAnimAvailable()) { toast("Force landscape needs a rooted device (Magisk). Nothing was changed."); return; }
+        String m = Rotation.next(prefs.getString("rotation", "off"));
+        prefs.edit().putString("rotation", m).apply();
+        toast(Rotation.label(m) + (m.equals("off") ? "" : ". If games are still sideways, choose it again for the next rotation."));
+    }
+
+    /** Before a game opens: lock the rotation with root, only when the user switched it on. Never restores (not needed). */
+    private void forceLandscape() {
+        String c = Rotation.cmd(prefs.getString("rotation", "off"));
+        if (c == null || !bootAnimAvailable()) return;
+        new Thread(() -> su(c, null)).start();
+    }
+
+    private void maybeSuggestRotation() {
+        if (prefs.contains("rotation") || prefs.getBoolean("rotSuggested", false)) return;
+        if (!Rotation.suggest(android.os.Build.MANUFACTURER, android.os.Build.MODEL, android.os.Build.HARDWARE, android.os.Build.BOARD)) return;
+        prefs.edit().putBoolean("rotSuggested", true).apply();
+        toast("Games sideways? Settings > Force landscape for games (needs root).");
+    }
+
+    // ---------- 0.10.1 CodeAque boot animation (Magisk module). UNTESTED ON A REAL DEVICE. ----------
+    private boolean bootAnimAvailable() {
+        boolean app;
+        try { getPackageManager().getPackageInfo(BootAnim.MAGISK_PKG, 0); app = true; } catch (Exception e) { app = false; }
+        return BootAnim.available(app, p -> new java.io.File(p).exists());
+    }
+
+    private void bootAnim() {
+        if (!bootAnimAvailable()) { toast("The boot animation needs a rooted device with Magisk. Nothing was changed."); return; }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("CodeAque boot animation")
+                .setMessage(BootAnim.INFO)
+                .setPositiveButton("Download and install", (d, w) -> bootAnimDownload())
+                .setNeutralButton("Remove boot animation", (d, w) -> bootAnimRemove())
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    /** Runs one command as root; the user must allow the Magisk superuser prompt. Returns exit code, -1 if su is missing. */
+    private int su(String cmd, StringBuilder out) {
+        try {
+            Process p = new ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start();
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                String l; while ((l = r.readLine()) != null) if (out != null && out.length() < 4000) out.append(l).append('\n');
+            }
+            return p.waitFor();
+        } catch (Exception e) { return -1; }
+    }
+
+    private void bootAnimDownload() {
+        android.app.ProgressDialog pd = new android.app.ProgressDialog(this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+        pd.setTitle("Downloading boot animation"); pd.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
+        pd.setMax(100); pd.setCancelable(false); pd.show();
+        new Thread(() -> {
+            String path = null; Uri saved = null;
+            try {
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                java.io.OutputStream out; java.io.File file = null;
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    android.content.ContentResolver cr = getContentResolver();
+                    try { cr.delete(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                            android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[]{BootAnim.FILE}); } catch (Exception ignored) { }
+                    android.content.ContentValues v = new android.content.ContentValues();
+                    v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, BootAnim.FILE);
+                    v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/zip");
+                    v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+                    saved = cr.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (saved == null) throw new java.io.IOException("could not save to Downloads");
+                    out = cr.openOutputStream(saved);
+                } else {
+                    java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                    if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED || !(dir.isDirectory() || dir.mkdirs()))
+                        dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+                    file = new java.io.File(dir, BootAnim.FILE);
+                    out = new java.io.FileOutputStream(file);
+                }
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(BootAnim.URL).openConnection();
+                c.setConnectTimeout(10000); c.setReadTimeout(30000);
+                try (java.io.InputStream in = c.getInputStream(); java.io.OutputStream o = out) {
+                    long len = c.getContentLengthLong(), total = 0; byte[] b = new byte[65536]; int n;
+                    while ((n = in.read(b)) > 0) {
+                        o.write(b, 0, n); md.update(b, 0, n); total += n;
+                        if (total > BootAnim.MAX_BYTES) throw new java.io.IOException("too big");
+                        final int pc = len > 0 ? (int) (total * 100 / len) : 0; runOnUiThread(() -> pd.setProgress(pc));
+                    }
+                } finally { c.disconnect(); }
+                if (!BootAnim.matches(md.digest())) {
+                    if (saved != null) getContentResolver().delete(saved, null, null); if (file != null) file.delete();
+                    runOnUiThread(pd::dismiss); toast("The download did not match its checksum, so it was deleted and nothing was installed."); return;
+                }
+                String name = BootAnim.FILE;   // Android may rename it, e.g. "... (1).zip", if an older copy belongs to another app
+                if (saved != null) try (android.database.Cursor q = getContentResolver().query(saved,
+                        new String[]{android.provider.MediaStore.MediaColumns.DISPLAY_NAME}, null, null, null)) {
+                    if (q != null && q.moveToFirst() && q.getString(0) != null) name = q.getString(0);
+                } catch (Exception ignored) { }
+                path = file != null ? file.getAbsolutePath()
+                        : new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), name).getAbsolutePath();
+            } catch (Exception e) {
+                if (saved != null) try { getContentResolver().delete(saved, null, null); } catch (Exception ignored) { }
+                runOnUiThread(pd::dismiss); toast("Could not download the boot animation (are you online?) " + e.getMessage()); return;
+            }
+            final String p = path;
+            runOnUiThread(() -> {
+                pd.dismiss();
+                new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                        .setTitle("Boot animation downloaded")
+                        .setMessage("Checked and saved to " + p + ".\n\nInstall now asks Magisk for root: allow the prompt. UNTESTED on a real device; undo with Remove boot animation.")
+                        .setPositiveButton("Install now", (d, w) -> bootAnimInstall(p))
+                        .setNeutralButton("Open Magisk", (d, w) -> openMagisk())
+                        .setNegativeButton("Later", null).show();
+            });
+        }).start();
+    }
+
+    private void bootAnimInstall(String path) {
+        if (!BootAnim.safePath(path)) { openMagisk(); return; }
+        toast("Installing ... allow the Magisk prompt if it appears.");
+        new Thread(() -> {
+            StringBuilder log = new StringBuilder();
+            int r = su(BootAnim.installCmd(path), log);
+            runOnUiThread(() -> {
+                if (r == 0) restartPrompt("Boot animation installed. It shows from the next restart.");
+                else new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                        .setTitle("Not installed").setMessage(BootAnim.NO_ROOT + (log.length() > 0 ? "\n\n" + log : ""))
+                        .setPositiveButton("Open Magisk", (d, w) -> openMagisk()).setNegativeButton("Close", null).show();
+            });
+        }).start();
+    }
+
+    private void bootAnimRemove() {
+        new Thread(() -> {
+            int r = su(BootAnim.removeCmd(), null);
+            runOnUiThread(() -> {
+                if (r == 0) restartPrompt("The boot animation will be removed at the next restart.");
+                else toast("Could not remove it with root (not installed, or root was refused). You can also remove it in Magisk > Modules.");
+            });
+        }).start();
+    }
+
+    private void restartPrompt(String msg) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Restart needed").setMessage(msg)
+                .setPositiveButton("Restart now", (d, w) -> new Thread(() -> su(BootAnim.REBOOT_CMD, null)).start())
+                .setNegativeButton("Later", null).show();
+    }
+
+    private void openMagisk() {
+        Intent i = getPackageManager().getLaunchIntentForPackage(BootAnim.MAGISK_PKG);
+        if (i == null) { toast("Magisk is not installed. The module is in Downloads as " + BootAnim.FILE + "."); return; }
+        toast("In Magisk: Modules > Install from storage > Download > " + BootAnim.FILE + ", then restart.");
+        start(i);
     }
 
     private void maybeDailyCheck() {

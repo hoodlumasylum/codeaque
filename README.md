@@ -31,6 +31,26 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.1: boot animation and Featured tiles (Android)
+
+- **Featured row first on the Android home:** Roblox, Minecraft and the Play Store. The Play Store tile says "Play Store not installed" if it's missing. Installed apps open with their own icon. If they're
+  missing, the tile shows CodeAque's generic icon and its name, and opens the Google Play page. No logos are bundled.
+- **Kids row** (second row): Pokémon Playhouse, Pokémon Quest, Pokémon Smile, Pokémon Shuffle, Sonic Dash,
+  Hot Wheels Unlimited, PAW Patrol Rescue World, Toca Boca World (all PEGI 3) and Subway Surfers (PEGI 7). These are
+  official Google Play listings and use the same tiles as Featured. The Dragon Ball games, Pokémon UNITE, GO and
+  Café ReMix are left out: Google Play UK lists them as PEGI 16.
+- **Settings > Force landscape for games** (root only, off by default). For handhelds such as the RG353M on GammaOS 1.5,
+  where some games like Roblox open sideways. Before a game opens it uses root to lock the screen rotation and make every app follow it (`wm fixed-to-user-rotation`), even apps like Roblox that pick their own orientation. Choose it again
+  to try the next rotation (0, 90, 270), or turn it back off. On RK3566 / Anbernic devices CodeAque suggests it once.
+  *Untested on a real device*: if it doesn't help, the Play Store app "Orientation Manager" works on GammaOS.
+- **Home chooser fix:** the Home intent filter is now separate, so tapping "Always" sticks. CodeAque only asks to be Home
+  once, through Android's Home role, and never asks again once it is the default.
+- **Settings > CodeAque boot animation** (only shown where Magisk or root is present). It downloads the
+  `bootanim-v1.0` Magisk module into Downloads with a progress bar and checks its SHA-256. **Install now** then asks
+  Magisk for root and offers a restart. Without root it opens the Magisk app (Modules > Install from storage).
+  **Remove boot animation** undoes it at the next restart, or you can disable the module in Magisk.
+  *Untested on a real device.*
+
 ## What's new in 0.10.0: pictures on the tiles
 
 - **Game tiles** show the game's own picture. Steam, Lutris, Heroic and retro covers already did this. Now **World Games picks** do too, along with **Free on Steam / free games**: they use the art from the game's own official store listing (Steam by app id, Flathub for a Flatpak game). It is downloaded once when you are online and kept in `~/.local/share/atari/icons/`.

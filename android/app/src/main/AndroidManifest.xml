@@ -1,12 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="100" android:versionName="0.10.0">
+    android:versionCode="101" android:versionName="0.10.1">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Settings > Update: install the new CodeAque APK (Android shows its own prompt first) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <queries>
+        <package android:name="com.topjohnwu.magisk" />
+        <package android:name="com.roblox.client" />
+        <package android:name="com.mojang.minecraftpe" />
+        <package android:name="com.android.vending" />
         <!-- 0.9.4: installed apps and games are found through these entries (no QUERY_ALL_PACKAGES) -->
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>
@@ -29,6 +34,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- 0.10.1: HOME and the app-drawer entries in separate filters; one combined filter made some ROMs
+                 (GammaOS / Android 12 with Daijisho + Trebuchet) forget "Always" and show the Home chooser again -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
