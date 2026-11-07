@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.11
+
+- **More ways to find Dreamcast and PSP games.** If listing folders finds nothing, CodeAque asks Android's file index
+  (MediaStore). On a grown-up's **Rescan** it can also search as root on rooted devices; Magisk asks first.
+- **Settings → Scan details** shows the file-access state and every folder tried, with whether it exists, whether it
+  can be read, and how many entries it lists. If a Rescan finds no Dreamcast games, the details open by themselves.
+  Not in Kids mode.
+
 ## What's new in 0.10.10
 
 - **Dreamcast games in folders at the root of an SD card or USB stick**, for example `Crazy Taxi/<game>.gdi`. `.gdi` and

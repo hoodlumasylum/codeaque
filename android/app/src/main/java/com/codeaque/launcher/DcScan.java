@@ -86,6 +86,25 @@ public final class DcScan {
             else if (dreamcastFile(f.getName(), dcVol)) addOnce(f, out);
         }
     }
+    /** 0.10.11: sorts a found file path (MediaStore / root find fallback) into Dreamcast or PSP. */
+    public static void classify(String path, boolean dcCard, List<File> dc, List<File> psp) {
+        File f = new File(path); String n = f.getName();
+        for (String part : path.split("/")) if (!part.isEmpty() && standard(part) && !path.contains("/Android/data/")) return;
+        boolean dcf = dcCard || dcPath(path) || path.toLowerCase(Locale.ROOT).contains("/dc/");
+        if (dreamcastFile(n, dcf) && !(n.toLowerCase(Locale.ROOT).endsWith(".chd") && PspScan.inPspFolder(path))) addOnce(f, dc);
+        else if (PspScan.pspFile(n, PspScan.inPspFolder(path))) addOnce(f, psp);
+    }
+    /** Root fallback: /data/media/0/... -> /storage/emulated/0/..., /mnt/media_rw/XXXX/... -> /storage/XXXX/... */
+    public static String fromRootPath(String p) {
+        if (p.startsWith("/data/media/0/")) return "/storage/emulated/0/" + p.substring("/data/media/0/".length());
+        if (p.startsWith("/mnt/media_rw/")) return "/storage/" + p.substring("/mnt/media_rw/".length());
+        return p;
+    }
+    /** One line of the grown-up "Scan details" readout. */
+    public static String probe(File d) {
+        File[] fs = d.listFiles();
+        return d.getAbsolutePath() + "  exists=" + d.exists() + " canRead=" + d.canRead() + " list=" + (fs == null ? "null" : String.valueOf(fs.length));
+    }
     static boolean dcPath(String p) { return p.toLowerCase(Locale.ROOT).contains("dreamcast"); }
     static void addOnce(File f, List<File> out) {
         String k = key(f);

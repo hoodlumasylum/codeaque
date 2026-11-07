@@ -273,3 +273,11 @@ def test_dreamcast_volume_root_scan():
     assert "DcScan.scanVolumeRoot(r, volLabels.get(k), dcFound, dcDirs);" in m and "v.getDescription(this)" in m
     sc = (SRC / "DcScan.java").read_text()
     assert '"dcim"' in sc and '"android"' in sc and '"audiobooks"' in sc
+
+
+def test_scan_fallbacks_and_details():
+    m = (SRC / "MainActivity.java").read_text()
+    assert "MediaStore.Files.getContentUri(\"external\")" in m and "find /data/media/0 /mnt/media_rw" in m
+    assert m.index("&& rescanAsked) {   // root") > 0   # su only on a grown-up's Rescan
+    assert 'case "scandetails": if (!prefs.getBoolean("kidsMode", false)) showScanDetails();' in m
+    assert 'android:name="android.permission.MANAGE_EXTERNAL_STORAGE"' in (AND / "app/src/main/AndroidManifest.xml").read_text()

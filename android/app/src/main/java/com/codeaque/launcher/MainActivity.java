@@ -436,6 +436,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void action(String a) {
         switch (a) {
             case "wifi": openWifi(); break;
+            case "scandetails": if (!prefs.getBoolean("kidsMode", false)) showScanDetails(); break;
             case "rescan": if (!prefs.getBoolean("kidsMode", false)) rescanGames(); break;
             case "filemgr": if (!prefs.getBoolean("kidsMode", false)) openFiles(); break;
             case "kidsgames": kidsGamesManage(); break;
@@ -629,6 +630,17 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (dirs.size() > 4) b.append(" +").append(dirs.size() - 4).append(" more");
         return b.toString();
     }
+    private volatile String scanDetails = "Not scanned yet - press Rescan.";
+    private String BuildConfigVersion() { try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "?"; } }
+    /** 0.10.11 grown-up readout: permission state and every folder tried (exists / canRead / how many entries listFiles saw). */
+    private void showScanDetails() {
+        if (prefs.getBoolean("kidsMode", false)) return;
+        android.widget.TextView t = new android.widget.TextView(this);
+        t.setText(scanDetails); t.setTextIsSelectable(true); t.setTextSize(12); t.setPadding(24, 16, 24, 16);
+        android.widget.ScrollView sv = new android.widget.ScrollView(this); sv.addView(t);
+        new android.app.AlertDialog.Builder(this).setTitle("Scan details").setView(sv)
+                .setPositiveButton("Rescan", (dl, w) -> rescanGames()).setNegativeButton("Close", null).show();
+    }
     private void rescanGames() {
         if (!canReadFiles()) { askFileAccess(); return; }
         if (dcScanning) { toast("Already looking for games..."); return; }
@@ -676,16 +688,48 @@ public class MainActivity extends Activity implements HomeView.Host {
                 if (k.equals(primary) || k.startsWith("/storage/emulated") || k.equals("/storage/self")) continue;
                 DcScan.scanVolumeRoot(r, volLabels.get(k), dcFound, dcDirs);
             }
-            for (java.io.File f : dcFound) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
-            for (java.io.File f : pspFound) out.add(Catalog.rom(PspScan.fileName(f), Uri.fromFile(f).toString()));   // 0.10.7 PSP
             String bios = importBios(roots);
+            // 0.10.11 scan details + fallbacks when plain file listing finds nothing
+            StringBuilder diag = new StringBuilder();
+            diag.append("Android ").append(android.os.Build.VERSION.RELEASE).append(" (SDK ").append(android.os.Build.VERSION.SDK_INT)
+                .append("), CodeAque ").append(BuildConfigVersion()).append("\nAll files access: ")
+                .append(android.os.Build.VERSION.SDK_INT >= 30 ? String.valueOf(android.os.Environment.isExternalStorageManager()) : "n/a")
+                .append(", read storage: ").append(checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)
+                .append("\nVolumes:\n");
+            for (java.io.File r : roots) diag.append("  ").append(DcScan.probe(r)).append(volLabels.containsKey(DcScan.key(r)) ? "  label=" + volLabels.get(DcScan.key(r)) : "").append('\n');
+            diag.append("Dreamcast folders:\n"); for (String x : dcDirs) diag.append("  ").append(DcScan.probe(new java.io.File(x.replace(" (Dreamcast card)", "")))).append('\n');
+            diag.append("PSP folders:\n"); for (String x : pspDirs) diag.append("  ").append(DcScan.probe(new java.io.File(x))).append('\n');
+            diag.append("Found by listing: ").append(dcFound.size()).append(" Dreamcast, ").append(pspFound.size()).append(" PSP\n");
+            boolean anyDcCard = false; for (String l : volLabels.values()) if (l != null && l.toLowerCase(java.util.Locale.ROOT).contains("dreamcast")) anyDcCard = true;
+            if (dcFound.isEmpty() || pspFound.isEmpty()) {   // MediaStore knows every file when All files access is on
+                int n = 0;
+                try (android.database.Cursor cur = getContentResolver().query(android.provider.MediaStore.Files.getContentUri("external"),
+                        new String[]{"_data"}, "lower(_data) LIKE '%.gdi' OR lower(_data) LIKE '%.cdi' OR lower(_data) LIKE '%.chd' OR lower(_data) LIKE '%.iso' OR lower(_data) LIKE '%.cso' OR lower(_data) LIKE '%.pbp'", null, null)) {
+                    while (cur != null && cur.moveToNext() && n < 600) { String path = cur.getString(0); if (path == null) continue; n++;
+                        DcScan.classify(path, anyDcCard && !path.startsWith("/storage/emulated"), dcFound, pspFound); }
+                    diag.append("MediaStore: ").append(n).append(" matching files\n");
+                } catch (Exception e) { diag.append("MediaStore: ").append(e.getClass().getSimpleName()).append('\n'); }
+            }
+            if ((dcFound.isEmpty() || pspFound.isEmpty()) && rescanAsked) {   // root (Magisk asks first) - only on a grown-up's Rescan
+                StringBuilder o2 = new StringBuilder();
+                int rc = su("find /data/media/0 /mnt/media_rw -maxdepth 7 -type f \\( -iname '*.gdi' -o -iname '*.cdi' -o -iname '*.chd' -o -iname '*.iso' -o -iname '*.cso' -o -iname '*.pbp' \\) 2>/dev/null | head -n 600", o2);
+                int n = 0;
+                for (String line : o2.toString().split("\n")) { line = line.trim(); if (!line.startsWith("/")) continue; n++;
+                    String path = DcScan.fromRootPath(line); DcScan.classify(path, anyDcCard && !path.startsWith("/storage/emulated"), dcFound, pspFound); }
+                diag.append("Root find: exit ").append(rc).append(", ").append(n).append(" files\n");
+            }
+            diag.append("Total: ").append(dcFound.size()).append(" Dreamcast, ").append(pspFound.size()).append(" PSP");
+            out.clear();
+            for (java.io.File f : dcFound) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
+            for (java.io.File f : pspFound) out.add(Catalog.rom(PspScan.fileName(f), Uri.fromFile(f).toString()));
+            scanDetails = diag.toString();
             String vols = android.text.TextUtils.join(", ", rs);
-            String dcNote = dcFound.isEmpty() ? "No games found in: " + (dcDirs.isEmpty() ? "no Dreamcast / ROMS folders on " + vols : shortList(dcDirs)) : null;
-            String pspNote = pspFound.isEmpty() ? "No games found in: " + (pspDirs.isEmpty() ? "no PSP / ROMS folders on " + vols : shortList(pspDirs)) : null;
+            String dcNote = dcFound.isEmpty() ? "No games found in: " + (dcDirs.isEmpty() ? "no Dreamcast / ROMS folders on " + vols : shortList(dcDirs)) + " - Settings > Scan details" : null;
+            String pspNote = pspFound.isEmpty() ? "No games found in: " + (pspDirs.isEmpty() ? "no PSP / ROMS folders on " + vols : shortList(pspDirs)) + " - Settings > Scan details" : null;
             final boolean manual = rescanAsked; rescanAsked = false;
             runOnUiThread(() -> { dcScanning = false; scanNotes.put("dreamcast", dcNote); scanNotes.put("psp", pspNote);
                 boolean changed = out.size() != dcFiles.size(); dcFiles = out; if (changed) rescan(); view.invalidate();
-                if (manual) toast("Found " + dcFound.size() + " Dreamcast and " + pspFound.size() + " PSP games");
+                if (manual) { toast("Found " + dcFound.size() + " Dreamcast and " + pspFound.size() + " PSP games"); if (dcFound.isEmpty()) showScanDetails(); }
                 if (bios != null && !prefs.getBoolean("kidsMode", false)) toast(bios); });
         }).start();
     }
@@ -958,7 +1002,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         try {
             Process p = new ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start();
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
-                String l; while ((l = r.readLine()) != null) if (out != null && out.length() < 4000) out.append(l).append('\n');
+                String l; while ((l = r.readLine()) != null) if (out != null && out.length() < 120000) out.append(l).append('\n');
             }
             return p.waitFor();
         } catch (Exception e) { return -1; }

@@ -200,6 +200,21 @@ public class CatalogTest {
                 java.util.Set<String> n3 = new java.util.TreeSet<>(); for (java.io.File f : got3) n3.add(f.getName());
                 check(n3.equals(new java.util.TreeSet<>(java.util.Arrays.asList("ct.gdi", "r2.cdi"))), "unlabelled volume: no chd " + n3);
             }
+            {   // 0.10.11 fallbacks (MediaStore / root find paths)
+                List<java.io.File> fdc = new java.util.ArrayList<>(), fps = new java.util.ArrayList<>();
+                DcScan.classify("/storage/emulated/0/ROMS/Dreamcast/Shenmue Disc 1/Shenmue Disc 1.cdi", false, fdc, fps);
+                DcScan.classify("/storage/emulated/0/ROMS/Dreamcast/Crazy Taxi/ct.chd", false, fdc, fps);
+                DcScan.classify("/storage/CA86-E82D/Jet Grind Radio/jgr.chd", true, fdc, fps);
+                DcScan.classify("/storage/CA86-E82D/PSP/GTA.iso", true, fdc, fps);
+                DcScan.classify("/storage/emulated/0/ROMS/PSP/x.chd", false, fdc, fps);
+                DcScan.classify("/storage/emulated/0/Download/linux.iso", false, fdc, fps);
+                DcScan.classify("/storage/emulated/0/Movies/film.iso", false, fdc, fps);
+                DcScan.classify("/storage/emulated/0/Download/x.chd", false, fdc, fps);
+                check(fdc.size() == 3 && fps.size() == 3, "classify " + fdc + " " + fps);
+                check(DcScan.fromRootPath("/data/media/0/ROMS/a.cdi").equals("/storage/emulated/0/ROMS/a.cdi")
+                        && DcScan.fromRootPath("/mnt/media_rw/CA86-E82D/a.gdi").equals("/storage/CA86-E82D/a.gdi"), "root paths");
+                check(DcScan.probe(new java.io.File("/nonexistent/x")).contains("exists=false") && DcScan.probe(new java.io.File("/nonexistent/x")).contains("list=null"), "probe");
+            }
             {   // 0.10.7 PSP
                 java.io.File pr = java.nio.file.Files.createTempDirectory("psp").toFile();
                 new java.io.File(pr, "PSP/GAME/Hero Run").mkdirs(); new java.io.File(pr, "PSP/GAME/Hero Run/EBOOT.PBP").createNewFile();
