@@ -157,6 +157,7 @@ public final class Catalog {
     }
     /** 0.10.7: opens the system file manager, e.g. to copy games / BIOS from a USB stick. Never in Kids mode. */
     public static final Item FILES = act("Files", "folder", "filemgr");
+    public static final Item RESCAN = act("Rescan", "download", "rescan");   // 0.10.9, never in Kids mode
     public static final String DC_COPY_HINT = "Copy games to a folder called Dreamcast (PSP games to PSP), BIOS to BIOS";
     /** 0.10.7 PSP: PPSSPP (or PPSSPP Gold) labelled "PSP", then the player's own .iso / .cso / .pbp (and .chd in PSP folders). */
     public static final Item PSP = app("PSP", "handheld", "org.ppsspp.ppsspp", "org.ppsspp.ppssppgold");
@@ -174,14 +175,14 @@ public final class Catalog {
     }
     public static Category psp(List<Item> roms) { return psp(roms, true); }
     public static Category psp(List<Item> roms, boolean files) {
-        List<Item> l = new ArrayList<>(); l.add(PSP); if (files) l.add(FILES);   // 0.10.8: Files here too (never in Kids mode)
+        List<Item> l = new ArrayList<>(); l.add(PSP); if (files) { l.add(FILES); l.add(RESCAN); }   // 0.10.8: Files here too (never in Kids mode)
         java.util.Set<String> names = new java.util.HashSet<>();
         for (Item r : roms) if (isPspRom(r) && names.add(r.label.toLowerCase(java.util.Locale.ROOT))) l.add(r);
         return new Category("psp", "PSP", "handheld", l.toArray(new Item[0]));
     }
     public static Category dreamcast(List<Item> roms) { return dreamcast(roms, true); }
     public static Category dreamcast(List<Item> roms, boolean files) {
-        List<Item> l = new ArrayList<>(); l.add(DREAMCAST); if (files) l.add(FILES);
+        List<Item> l = new ArrayList<>(); l.add(DREAMCAST); if (files) { l.add(FILES); l.add(RESCAN); }
         java.util.Set<String> names = new java.util.HashSet<>();
         for (Item r : roms) if (isDreamcastRom(r) && names.add(r.label.toLowerCase(java.util.Locale.ROOT))) l.add(r);
         return new Category("dreamcast", "Dreamcast", "disc", l.toArray(new Item[0]));
@@ -318,7 +319,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
         return c;
     }
 

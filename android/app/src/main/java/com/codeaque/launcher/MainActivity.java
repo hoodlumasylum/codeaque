@@ -436,6 +436,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void action(String a) {
         switch (a) {
             case "wifi": openWifi(); break;
+            case "rescan": if (!prefs.getBoolean("kidsMode", false)) rescanGames(); break;
             case "filemgr": if (!prefs.getBoolean("kidsMode", false)) openFiles(); break;
             case "kidsgames": kidsGamesManage(); break;
             case "files": askFileAccess(); break;
@@ -613,7 +614,26 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     // ---------- 0.10.5 Dreamcast: the player's own files on internal storage / SD ----------
     private volatile List<Catalog.Item> dcFiles = new ArrayList<>();
-    private volatile boolean dcScanning;
+    private volatile boolean dcScanning, rescanAsked;
+    private final Map<String, String> scanNotes = new HashMap<>();
+
+    /** 0.10.9: grown-up note under an empty Dreamcast / PSP section (never in Kids mode). */
+    @Override public String scanNote(String catId) {
+        if (prefs.getBoolean("kidsMode", false)) return null;
+        if (!canReadFiles()) return "CodeAque can't read your files yet - Settings > Find Dreamcast games to allow All files access";
+        return scanNotes.get(catId);
+    }
+    private static String shortList(List<String> dirs) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < dirs.size() && i < 4; i++) b.append(i > 0 ? ", " : "").append(dirs.get(i));
+        if (dirs.size() > 4) b.append(" +").append(dirs.size() - 4).append(" more");
+        return b.toString();
+    }
+    private void rescanGames() {
+        if (!canReadFiles()) { askFileAccess(); return; }
+        if (dcScanning) { toast("Already looking for games..."); return; }
+        rescanAsked = true; toast("Looking for games..."); scanDreamcast();
+    }
 
     private boolean canReadFiles() {
         if (android.os.Build.VERSION.SDK_INT >= 30) return android.os.Environment.isExternalStorageManager();
@@ -627,16 +647,34 @@ public class MainActivity extends Activity implements HomeView.Host {
             List<java.io.File> roots = new ArrayList<>();
             roots.add(android.os.Environment.getExternalStorageDirectory());
             roots.addAll(DcScan.volumeRoots(new java.io.File("/storage"), new java.io.File("/mnt/media_rw")));   // SD + USB OTG
+            if (android.os.Build.VERSION.SDK_INT >= 30) {   // 0.10.9: every mounted volume Android knows about (SD card /storage/XXXX-XXXX, USB)
+                try {
+                    android.os.storage.StorageManager sm = (android.os.storage.StorageManager) getSystemService(Context.STORAGE_SERVICE);
+                    for (android.os.storage.StorageVolume v : sm.getStorageVolumes()) { java.io.File dir = v.getDirectory(); if (dir != null) roots.add(dir); }
+                } catch (Exception ignored) { }
+            }
             for (java.io.File f : getExternalFilesDirs(null)) {           // .../Android/data/<pkg>/files on each volume -> its root
                 if (f == null) continue;
                 String p = f.getAbsolutePath(); int i = p.indexOf("/Android/data/");
                 if (i > 0) roots.add(new java.io.File(p.substring(0, i)));
             }
             List<Catalog.Item> out = new ArrayList<>();
-            for (java.io.File f : DcScan.scan(roots)) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
-            for (java.io.File f : PspScan.scan(roots)) out.add(Catalog.rom(PspScan.fileName(f), Uri.fromFile(f).toString()));   // 0.10.7 PSP
+            java.util.LinkedHashSet<String> rs = new java.util.LinkedHashSet<>();
+            List<java.io.File> uniq = new ArrayList<>();
+            for (java.io.File r : roots) if (r != null && rs.add(DcScan.key(r))) uniq.add(r);
+            roots = uniq;
+            List<String> dcDirs = new ArrayList<>(), pspDirs = new ArrayList<>();
+            List<java.io.File> dcFound = DcScan.scan(roots, dcDirs), pspFound = PspScan.scan(roots, pspDirs);
+            for (java.io.File f : dcFound) out.add(Catalog.rom(f.getName(), Uri.fromFile(f).toString()));
+            for (java.io.File f : pspFound) out.add(Catalog.rom(PspScan.fileName(f), Uri.fromFile(f).toString()));   // 0.10.7 PSP
             String bios = importBios(roots);
-            runOnUiThread(() -> { dcScanning = false; boolean changed = out.size() != dcFiles.size(); dcFiles = out; if (changed) rescan();
+            String vols = android.text.TextUtils.join(", ", rs);
+            String dcNote = dcFound.isEmpty() ? "No games found in: " + (dcDirs.isEmpty() ? "no Dreamcast / ROMS folders on " + vols : shortList(dcDirs)) : null;
+            String pspNote = pspFound.isEmpty() ? "No games found in: " + (pspDirs.isEmpty() ? "no PSP / ROMS folders on " + vols : shortList(pspDirs)) : null;
+            final boolean manual = rescanAsked; rescanAsked = false;
+            runOnUiThread(() -> { dcScanning = false; scanNotes.put("dreamcast", dcNote); scanNotes.put("psp", pspNote);
+                boolean changed = out.size() != dcFiles.size(); dcFiles = out; if (changed) rescan(); view.invalidate();
+                if (manual) toast("Found " + dcFound.size() + " Dreamcast and " + pspFound.size() + " PSP games");
                 if (bios != null && !prefs.getBoolean("kidsMode", false)) toast(bios); });
         }).start();
     }

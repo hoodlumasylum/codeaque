@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.9
+
+- **Dreamcast and PSP games in `ROMS/Dreamcast` and `ROMS/PSP`** on any SD card or USB stick. Folder names now match
+  in any case (ROMS, roms or Roms; Dreamcast, dreamcast or dc; PSP or psp). Games are found up to three folders deep,
+  for example `ROMS/Dreamcast/<Game>/<game>.gdi`. Every storage volume Android reports is checked.
+- **Rescan** tile in both sections and in Settings. When a section has no games, it shows which folders were searched
+  (not in Kids mode).
+
 ## What's new in 0.10.8
 
 - **Files tile in the PSP section** as well, so you can copy PSP games from a USB stick. It is not shown in Kids mode.

@@ -177,7 +177,7 @@ def test_dreamcast_section_own_files_only():
     c = (SRC / "Catalog.java").read_text()
     assert 'DREAMCAST = app("Dreamcast", "disc", "com.flycast.emulator")' in c and "c.add(dreamcast(roms));" in c
     sc = (SRC / "DcScan.java").read_text()
-    assert '"ROMs/dc"' in sc and '"roms/dreamcast"' in sc and '"Download"' in sc and ".gdi" in sc and ".cdi" in sc and ".chd" in sc
+    assert '"roms/dc"' in sc and '"roms/dreamcast"' in sc and '"download"' in sc and 'equalsIgnoreCase(part)' in sc and ".gdi" in sc and ".cdi" in sc and ".chd" in sc
     m = (SRC / "MainActivity.java").read_text()
     assert "scanDreamcast();" in m and 'setPackage("com.flycast.emulator")' in m and "isExternalStorageManager()" in m
     assert "http" not in sc.lower() and "download(" not in sc.lower()
@@ -249,11 +249,20 @@ def test_files_tile_not_in_kids():
 def test_psp_section_mirrors_dreamcast():
     c = (SRC / "Catalog.java").read_text()
     assert 'PSP = app("PSP", "handheld", "org.ppsspp.ppsspp", "org.ppsspp.ppssppgold")' in c
-    assert 'new Category("kpsp"' in c and "psp(roms, false)" in c and "if (files) l.add(FILES);   // 0.10.8" in c and "c.add(psp(roms));" in c
+    assert 'new Category("kpsp"' in c and "psp(roms, false)" in c and "if (files) { l.add(FILES); l.add(RESCAN); }" in c and "c.add(psp(roms));" in c
     s = (SRC / "PspScan.java").read_text()
-    assert "http" not in s.lower() and '"PSP/GAME"' in s and '"ROMs/psp"' in s
+    assert "http" not in s.lower() and '"psp/game"' in s and '"roms/psp"' in s
     m = (SRC / "MainActivity.java").read_text()
     body = m.split("private void openInPpsspp(", 1)[1].split("/** Opens one game file directly in Flycast", 1)[0]
     assert "Intent.ACTION_VIEW" in body and 'store("org.ppsspp.ppsspp")' in body and "getLaunchIntentForPackage(pkg)" in body
     assert m.index("Catalog.isPspRom(it)") < m.index("Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast")
     assert not any("psp" in p.name.lower() or "sony" in p.name.lower() for p in (AND / "app/src/main/res").rglob("*"))
+
+
+def test_rescan_and_empty_note_grown_ups_only():
+    m = (SRC / "MainActivity.java").read_text()
+    assert 'case "rescan": if (!prefs.getBoolean("kidsMode", false)) rescanGames();' in m
+    note = m.split("public String scanNote(String catId)", 1)[1].split("\n    }\n", 1)[0]
+    assert note.index('prefs.getBoolean("kidsMode", false)') < note.index("scanNotes.get")
+    assert '"No games found in: "' in m and "sm.getStorageVolumes()" in m
+    assert '"roms/dreamcast"' in (SRC / "DcScan.java").read_text() and "MAX_DEPTH = 3" in (SRC / "PspScan.java").read_text()

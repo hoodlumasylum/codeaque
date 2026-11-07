@@ -19,6 +19,7 @@ public class HomeView extends View {
         void open(Catalog.Item item);
         boolean installed(Catalog.Item item);
         void sound(String name);
+        String scanNote(String catId);   // 0.10.9
         String effects();
         String status();      // "87%" or "87% charging", "" without a battery
         boolean online();
@@ -510,7 +511,7 @@ public class HomeView extends View {
         // the focused tile's hint under the row
         if (its.isEmpty()) return;
         Catalog.Item f = its.get(Math.min(tile, its.size() - 1));
-        String hint = "wifi".equals(f.action) ? host.wifi() : Catalog.copyHint(cats.get(cat).id, f) != null ? Catalog.copyHint(cats.get(cat).id, f) : f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
+        String hint = "wifi".equals(f.action) ? host.wifi() : host.scanNote(cats.get(cat).id) != null && !f.isRom() ? host.scanNote(cats.get(cat).id) : Catalog.copyHint(cats.get(cat).id, f) != null ? Catalog.copyHint(cats.get(cat).id, f) : f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
         text(c, hint, W / 2f, top + h + 24 * s, 14 * s, DIM, Paint.Align.CENTER, false);
     }
 

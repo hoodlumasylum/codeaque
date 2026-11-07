@@ -172,7 +172,20 @@ public class CatalogTest {
             for (java.io.File f : got) roms.add(Catalog.rom(f.getName(), "file://" + f.getAbsolutePath()));
             roms.add(Catalog.rom("Mario.sfc", "content://x/Mario.sfc"));
             Catalog.Category d = Catalog.dreamcast(roms);
-            check(d.items.size() == 6 && d.items.get(0) == Catalog.DREAMCAST && d.items.get(1) == Catalog.FILES, "dreamcast tiles " + d.items.size());
+            check(d.items.size() == 7 && d.items.get(0) == Catalog.DREAMCAST && d.items.get(1) == Catalog.FILES && d.items.get(2) == Catalog.RESCAN, "dreamcast tiles " + d.items.size());
+            {   // 0.10.9: SD card with uppercase ROMS/Dreamcast and ROMS/PSP, games in sub-folders
+                java.io.File sdc = java.nio.file.Files.createTempDirectory("sdcard").toFile();
+                new java.io.File(sdc, "ROMS/Dreamcast/Crazy Taxi/disc").mkdirs(); new java.io.File(sdc, "ROMS/Dreamcast/Crazy Taxi/disc/crazy.gdi").createNewFile();
+                new java.io.File(sdc, "ROMS/Dreamcast/Shen").mkdirs(); new java.io.File(sdc, "ROMS/Dreamcast/Shen/shen.chd").createNewFile();
+                new java.io.File(sdc, "ROMS/PSP/Kart").mkdirs(); new java.io.File(sdc, "ROMS/PSP/Kart/kart.iso").createNewFile();
+                new java.io.File(sdc, "ROMS/SNES").mkdirs(); new java.io.File(sdc, "ROMS/SNES/x.chd").createNewFile();
+                List<String> sc = new java.util.ArrayList<>();
+                java.util.Set<String> dn = new java.util.TreeSet<>(); for (java.io.File f : DcScan.scan(java.util.Arrays.asList(sdc), sc)) dn.add(f.getName());
+                check(dn.equals(new java.util.TreeSet<>(java.util.Arrays.asList("crazy.gdi", "shen.chd"))), "ROMS/Dreamcast " + dn);
+                check(sc.size() == 1 && sc.get(0).endsWith("ROMS/Dreamcast"), "scanned " + sc);
+                java.util.Set<String> pn2 = new java.util.TreeSet<>(); for (java.io.File f : PspScan.scan(java.util.Arrays.asList(sdc))) pn2.add(f.getName());
+                check(pn2.equals(new java.util.TreeSet<>(java.util.Arrays.asList("kart.iso"))), "ROMS/PSP " + pn2);
+            }
             {   // 0.10.7 PSP
                 java.io.File pr = java.nio.file.Files.createTempDirectory("psp").toFile();
                 new java.io.File(pr, "PSP/GAME/Hero Run").mkdirs(); new java.io.File(pr, "PSP/GAME/Hero Run/EBOOT.PBP").createNewFile();
@@ -186,9 +199,9 @@ public class CatalogTest {
                 for (java.io.File f : pf) pr2.add(Catalog.rom(PspScan.fileName(f), "file://" + f.getAbsolutePath()));
                 pr2.add(Catalog.rom("Crazy.chd", "file:///sdcard/ROMs/dc/Crazy.chd"));
                 Catalog.Category ps = Catalog.psp(pr2);
-                check(ps.items.size() == 6 && ps.items.get(0) == Catalog.PSP && ps.items.get(1) == Catalog.FILES, "psp tiles " + ps.items.size());
-                for (Catalog.Category k : Catalog.kidsMode(pr2)) check(!k.items.contains(Catalog.FILES), "no Files in kids mode");
-                check(Catalog.dreamcast(pr2).items.size() == 3, "dc keeps its own chd only");
+                check(ps.items.size() == 7 && ps.items.get(0) == Catalog.PSP && ps.items.get(1) == Catalog.FILES, "psp tiles " + ps.items.size());
+                for (Catalog.Category k : Catalog.kidsMode(pr2)) check(!k.items.contains(Catalog.FILES) && !k.items.contains(Catalog.RESCAN), "no Files in kids mode");
+                check(Catalog.dreamcast(pr2).items.size() == 4, "dc keeps its own chd only");
                 List<Catalog.Category> k2 = Catalog.kidsMode(pr2);
                 check(k2.get(Catalog.indexOf(k2, "kpsp")).items.size() == 5, "kids psp");
                 List<Catalog.Category> n2 = Catalog.categories(new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(), pr2, false, false);

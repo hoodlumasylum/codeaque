@@ -10,10 +10,30 @@ import java.util.Locale;
 public final class DcScan {
     private DcScan() { }
 
-    /** Relative to each storage root. "Download" is checked too; .chd only counts inside a Dreamcast folder. */
-    public static final String[] FOLDERS = {"ROMs/dc", "ROMs/dreamcast", "ROMs/Dreamcast", "roms/dc", "roms/dreamcast", "Roms/dc",
-            "Roms/Dreamcast", "Dreamcast", "dreamcast", "Download", "Downloads"};
-    static final int MAX_FILES = 300, MAX_DEPTH = 2;
+    /** Relative to each storage root, matched case-insensitively (ROMS/Dreamcast = roms/dreamcast = Roms/DC).
+     *  "Download" is checked too; .chd only counts inside a Dreamcast folder. */
+    public static final String[] FOLDERS = {"roms/dreamcast", "roms/dc", "dreamcast", "dc", "download", "downloads"};
+    static final int MAX_FILES = 300, MAX_DEPTH = 3;   // ROMS/Dreamcast/<Game>/<disc>/<game>.gdi
+
+    /** Every existing folder matching rel, ignoring case in each part (several on case-sensitive volumes). */
+    public static List<File> resolve(File root, String rel) {
+        List<File> cur = new ArrayList<>(); cur.add(root);
+        if (rel.isEmpty()) return cur;
+        for (String part : rel.split("/")) {
+            List<File> next = new ArrayList<>();
+            for (File c : cur) {
+                File[] fs = c.listFiles();
+                if (fs == null) { File f = new File(c, part); if (f.isDirectory()) next.add(f); continue; }   // unlistable parent: try the exact name
+                java.util.Arrays.sort(fs);
+                for (File f : fs) if (f.isDirectory() && f.getName().equalsIgnoreCase(part)) next.add(f);
+            }
+            cur = next;
+            if (cur.isEmpty()) break;
+        }
+        return cur;
+    }
+
+    static String key(File f) { try { return f.getCanonicalPath(); } catch (Exception e) { return f.getAbsolutePath(); } }
 
     public static boolean dreamcastFile(String name, boolean inDcFolder) {
         String n = name.toLowerCase(Locale.ROOT);
@@ -22,19 +42,20 @@ public final class DcScan {
     }
 
     static boolean dcFolder(String rel) {
-        String r = rel.toLowerCase(Locale.ROOT);
+        String r = "/" + rel.toLowerCase(Locale.ROOT);
         return r.endsWith("/dc") || r.endsWith("dreamcast");
     }
 
-    public static List<File> scan(List<File> roots) {
+    public static List<File> scan(List<File> roots) { return scan(roots, null); }
+    /** scanned (optional) receives every folder that was looked in, for the "No games found in" note. */
+    public static List<File> scan(List<File> roots, List<String> scanned) {
         List<File> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (File root : roots) {
             if (root == null) continue;
-            for (String rel : FOLDERS) {
-                File d = new File(root, rel);
-                String key; try { key = d.getCanonicalPath(); } catch (Exception e) { key = d.getAbsolutePath(); }
-                if (!seen.add(key)) continue;   // ROMs/dc and roms/dc are the same folder on FAT/sdcardfs
+            for (String rel : FOLDERS) for (File d : resolve(root, rel)) {
+                if (!seen.add(key(d))) continue;   // ROMs/dc and roms/dc are the same folder on FAT/sdcardfs
+                if (scanned != null) scanned.add(d.getAbsolutePath());
                 walk(d, dcFolder(rel), 0, out);
                 if (out.size() >= MAX_FILES) return out;
             }
@@ -75,8 +96,8 @@ public final class DcScan {
 
     // ---------- the player's OWN Dreamcast BIOS (never bundled or downloaded) ----------
     public static final String[] BIOS_NAMES = {"dc_boot.bin", "dc_bios.bin", "dc_flash.bin"};
-    public static final String[] BIOS_FOLDERS = {"", "BIOS", "bios", "BIOS/dc", "bios/dc", "Bios", "ROMs/dc", "roms/dc", "ROMs/dreamcast",
-            "roms/dreamcast", "Dreamcast", "Download", "Downloads", "RetroArch/system/dc", "system/dc"};
+    public static final String[] BIOS_FOLDERS = {"", "bios", "bios/dc", "bios/dreamcast", "roms/bios", "roms/dreamcast/bios", "roms/dc", "roms/dreamcast",
+            "dreamcast", "download", "downloads", "retroarch/system/dc", "system/dc"};
     /** Flycast's data folder (its default home on Android); BIOS files go in here. */
     public static final String FLYCAST_DATA = "Android/data/com.flycast.emulator/files/data";
 
@@ -85,8 +106,8 @@ public final class DcScan {
         List<File> out = new ArrayList<>(); java.util.Set<String> got = new java.util.HashSet<>();
         for (File root : roots) {
             if (root == null) continue;
-            for (String rel : BIOS_FOLDERS) for (String n : BIOS_NAMES) {
-                File f = new File(rel.isEmpty() ? root : new File(root, rel), n);
+            for (String rel : BIOS_FOLDERS) for (File dir : resolve(root, rel)) for (String n : BIOS_NAMES) {
+                File f = new File(dir, n);
                 String key = n.equals("dc_bios.bin") ? "dc_boot.bin" : n;
                 if (got.contains(key) || !f.isFile()) continue;
                 long len = f.length();

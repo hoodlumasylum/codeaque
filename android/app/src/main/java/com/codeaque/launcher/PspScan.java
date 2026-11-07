@@ -10,10 +10,9 @@ import java.util.Locale;
 public final class PspScan {
     private PspScan() { }
 
-    /** Relative to each storage root. .chd only counts inside a PSP folder (it is also a Dreamcast format). */
-    public static final String[] FOLDERS = {"ROMs/psp", "ROMs/PSP", "roms/psp", "Roms/psp", "Roms/PSP", "PSP/GAME", "PSP/ISO", "PSP", "psp",
-            "Download", "Downloads"};
-    static final int MAX_FILES = 300, MAX_DEPTH = 2;
+    /** Relative to each storage root, matched case-insensitively (ROMS/PSP = roms/psp). .chd only counts inside a PSP folder. */
+    public static final String[] FOLDERS = {"roms/psp", "psp/game", "psp/iso", "psp", "download", "downloads"};
+    static final int MAX_FILES = 300, MAX_DEPTH = 3;
 
     public static boolean pspFile(String name, boolean inPspFolder) {
         String n = name.toLowerCase(Locale.ROOT);
@@ -27,15 +26,15 @@ public final class PspScan {
         return p.contains("/psp/") || p.endsWith("/psp");
     }
 
-    public static List<File> scan(List<File> roots) {
+    public static List<File> scan(List<File> roots) { return scan(roots, null); }
+    public static List<File> scan(List<File> roots, List<String> scanned) {
         List<File> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>(), files = new java.util.HashSet<>();
         for (File root : roots) {
             if (root == null) continue;
-            for (String rel : FOLDERS) {
-                File d = new File(root, rel);
-                String key; try { key = d.getCanonicalPath(); } catch (Exception e) { key = d.getAbsolutePath(); }
-                if (!seen.add(key)) continue;
+            for (String rel : FOLDERS) for (File d : DcScan.resolve(root, rel)) {
+                if (!seen.add(DcScan.key(d))) continue;
+                if (scanned != null) scanned.add(d.getAbsolutePath());
                 walk(d, inPspFolder("/" + rel), 0, out, files);
                 if (out.size() >= MAX_FILES) return out;
             }
