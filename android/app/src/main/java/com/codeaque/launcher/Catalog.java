@@ -61,6 +61,7 @@ public final class Catalog {
 
     /** A game file from a folder the user chose (Android's folder picker); opened with an installed emulator. */
     /** 0.10.12: a Dreamcast / PSP game found by the scan, labelled with its clean name. */
+    public static boolean isViceCity(String label) { return label != null && label.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", "").contains("vicecity"); }
     public static Item gameRom(String name, String uri) {
         return new Item(cleanTitle(stripExt(name)), "cart", new String[0], null, null, null, name, uri);
     }

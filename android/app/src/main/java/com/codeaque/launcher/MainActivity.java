@@ -328,6 +328,8 @@ public class MainActivity extends Activity implements HomeView.Host {
                 }
                 if (pick != null && pick.length() < 20_000_000) b = decodeCover(pick);
             } catch (Exception ignored) { }
+            if (b == null && Catalog.isPspRom(it) && Catalog.isViceCity(it.label))   // 0.10.13: Hoodlum Asylum's own "Vice City" cover
+                b = android.graphics.BitmapFactory.decodeResource(getResources(), R.drawable.ha_vice_city);
             final android.graphics.Bitmap fb = b;
             runOnUiThread(() -> { gameCovers.put(k, fb); fetching.remove("gc:" + k); if (fb != null) view.invalidate(); });
         }).start();

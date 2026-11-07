@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.13
+
+- A PSP game with "Vice City" in its name uses Hoodlum Asylum's own "Vice City" cover art, cropped so no console or
+  rating marks are shown. Your own cover file in the game's folder still takes priority.
+
 ## What's new in 0.10.12
 
 - **Game covers on Dreamcast and PSP tiles**, in Kids mode too. If a game's folder has your own picture, it is shown:

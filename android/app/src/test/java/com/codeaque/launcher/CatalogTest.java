@@ -223,6 +223,7 @@ public class CatalogTest {
                 check(cn.get(0).equals("cover.png") && cn.contains("folder.jpg") && cn.contains("boxart.webp") && cn.contains("shenmue disc 1.jpg"), "cover names " + cn);
                 Catalog.Item gr = Catalog.gameRom("ct.gdi", "file:///storage/emulated/0/ROMS/Dreamcast/Crazy Taxi/ct.gdi");
                 check(Catalog.isDreamcastRom(gr), "gameRom stays a Dreamcast game");
+                check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP
                 java.io.File pr = java.nio.file.Files.createTempDirectory("psp").toFile();

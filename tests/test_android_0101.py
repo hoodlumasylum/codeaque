@@ -292,3 +292,11 @@ def test_game_covers_own_pictures_or_title_card():
     card = h.split("private void titleCard(", 1)[1].split("private void drawCoverFrame(", 1)[0]
     assert "drawBitmap" not in card and "Sega" not in card and "Sony" not in card
     assert 'id.equals("kdc")' in h and 'id.equals("kpsp")' in h
+
+
+def test_vice_city_own_cover():
+    m = (SRC / "MainActivity.java").read_text()
+    body = m.split("private android.graphics.Bitmap gameCover(", 1)[1].split("private java.io.File coverFile(", 1)[0]
+    assert body.index("pick = f") < body.index("R.drawable.ha_vice_city") and "if (b == null && Catalog.isPspRom(it)" in body
+    f = AND / "app/src/main/res/drawable-nodpi/ha_vice_city.webp"
+    assert f.is_file() and f.stat().st_size < 120_000
