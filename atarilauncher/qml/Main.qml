@@ -722,6 +722,7 @@ Window {
             if (e.key === Qt.Key_F11) { backend.toggleFullscreen(); return }
             if (e.key === Qt.Key_Q && (e.modifiers & Qt.ControlModifier)) { backend.quit(); return }
             if (inputDlg.visible) { inputDlg.handleKey(e); return }            // the password / typing box has the keyboard first
+            if (updPop.visible) { updPop.handleKey(e); return }               // 0.10.6: the "New update ready" pop-up
             if (win.mode === "intro") { backend.skipIntro(); return }          // any key skips the intro
             if (backend.running) {
                 if ((backend.runningCancelable || backend.runningPlaying) && (e.key === Qt.Key_Escape || e.key === Qt.Key_B || e.key === Qt.Key_Backspace)) backend.cancelLaunch()
@@ -2032,6 +2033,60 @@ Window {
         anchors.fill: parent
         u: win.u
         z: 100
+    }
+
+    // ---- 0.10.6: "New update ready" pop-up (big buttons for pad, keyboard and touch) ----
+    Rectangle {
+        id: updPop
+        objectName: "updatePopup"
+        anchors.fill: parent
+        z: 900
+        visible: backend.updatePopup && win.mode !== "intro" && win.mode !== "update" && !backend.running
+        color: "#c8000000"
+        property int sel: 0          // 0 = Update now, 1 = Later
+        onVisibleChanged: if (visible) sel = 0
+        function later() { backend.dismissUpdatePopup() }
+        function updateNow() {
+            backend.dismissUpdatePopup()
+            win.openUpdate(win.mode === "setup" ? "setup" : "library")
+            backend.startUpdate()
+        }
+        function handleKey(e) {
+            if (e.key === Qt.Key_Left || e.key === Qt.Key_Up || e.key === Qt.Key_Right || e.key === Qt.Key_Down || e.key === Qt.Key_Tab) sel = 1 - sel
+            else if (win.isEnter(e.key)) { if (sel === 0) updateNow(); else later() }
+            else if (e.key === Qt.Key_Escape || e.key === Qt.Key_B || e.key === Qt.Key_Backspace) later()
+        }
+        MouseArea { anchors.fill: parent }      // the page behind can't be clicked while it's open
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width * 0.86, 900 * win.u); height: col.implicitHeight + 70 * win.u
+            radius: 26 * win.u; color: "#0d1820"; border.width: 3 * win.u; border.color: Theme.green
+            Column {
+                id: col
+                anchors.centerIn: parent; width: parent.width - 70 * win.u; spacing: 22 * win.u
+                Text { objectName: "updPopTitle"; width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+                       text: "New update ready (v" + backend.updateVersion + ")"; color: "white"; font.pixelSize: 44 * win.u; font.bold: true }
+                Text { objectName: "updPopNews"; width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+                       visible: text !== ""; text: backend.updateWhatsNew; color: "#cfe0d6"; font.pixelSize: 24 * win.u }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 30 * win.u
+                    Repeater {
+                        model: ["Update now", "Later"]
+                        Rectangle {
+                            required property int index
+                            required property string modelData
+                            objectName: index === 0 ? "updPopNow" : "updPopLater"
+                            width: 300 * win.u; height: 96 * win.u; radius: 20 * win.u
+                            color: updPop.sel === index ? (index === 0 ? "#2e7d32" : "#37474f") : "#1b262c"
+                            border.width: (updPop.sel === index ? 4 : 2) * win.u; border.color: updPop.sel === index ? "white" : "#55707e"
+                            Text { anchors.centerIn: parent; text: modelData; color: "white"; font.pixelSize: 32 * win.u; font.bold: true }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                        onClicked: { updPop.sel = index; if (index === 0) updPop.updateNow(); else updPop.later() } }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // ---- keyboard focus: the key handler lives on `root`, so make sure `root` really owns the focus.

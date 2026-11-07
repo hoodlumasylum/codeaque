@@ -97,6 +97,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override protected void onResume() {
         super.onResume();
         scanDreamcast();
+        kidsDiff();
         installedCache.clear();       // apps may have been installed while we were away
         immersive();
         rescan();
@@ -149,7 +150,10 @@ public class MainActivity extends Activity implements HomeView.Host {
         PackageWatch(MainActivity m) { a = new java.lang.ref.WeakReference<>(m); }
         @Override public void onReceive(Context c, Intent i) {
             MainActivity m = a.get();
-            if (m != null) { m.installedCache.clear(); m.icons.clear(); m.coverCache.clear(); m.rescan(); }
+            if (m == null) return;
+            if (Intent.ACTION_PACKAGE_ADDED.equals(i.getAction()) && !i.getBooleanExtra(Intent.EXTRA_REPLACING, false) && i.getData() != null)
+                m.kidsInstalled(i.getData().getSchemeSpecificPart());
+            m.installedCache.clear(); m.icons.clear(); m.coverCache.clear(); m.rescan();
         }
     }
     private final PackageWatch packages = new PackageWatch(this);
@@ -188,7 +192,10 @@ public class MainActivity extends Activity implements HomeView.Host {
         boolean kidsOn = prefs.getBoolean("kidsMode", false);
         view.setKids(kidsOn);
         List<Catalog.Item> allRoms = new ArrayList<>(roms); allRoms.addAll(dcFiles);
-        view.setCategories(kidsOn ? Catalog.kidsMode(allRoms) : Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()));
+        List<Catalog.Item> kidsNew = new ArrayList<>();   // 0.10.6: games installed during Kids mode
+        java.util.Set<String> kidsSet = prefs.getStringSet("kidsAdded", Collections.<String>emptySet());
+        for (Catalog.Item a : apps) if (kidsSet.contains(a.pkg)) kidsNew.add(a);
+        view.setCategories(kidsOn ? Catalog.kidsMode(allRoms, kidsNew) : Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()));
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
 
@@ -213,6 +220,21 @@ public class MainActivity extends Activity implements HomeView.Host {
     private final Map<String, android.graphics.Bitmap> playArtCache = new HashMap<>();
 
     /** Not-installed Play tiles: the listing's icon (or feature graphic when wide); installed ones keep their own icon. */
+    /** The listing's own wide feature graphic, installed or not (Featured row); null = keep the icon. */
+    private final java.util.HashMap<Integer, android.graphics.Bitmap> ownArt = new java.util.HashMap<>();
+    private android.graphics.Bitmap playFeature(Catalog.Item it) {
+        String pkg = it.storePackage(), k = pkg + "#F";
+        if (playArtCache.containsKey(k)) return playArtCache.get(k);
+        java.io.File dir = new java.io.File(getCacheDir(), "playart"), f = PlayArt.featureFile(dir, pkg);
+        if (f.isFile()) { android.graphics.Bitmap b = decodeCover(f); playArtCache.put(k, b); return b; }
+        if (!PlayArt.missFile(dir, pkg).exists() && online() && fetching.add("play:" + pkg))
+            new Thread(() -> {
+                boolean ok = PlayArt.fetch(PlayArt.PLAY, pkg, dir);
+                runOnUiThread(() -> { fetching.remove("play:" + pkg); if (!ok || !f.isFile()) playArtCache.put(k, null); view.invalidate(); });
+            }).start();
+        return null;
+    }
+
     private android.graphics.Bitmap playArt(Catalog.Item it, boolean feature) {
         if (it.isAction() || it.isRom() || it.webUrl != null || it.storePackage() == null) return null;
         Intent li = launchIntent(it);
@@ -240,7 +262,14 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public android.graphics.Bitmap cover(Catalog.Item it) {
         String k = it.key();
         if (coverCache.containsKey(k)) return coverCache.get(k);
-        if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
+        if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it); if (w != null) return w; }   // 0.10.6 wide covers
+        int own = it == Catalog.MARVEL_RIVALS ? R.drawable.duat_realm_s1 : it == Catalog.MINECRAFT ? R.drawable.duat_realm_blocks
+                : it == Catalog.ROBLOX ? R.drawable.duat_realm_bricks : 0;   // 0.10.6: Hoodlum Asylum's own "Duat Realm" art, logos cropped out
+        if (own != 0) {
+            if (!ownArt.containsKey(own)) ownArt.put(own, android.graphics.BitmapFactory.decodeResource(getResources(), own));
+            android.graphics.Bitmap b = ownArt.get(own); if (b != null) return b;
+            if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
+        }
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp() && launchIntent(it) == null) return playArt(it, true);   // 0.10.3
         android.graphics.Bitmap b = null;
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp()) {     // a catalogue tile (Steam, Steam Link): the installed app's own banner
@@ -384,6 +413,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast(it); return; }
             if (it.isRom()) { forceLandscape(); openRom(it); return; }
             if (it.isDeviceApp()) { start(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls)); return; }
+            if (it == Catalog.PLAY_STORE || !installed(it)) kidsStoreOpened();     // 0.10.6: watch for games installed now
             if (it == Catalog.GEFORCE_NOW && Catalog.gfnInBrowser(handheld())) { openWeb(Catalog.GFN_WEB); return; }
             Intent i = launchIntent(it);
             if (i != null) { if (!forceLandscapeThen(i)) start(i); return; }
@@ -405,6 +435,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void action(String a) {
         switch (a) {
             case "wifi": openWifi(); break;
+            case "kidsgames": kidsGamesManage(); break;
             case "files": askFileAccess(); break;
             case "bluetooth": start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); break;
             case "display": start(new Intent(Settings.ACTION_DISPLAY_SETTINGS)); break;
@@ -493,15 +524,16 @@ public class MainActivity extends Activity implements HomeView.Host {
             try {
                 UpdateInfo u = UpdateInfo.parse(get(UpdateInfo.API));
                 String mine = myVersion();
-                if (u == null || !UpdateInfo.newer(u.version, mine)) { if (manual) toast("CodeAque " + mine + " is the latest version."); return; }
-                if (!manual) { toast("CodeAque " + u.version + " is available: Settings > Update"); return; }
+                if (u == null || !UpdateInfo.newer(u.version, mine)) { if (manual) toast("You're up to date! (CodeAque " + mine + ")"); return; }
+                prefs.edit().putString("updKnown", u.version).apply();
+                if (!manual) { runOnUiThread(() -> updatePopup(u, mine)); return; }
                 runOnUiThread(() -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle("Update to CodeAque " + u.version + "?")
                         .setMessage("You have " + mine + ". The new version is downloaded, checked against the release's SHA256SUMS.txt and then Android asks you to install it.")
                         .setPositiveButton("Update", (d, w) -> new Thread(() -> install(u)).start())
                         .setNegativeButton("Not now", null).show());
             } catch (Exception e) {
-                if (manual) toast("Could not check for updates (are you online?)");
+                if (manual) toast("Could not check for updates. Is the Wi-Fi on?");
             } finally { updating = false; }
         }).start();
     }
@@ -660,6 +692,68 @@ public class MainActivity extends Activity implements HomeView.Host {
             toast("Flycast could not open it directly. Open Flycast and add the folder with your games.");
             start(getPackageManager().getLaunchIntentForPackage("com.flycast.emulator"));
         } finally { android.os.StrictMode.setVmPolicy(old); }
+    }
+
+    // ---------- 0.10.6 games installed during Kids mode appear in Kids mode ----------
+    /** Launchable packages right now (for the before/after diff around the Kids Play Store tile). */
+    private java.util.Set<String> launchablePkgs() {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0))
+            out.add(r.activityInfo.packageName);
+        return out;
+    }
+
+    /** Kids mode opened the Play Store: remember what was installed, so new games can be found on return. */
+    private void kidsStoreOpened() {
+        if (!prefs.getBoolean("kidsMode", false)) return;
+        prefs.edit().putStringSet("kidsSnap", launchablePkgs()).putLong("kidsSnapAt", System.currentTimeMillis()).apply();
+    }
+
+    void kidsInstalled(String pkg) {
+        if (!prefs.getBoolean("kidsMode", false) || pkg == null || pkg.equals(getPackageName())) return;
+        if (getPackageManager().getLaunchIntentForPackage(pkg) == null) return;   // only apps with an icon to open
+        java.util.Set<String> s = new java.util.HashSet<>(prefs.getStringSet("kidsAdded", Collections.<String>emptySet()));
+        if (s.add(pkg)) prefs.edit().putStringSet("kidsAdded", s).apply();
+    }
+
+    /** Back on the home screen in Kids mode: anything new since the Play Store was opened joins "My New Games". */
+    private void kidsDiff() {
+        java.util.Set<String> snap = prefs.getStringSet("kidsSnap", null);
+        if (snap == null || !prefs.getBoolean("kidsMode", false)) return;
+        java.util.Set<String> now = launchablePkgs();
+        boolean changed = false;
+        for (String p : Catalog.newPackages(snap, now)) {
+            java.util.Set<String> s = new java.util.HashSet<>(prefs.getStringSet("kidsAdded", Collections.<String>emptySet()));
+            if (!p.equals(getPackageName()) && s.add(p)) { prefs.edit().putStringSet("kidsAdded", s).apply(); changed = true; }
+        }
+        if (System.currentTimeMillis() - prefs.getLong("kidsSnapAt", 0) > 6L * 3600 * 1000) prefs.edit().remove("kidsSnap").apply();
+        if (changed) rescan();
+    }
+
+    /** Grown-up Settings (hidden in Kids mode): untick games to take them out of Kids mode. Games first (CATEGORY_GAME). */
+    private void kidsGamesManage() {
+        List<String> pkgs = new ArrayList<>(prefs.getStringSet("kidsAdded", Collections.<String>emptySet()));
+        if (pkgs.isEmpty()) { toast("No games were added in Kids mode yet."); return; }
+        PackageManager pm = getPackageManager();
+        Collections.sort(pkgs, (a, b) -> Boolean.compare(!isGamePkg(a), !isGamePkg(b)));
+        String[] names = new String[pkgs.size()]; boolean[] keep = new boolean[pkgs.size()];
+        for (int i = 0; i < pkgs.size(); i++) {
+            String n; try { n = pm.getApplicationLabel(pm.getApplicationInfo(pkgs.get(i), 0)).toString(); } catch (Exception e) { n = pkgs.get(i) + " (removed)"; }
+            names[i] = n + (isGamePkg(pkgs.get(i)) ? "" : "  (app)"); keep[i] = true;
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Games added in Kids mode")
+                .setMultiChoiceItems(names, keep, (d, w, on) -> keep[w] = on)
+                .setPositiveButton("Save", (d, w) -> {
+                    java.util.Set<String> s = new java.util.HashSet<>();
+                    for (int i = 0; i < pkgs.size(); i++) if (keep[i]) s.add(pkgs.get(i));
+                    prefs.edit().putStringSet("kidsAdded", s).apply(); rescan();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private boolean isGamePkg(String p) {
+        try { return isGame(getPackageManager().getApplicationInfo(p, 0)); } catch (Exception e) { return false; }
     }
 
     // ---------- 0.10.5 Kids mode Wi-Fi tile ----------
@@ -886,7 +980,37 @@ public class MainActivity extends Activity implements HomeView.Host {
         start(i);
     }
 
+    // ---------- 0.10.6 "New update ready" pop-up (also in Kids mode: it only offers the update) ----------
+    private String popupDismissed = "";      // Later: this version, until the next launch
+    private boolean popupShowing;
+
+    void updatePopup(UpdateInfo u, String mine) {
+        if (popupShowing || u.version.equals(popupDismissed) || isFinishing()) return;
+        popupShowing = true;
+        String news = UpdateInfo.whatsNew(u.notes);
+        AlertDialog d = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("New update ready (v" + u.version + ")")
+                .setMessage((news.isEmpty() ? "" : news + "\n\n") + "You have " + mine + ".")
+                .setPositiveButton("Update now", (x, w) -> new Thread(() -> install(u)).start())
+                .setNegativeButton("Later", (x, w) -> popupDismissed = u.version)
+                .setOnCancelListener(x -> popupDismissed = u.version)
+                .setOnDismissListener(x -> popupShowing = false)
+                .create();
+        d.show();
+        float big = prefs.getBoolean("kidsMode", false) ? 30 : 24;           // big, controller- and touch-friendly
+        int minH = (int) (64 * getResources().getDisplayMetrics().density);
+        for (int b : new int[]{AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE}) {
+            android.widget.Button bt = d.getButton(b);
+            if (bt != null) { bt.setTextSize(big); bt.setMinHeight(minH); bt.setAllCaps(false); bt.setPadding(minH / 2, 0, minH / 2, 0); }
+        }
+        android.widget.TextView msg = d.findViewById(android.R.id.message);
+        if (msg != null) msg.setTextSize(big - 4);
+        android.widget.Button now = d.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (now != null) now.requestFocus();                                  // A on the pad = Update now
+    }
+
     private void maybeDailyCheck() {
+        if (UpdateInfo.newer(prefs.getString("updKnown", "0"), myVersion())) { checkUpdate(false); return; }   // known update: ask again each launch
         long now = System.currentTimeMillis();
         if (now - prefs.getLong("updChecked", 0) < 24L * 3600 * 1000) return;
         prefs.edit().putLong("updChecked", now).apply();

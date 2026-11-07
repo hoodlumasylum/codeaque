@@ -31,6 +31,27 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.6: update pop-up (PC and Android)
+
+- When CodeAque finds a newer release, a big pop-up says **New update ready (vX)**, with a short what's-new line from the
+  release notes and two large buttons: **Update now** and **Later**. They work with a controller, keyboard or touch.
+- **Update now** starts the normal update, the same one as the update badge (PC) or Settings > Update (Android): no
+  terminal, and the download is checked against SHA256SUMS.txt.
+- **Later** hides the pop-up for that version until CodeAque is started again. The update badge stays. On Android the
+  pop-up also shows in Kids mode, where it only offers the update.
+
+- **Kids mode: Update CodeAque tile** next to Wi-Fi. It checks for an update and runs the normal update if there is
+  one; otherwise it says "You're up to date!". No other settings are shown.
+- **Kids mode: new games show up by themselves.** Apps installed while Kids mode is on (for example from its Play
+  Store tile) get their own "My New Games" row with their own icon. CodeAque spots them as soon as Android reports the
+  install, and checks again when you come back from the Play Store. Grown-ups can remove them in Settings > Kids mode
+  games (hidden in Kids mode).
+
+- **Wide covers on the Featured row** (and the Kids mode Play row). GeForce NOW shows its own Google Play feature
+  graphic, fetched while the app runs and cached; nothing is bundled. Until it arrives, or offline, the tile shows the
+  icon. Roblox, Minecraft and Marvel Rivals use Hoodlum Asylum Studio's own "Duat Realm" art, cropped so that no game
+  logos or game characters are shown.
+
 ## What's new in 0.10.5
 
 - **Kids mode Wi-Fi tile:** a big Wi-Fi row in Kids mode. It opens Android's Wi-Fi panel on Android 10+, or Wi-Fi settings on

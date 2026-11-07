@@ -162,6 +162,22 @@ def check(current: str = __version__, api_url: str | None = None) -> Release | N
     return rel if rel and is_newer(rel.version, current) else None
 
 
+def whats_new(notes: str, limit: int = 140) -> str:
+    """0.10.6: one short line for the update pop-up: the first real line of the release notes, without markdown."""
+    import re
+    for line in (notes or "").splitlines():
+        t = line.strip()
+        if not t or t.startswith("#") or t.startswith("```") or t.lower().startswith(("untested", "the apk", "check downloads")):
+            continue
+        t = re.sub(r"^[-*+]\s+", "", t)
+        t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)
+        t = t.replace("**", "").replace("`", "").replace("__", "").strip()
+        if not t:
+            continue
+        return t if len(t) <= limit else t[: limit - 1].rstrip() + "…"
+    return ""
+
+
 def due(last_checked: float, now: float | None = None) -> bool:
     return (now if now is not None else time.time()) - float(last_checked or 0) >= CHECK_EVERY
 

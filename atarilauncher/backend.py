@@ -335,6 +335,7 @@ class Backend(QObject):
         self._upd_frac = -1.0
         self._upd_cancel = threading.Event()
         self._upd_release = None
+        self._upd_popup_dismissed = ""   # 0.10.6: "Later" on the update pop-up, for this version until next launch
         self._restart_spawn = subprocess.Popen
         rel = updater.Release.from_dict(self.store.get_pref("update_latest") or {})
         if rel and updater.is_newer(rel.version, __version__):
@@ -5408,6 +5409,25 @@ class Backend(QObject):
     def updateAvailable(self):
         """A newer release is known (checked quietly in the background): drives the badge on the top bar."""
         return self._upd_release is not None and self._upd_state != "done"
+
+    @Property(bool, notify=updateChanged)
+    def updatePopup(self):
+        """0.10.6: the big "New update ready" pop-up: a newer release is known, nothing is running, and the user
+        hasn't pressed Later for this version since CodeAque started."""
+        rel = self._upd_release
+        return (rel is not None and self._upd_state in ("idle", "available", "uptodate", "error")
+                and rel.version != self._upd_popup_dismissed and not self._running)
+
+    @Property(str, notify=updateChanged)
+    def updateWhatsNew(self):
+        return updater.whats_new(self._upd_release.notes) if self._upd_release else ""
+
+    @Slot()
+    def dismissUpdatePopup(self) -> None:
+        """Later: hide the pop-up for this version until the next launch (the top-bar badge stays)."""
+        if self._upd_release is not None:
+            self._upd_popup_dismissed = self._upd_release.version
+        self.updateChanged.emit()
 
     @Property(bool, notify=updateChanged)
     def updateBusy(self):

@@ -56,15 +56,22 @@ public class CatalogTest {
                 && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1; wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true"), "rotation cmd");
         check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
         List<Catalog.Category> km = Catalog.kidsMode();
-        check(km.size() == 5 && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).items.size() == 1 && km.get(4).items.get(0) == Catalog.KIDS_WIFI && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
+        check(km.size() == 5 && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).items.size() == 2 && km.get(4).items.get(0) == Catalog.KIDS_WIFI && km.get(4).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
         check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
-        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
+        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
         check(c.get(0).items.get(4) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
         check(Catalog.RIVALS_HEADER.startsWith("https://") && Catalog.RIVALS_HEADER.contains("/2767030/"), "Steam header");
         check("Home".equals(Catalog.cleanSsid("\"Home\"")) && Catalog.cleanSsid("<unknown ssid>") == null && Catalog.cleanSsid(null) == null, "ssid");
         dreamcastChecks(c);
+        UpdateInfo ui = UpdateInfo.parse("{\"tag_name\":\"v0.10.6\",\"body\":\"## CodeAque\\r\\n\\r\\n- **Pop-up** for \\\"updates\\\"\\n- more\",\"assets\":[{\"browser_download_url\":\"https://x/codeaque-launcher.apk\"},{\"browser_download_url\":\"https://x/SHA256SUMS.txt\"}]}");
+        check(ui != null && "0.10.6".equals(ui.version) && "Pop-up for \"updates\"".equals(UpdateInfo.whatsNew(ui.notes)), "update notes line: " + (ui == null ? null : UpdateInfo.whatsNew(ui.notes)));
+        check(UpdateInfo.whatsNew("").isEmpty() && UpdateInfo.whatsNew(null).isEmpty(), "no notes");
+        Catalog.Item newGame = Catalog.deviceApp("New Game", "com.example.newgame", "com.example.newgame.Main");
+        List<Catalog.Category> ka = Catalog.kidsMode(List.of(), List.of(newGame));
+        check(ka.get(1).id.equals("kadded") && ka.get(1).items.get(0) == newGame && Catalog.indexOf(km, "kadded") < 0, "My New Games row only when there are some");
+        check(Catalog.newPackages(new java.util.HashSet<>(List.of("a", "b")), new java.util.HashSet<>(List.of("a", "b", "d", "c"))).equals(List.of("c", "d")), "installed-since diff");
         // 0.10.1 boot animation
         List<String> sa = new java.util.ArrayList<>(); for (Catalog.Item i : c.get(Catalog.indexOf(c, "settings")).items) sa.add(i.action);
         check(sa.contains("kids") && sa.contains("bootanim") && sa.indexOf("bootanim") == sa.indexOf("update") + 1, "boot animation after Update");
@@ -134,6 +141,12 @@ public class CatalogTest {
             srv.stop(0);
             check(!PlayArt.fetch(base, "game.offline", dir), "offline keeps the CodeAque icon");
             check(!PlayArt.fetch("http://example.com", "game.ok", dir), "only https Play or a loopback test server");
+            String data = "<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/OWNICONabcdefgh=s0-br30\">"
+                    + "[null,2,[1024,500],[null,null,\"https://play-lh.googleusercontent.com/OTHERFEATURE1234\"]]"
+                    + "[null,2,[512,512],[null,null,\"https://play-lh.googleusercontent.com/OWNICONabcdefgh\"]],[null,2,[500,1024],[null,null,\"https://play-lh.googleusercontent.com/OWNFEATURE5678\"]]";
+            String[] fg = PlayArt.parse(data, false);
+            check("https://play-lh.googleusercontent.com/OWNFEATURE5678=w640-h312".equals(fg[0]), "own feature graphic only: " + fg[0]);
+            check(PlayArt.parse("<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/OWNICONabcdefgh=s0\">[null,2,[1024,500],[null,null,\"https://play-lh.googleusercontent.com/OTHER\"]]", false)[0] == null, "no other app's graphic");
             String[] a = PlayArt.parse("<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/abc=s0-br30\">", false);
             check(a[0] == null && "https://play-lh.googleusercontent.com/abc=s256".equals(a[1]), "real Play icon url " + a[1]);
             check(PlayArt.listingUrl(PlayArt.PLAY, "com.roblox.client").equals("https://play.google.com/store/apps/details?id=com.roblox.client&hl=en_GB"), "listing url");

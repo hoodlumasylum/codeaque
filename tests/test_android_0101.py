@@ -111,7 +111,7 @@ def test_kids_mode_big_and_locked_down():
     assert "onKeyLongPress" in h and "host.open(Catalog.KIDS_OFF)" in h and "e.startTracking()" in h
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
-    assert 'kidsOn ? Catalog.kidsMode(allRoms) :' in m and 'getBoolean("kidsMode", false)' in m
+    assert 'kidsOn ? Catalog.kidsMode(allRoms, kidsNew) :' in m and 'getBoolean("kidsMode", false)' in m
 
 
 def test_geforce_now_web_client_on_handhelds():
@@ -146,7 +146,7 @@ def test_rotation_ignores_app_orientation_and_runs_before_launch():
 
 def test_roblox_tile_is_original_drawn_art():
     h = (SRC / "HomeView.java").read_text()
-    assert "if (it == Catalog.ROBLOX) blockyArt(c);" in h and "private void buddy(" in h
+    assert "if (it == Catalog.ROBLOX && cov == null) blockyArt(c);" in h and "private void buddy(" in h
     assets = [p.name.lower() for p in (AND / "app/src/main").rglob("*")]
     assert not any("roblox" in n for n in assets)
 
@@ -165,7 +165,7 @@ def test_marvel_rivals_gfn_tile():
 def test_kids_mode_wifi_tile_only():
     c = (SRC / "Catalog.java").read_text()
     km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
-    assert 'new Category("kwifi", "Wi-Fi", "wifi", KIDS_WIFI)' in km and 'KIDS_WIFI = act("Wi-Fi", "wifi", "wifi")' in c
+    assert 'new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE)' in c and 'KIDS_WIFI = act("Wi-Fi", "wifi", "wifi")' in c
     m = (SRC / "MainActivity.java").read_text()
     body = m.split("private void openWifi()", 1)[1].split("\n    }\n", 1)[0]
     assert body.index("Settings.Panel.ACTION_WIFI") < body.index("Settings.ACTION_WIFI_SETTINGS") and "SDK_INT >= 29" in body
@@ -192,3 +192,44 @@ def test_dreamcast_usb_and_own_bios_import():
     assert 'DcScan.volumeRoots(new java.io.File("/storage"), new java.io.File("/mnt/media_rw"))' in m
     assert "importBios(roots)" in m and "Custom Paths > BIOS Folders" in m
     assert 'FLYCAST_DATA = "Android/data/com.flycast.emulator/files/data"' in sc and '"dc_boot.bin"' in sc and '"dc_flash.bin"' in sc
+
+
+def test_android_update_popup():
+    m = (SRC / "MainActivity.java").read_text()
+    pop = m.split("void updatePopup(UpdateInfo u, String mine)", 1)[1].split("\n    }\n", 1)[0]
+    assert '"New update ready (v" + u.version + ")"' in pop and '"Update now"' in pop and '"Later"' in pop
+    assert "u.version.equals(popupDismissed)" in pop and "install(u)" in pop and "setTextSize(big)" in pop
+    assert "Settings" not in pop.replace("SHA256SUMS", "")
+    assert "if (!manual) { runOnUiThread(() -> updatePopup(u, mine)); return; }" in m
+    assert 'UpdateInfo.newer(prefs.getString("updKnown", "0"), myVersion())' in m
+
+
+def test_kids_mode_new_games_and_update_tile():
+    c = (SRC / "Catalog.java").read_text()
+    assert 'KIDS_UPDATE = act("Update CodeAque", "download", "update")' in c and "KIDS_WIFI, KIDS_UPDATE" in c
+    assert 'new Category("kadded", "My New Games"' in c and 'act("Kids mode games", "pad", "kidsgames")' in c
+    m = (SRC / "MainActivity.java").read_text()
+    assert "Intent.ACTION_PACKAGE_ADDED.equals(i.getAction()) && !i.getBooleanExtra(Intent.EXTRA_REPLACING, false)" in m
+    assert "m.kidsInstalled(" in m and "kidsDiff();" in m and "kidsStoreOpened();" in m
+    assert 'Catalog.kidsMode(allRoms, kidsNew)' in m and "You're up to date!" in m
+    ki = m.split("void kidsInstalled(String pkg)", 1)[1].split("\n    }\n", 1)[0]
+    assert 'getBoolean("kidsMode", false)' in ki and "getLaunchIntentForPackage(pkg) == null" in ki
+
+
+def test_featured_wide_covers_and_roblox_art():
+    h = (SRC / "HomeView.java").read_text()
+    assert 'id.equals("steam") || id.equals("kplay")' in h and "(wide() ? (kids ? 220 : 266)" in h
+    art = h.split("private void blockyArt(Canvas c)", 1)[1].split("/** One blocky buddy", 1)[0]
+    assert "speed lines" in art and "buddy(c," in art and "drawText" not in art and "Bitmap" not in art
+    m = (SRC / "MainActivity.java").read_text()
+    assert "if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it)" in m
+    assert "ownFeature(html, i)" in (SRC / "PlayArt.java").read_text()
+
+
+def test_rivals_tile_uses_own_duat_art():
+    m = (SRC / "MainActivity.java").read_text()
+    for r in ("duat_realm_s1", "duat_realm_blocks", "duat_realm_bricks"):
+        assert f"R.drawable.{r}" in m
+        f = AND / f"app/src/main/res/drawable-nodpi/{r}.webp"
+        assert f.is_file() and f.stat().st_size < 120_000
+    assert "if (it == Catalog.ROBLOX && cov == null) blockyArt(c);" in (SRC / "HomeView.java").read_text()

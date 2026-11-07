@@ -194,8 +194,10 @@ public class HomeView extends View {
     static final float KIDS_SCALE = 1.7f;
     private float big() { return kids ? KIDS_SCALE : 1f; }
     private boolean covers() { String id = cats.get(cat).id; if (kids) return id.equals("kplay"); id = cats.get(cat).id; return id.equals("mygames") || id.equals("steam"); }      // 0.9.5: portrait box-art tiles
-    private float tileH() { return (covers() ? 190 : 112) * s * big(); }
-    private float tileW() { return (covers() ? 128 : 156) * s * big(); }
+    /** 0.10.6: the Featured / Kids Play row uses wide 16:9-ish covers (feature graphics, Roblox art). */
+    private boolean wide() { String id = cats.get(cat).id; return id.equals("steam") || id.equals("kplay"); }
+    private float tileH() { return (wide() ? (kids ? 118 : 150) : covers() ? 190 : 112) * s * big(); }
+    private float tileW() { return (wide() ? (kids ? 220 : 266) : covers() ? 128 : 156) * s * big(); }
     private float tileGap() { return 14 * s * big(); }
     private float tilesTop() { return getHeight() - 80 * s - tileH(); }
     private float tilesLeft() { return 24 * s; }
@@ -519,7 +521,7 @@ public class HomeView extends View {
         float rad = 12 * s;
         Bitmap cov = host.cover(it), ai = cov == null ? host.appIcon(it) : null;
         c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
-        if (it == Catalog.ROBLOX) blockyArt(c);          // 0.10.3: CodeAque's own original art, drawn here (no Roblox characters or logo)
+        if (it == Catalog.ROBLOX && cov == null) blockyArt(c);   // fallback only; 0.10.6 uses Hoodlum Asylum's own Duat Realm art
         else if (cov != null) {
             float sc = Math.max(r.width() / cov.getWidth(), r.height() / cov.getHeight());
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
@@ -560,19 +562,36 @@ public class HomeView extends View {
     /** Original CodeAque art for the Roblox tile: a bright sky, a grass block world and two of our own blocky buddies. */
     private void blockyArt(Canvas c) {
         float W = r.width(), H = r.height(), x0 = r.left, y0 = r.top;
-        p.setShader(new LinearGradient(0, y0, 0, y0 + H, new int[]{0xFF39C6FF, 0xFF8FE3FF, 0xFFFFE27A}, null, Shader.TileMode.CLAMP));
+        p.setShader(new LinearGradient(0, y0, 0, y0 + H, new int[]{0xFF2A7BFF, 0xFF33D1FF, 0xFFFFD36B}, new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
         c.drawRect(r, p); p.setShader(null);
-        p.setColor(0xFFFFFFFF);                                          // square clouds
-        c.drawRect(x0 + W * 0.08f, y0 + H * 0.10f, x0 + W * 0.30f, y0 + H * 0.15f, p);
-        c.drawRect(x0 + W * 0.14f, y0 + H * 0.07f, x0 + W * 0.24f, y0 + H * 0.10f, p);
-        c.drawRect(x0 + W * 0.62f, y0 + H * 0.16f, x0 + W * 0.90f, y0 + H * 0.21f, p);
-        float g = y0 + H * 0.66f, b = W / 8f;                          // grass + dirt blocks
-        for (int k = 0; k < 8; k++) {
-            p.setColor(k % 2 == 0 ? 0xFF4CD964 : 0xFF3BC453); c.drawRect(x0 + k * b, g, x0 + (k + 1) * b, g + b * 0.5f, p);
-            p.setColor(k % 2 == 0 ? 0xFFB5793F : 0xFFA26A35); c.drawRect(x0 + k * b, g + b * 0.5f, x0 + (k + 1) * b, y0 + H, p);
+        p.setColor(0x33FFFFFF);                                       // sun burst behind the action
+        for (int k = 0; k < 10; k++) {
+            double a1 = k * Math.PI / 5, a2 = a1 + Math.PI / 12; float cx = x0 + W * 0.62f, cy = y0 + H * 0.30f, R = W;
+            path.reset(); path.moveTo(cx, cy); path.lineTo(cx + (float) Math.cos(a1) * R, cy + (float) Math.sin(a1) * R);
+            path.lineTo(cx + (float) Math.cos(a2) * R, cy + (float) Math.sin(a2) * R); path.close(); c.drawPath(path, p);
         }
-        buddy(c, x0 + W * 0.30f, g, W * 0.24f, 0xFFFF4FA3, 0xFF2D7DFF, false);
-        buddy(c, x0 + W * 0.68f, g, W * 0.26f, 0xFFFFC23A, 0xFF8A4DFF, true);
+        int[] towers = {0xFF7C4DFF, 0xFFFF6E40, 0xFF00C853, 0xFFFFAB00, 0xFFE91E63};   // a blocky skyline
+        for (int k = 0; k < 9; k++) {
+            float tw = W / 9f, th = H * (0.22f + ((k * 37) % 5) * 0.06f);
+            p.setColor(towers[k % towers.length]); c.drawRect(x0 + k * tw, y0 + H * 0.72f - th, x0 + (k + 1) * tw - 2 * s, y0 + H * 0.72f, p);
+            p.setColor(0x55FFFFFF); c.drawRect(x0 + k * tw + tw * 0.25f, y0 + H * 0.72f - th + tw * 0.25f, x0 + k * tw + tw * 0.5f, y0 + H * 0.72f - th + tw * 0.5f, p);
+        }
+        float g = y0 + H * 0.72f, b = W / 12f;                         // grass + dirt blocks
+        for (int k = 0; k < 12; k++) {
+            p.setColor(k % 2 == 0 ? 0xFF4CD964 : 0xFF3BC453); c.drawRect(x0 + k * b, g, x0 + (k + 1) * b, g + H * 0.08f, p);
+            p.setColor(k % 2 == 0 ? 0xFFB5793F : 0xFFA26A35); c.drawRect(x0 + k * b, g + H * 0.08f, x0 + (k + 1) * b, y0 + H, p);
+        }
+        p.setColor(0xFFFFE14D);                                         // floating gems / coins
+        for (float[] q : new float[][]{{0.20f, 0.22f}, {0.47f, 0.14f}, {0.86f, 0.26f}}) {
+            float cx = x0 + W * q[0], cy = y0 + H * q[1], e = H * 0.05f;
+            path.reset(); path.moveTo(cx, cy - e); path.lineTo(cx + e, cy); path.lineTo(cx, cy + e); path.lineTo(cx - e, cy); path.close(); c.drawPath(path, p);
+        }
+        p.setColor(0xCCFFFFFF);                                         // speed lines behind the runner
+        for (int k = 0; k < 3; k++) c.drawRect(x0 + W * 0.05f, g - H * (0.12f + k * 0.08f), x0 + W * (0.20f - k * 0.03f), g - H * (0.12f + k * 0.08f) + 2.5f * s, p);
+        float u = H * 0.42f;
+        buddy(c, x0 + W * 0.30f, g, u, 0xFFFF4FA3, 0xFF2D7DFF, false);              // running on the grass
+        buddy(c, x0 + W * 0.66f, g - H * 0.22f, u * 1.05f, 0xFFFFC23A, 0xFF8A4DFF, true);   // mid-jump, waving
+        p.setColor(0x44000000); c.drawOval(x0 + W * 0.58f, g - 3 * s, x0 + W * 0.74f, g + 4 * s, p);   // its shadow
     }
 
     /** One blocky buddy standing on y: square head with a smile, shirt, arms (one waving), legs. */

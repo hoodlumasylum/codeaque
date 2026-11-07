@@ -51,8 +51,8 @@ public final class Catalog {
     static final Item LUNA = web("Amazon Luna", "cloud", "https://luna.amazon.com", "com.amazon.luna");
     static final Item BOOST = web("Boosteroid", "cloud", "https://cloud.boosteroid.com", "com.boosteroid.streaming");
     static final Item RETROARCH = app("RetroArch", "invader", "com.retroarch", "com.retroarch.aarch64", "com.retroarch.ra32");
-    static final Item MINECRAFT = app("Minecraft", "cube", "com.mojang.minecraftpe");
-    static final Item ROBLOX = app("Roblox", "cube", "com.roblox.client");
+    public static final Item MINECRAFT = app("Minecraft", "cube", "com.mojang.minecraftpe");
+    public static final Item ROBLOX = app("Roblox", "cube", "com.roblox.client");
 
     /** An installed app or game (from PackageManager): opens itself, shows its own icon. */
     public static Item deviceApp(String label, String pkg, String cls) {
@@ -161,16 +161,26 @@ public final class Catalog {
         return new Category("dreamcast", "Dreamcast", "disc", l.toArray(new Item[0]));
     }
     public static final Item KIDS_WIFI = act("Wi-Fi", "wifi", "wifi");
+    /** Packages in after that weren't in before (sorted). */
+    public static List<String> newPackages(java.util.Set<String> before, java.util.Set<String> after) {
+        List<String> out = new ArrayList<>();
+        for (String p : after) if (!before.contains(p)) out.add(p);
+        Collections.sort(out); return out;
+    }
+    public static final Item KIDS_UPDATE = act("Update CodeAque", "download", "update");
     public static final Item KIDS_OFF = act("Turn off Kids mode", "gear", "kidsoff");
     public static List<Category> kidsMode() { return kidsMode(Collections.<Item>emptyList()); }
     /** roms = the player's own game files; only the Dreamcast ones are shown, and no folder-import tiles. */
-    public static List<Category> kidsMode(List<Item> roms) {
+    public static List<Category> kidsMode(List<Item> roms) { return kidsMode(roms, Collections.<Item>emptyList()); }
+    /** added = games installed during a Kids mode session (0.10.6), shown as their own row. */
+    public static List<Category> kidsMode(List<Item> roms, List<Item> added) {
         List<Category> c = new ArrayList<>();
         c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, GEFORCE_NOW, MARVEL_RIVALS));
+        if (!added.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", added.toArray(new Item[0])));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
         Category dc = dreamcast(roms); c.add(new Category("kdc", dc.label, dc.icon, dc.items.toArray(new Item[0])));
-        c.add(new Category("kwifi", "Wi-Fi", "wifi", KIDS_WIFI));   // 0.10.5: just the Wi-Fi tile
+        c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
         return c;
     }
 
@@ -280,7 +290,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
         return c;
     }
 

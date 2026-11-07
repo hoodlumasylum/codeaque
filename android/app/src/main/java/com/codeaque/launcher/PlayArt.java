@@ -39,11 +39,26 @@ public final class PlayArt {
             Matcher m = FEATURE.matcher(html); if (m.find()) f = m.group(1).replace("&amp;", "&");
             m = OG.matcher(html); if (m.find()) i = m.group(1).replace("&amp;", "&");
         }
+        if (f == null && i != null) f = ownFeature(html, i);
         if (!allowed(f, test)) f = null;
         if (!allowed(i, test)) i = null;
         if (i != null && i.startsWith(IMG_HOST)) i = i.replaceAll("=[^/=]*$", "") + "=s256";
-        if (f != null && f.startsWith(IMG_HOST)) f = f.replaceAll("=[^/=]*$", "") + "=w640-h360";
+        if (f != null && f.startsWith(IMG_HOST)) f = f.replaceAll("=[^/=]*$", "") + "=w640-h312";
         return new String[]{f, i};
+    }
+
+    private static final Pattern WIDE = Pattern.compile("\\[null,\\d+,\\[(?:500,1024|1024,500)\\],\\[null,null,\"([^\"]+)\"");
+    /** 0.10.6: the listing's own 1024x500 feature graphic. In the page data it comes right after the app's own icon
+     *  (the og:image); other apps' graphics on the page follow their own icons, so only that spot is trusted. */
+    static String ownFeature(String html, String iconUrl) {
+        String id = iconUrl.replaceAll("=[^/=]*$", "");
+        int at = id.lastIndexOf('/'); if (at < 0) return null;
+        String key = id.substring(at + 1); if (key.length() < 12) return null;
+        int pos = html.indexOf(key + "\"");
+        while (pos >= 0 && !html.startsWith("[null,null,\"", Math.max(0, html.lastIndexOf("[null,null,\"", pos)))) pos = html.indexOf(key + "\"", pos + 1);
+        if (pos < 0) return null;
+        Matcher m = WIDE.matcher(html); m.region(pos, Math.min(html.length(), pos + 600));
+        return m.find() ? m.group(1).replace("\\u003d", "=") : null;
     }
 
     public static File iconFile(File dir, String pkg) { return new File(dir, pkg + ".icon.png"); }
@@ -69,7 +84,7 @@ public final class PlayArt {
 
     static String get(String url, long max) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setConnectTimeout(8000); c.setReadTimeout(15000); c.setRequestProperty("User-Agent", "Mozilla/5.0 CodeAque");
+        c.setConnectTimeout(8000); c.setReadTimeout(15000); c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36");
         try (InputStream in = c.getInputStream()) {
             if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
             java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream(); byte[] b = new byte[16384]; int n;
