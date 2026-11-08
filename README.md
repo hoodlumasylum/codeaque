@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.23
+
+- **Parent PIN out of the box:** the PIN is 1234 until you change it in Settings > Change PIN (current PIN, then the new
+  one twice). It is stored hashed like any other. While it is still 1234, the PIN box reminds you to change it.
+- **Kids mode:** leaving Kids mode (every way, including holding Select) and opening the Play Store (the Play Store
+  tile, or "Get" on a game that isn't installed) need the parent PIN.
+- Lock mode now uses the same parent PIN. Forgot it? Clearing CodeAque's data resets it to 1234.
+
 ## What's new in 0.10.22
 
 - **Safe contacts** (Settings > Safe contacts, PIN-protected in Lock mode): a parent adds names and numbers, or picks

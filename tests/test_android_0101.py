@@ -383,3 +383,20 @@ def test_safe_contacts():
     assert "else if (!locked()) safeLaunch(new Intent(Intent.ACTION_DIAL" in m        # no dialer fallback while locked
     assert "CALL_PHONE" in man and "READ_CONTACTS" in man and "BIND_SCREENING_SERVICE" in man and "BIND_CALL_REDIRECTION_SERVICE" in man
     assert 'android.hardware.telephony" android:required="false"' in man
+
+
+def test_kids_pin_play_store_and_exit():
+    m = (SRC / "MainActivity.java").read_text()
+    oc = m.split("protected void onCreate(", 1)[1][:400]
+    assert "ensurePin();" in oc and 'DEFAULT_PIN = "1234"' in m and "LockPin.newHash(DEFAULT_PIN)" in m
+    op = m.split("public void open(Catalog.Item it) {", 1)[1][:400]
+    assert op.index("kidsPinGate(it)") < op.index("action(it.action)")
+    g = m.split("private boolean kidsPinGate(", 1)[1].split("private boolean locked()", 1)[0]
+    assert '"kidsoff".equals(it.action)' in g and "Catalog.opensStore(" in g
+    st = m.split("private void store(String pkg) {", 1)[1][:300]
+    assert 'getBoolean("kidsMode", false) && pinSet() && !pinFresh()' in st
+    assert "Still using 1234" in m.split("private void askPin(", 1)[1][:2500]
+    cp = m.split("private void changePin()", 1)[1].split("private boolean homePromptShown;", 1)[0]
+    assert cp.index('LockPin.check(cur.getText()') < cp.index('putString("lockPin", LockPin.newHash(p))')
+    assert 'remove("lockPin")' not in m and "kidsPinSetup" not in m
+    assert 'act("Change PIN", "gear", "changepin")' in (SRC / "Catalog.java").read_text()

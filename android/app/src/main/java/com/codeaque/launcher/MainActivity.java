@@ -38,6 +38,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("codeaque", MODE_PRIVATE);
+        ensurePin();                                  // 0.10.23: default parent PIN 1234 (hashed)
         edgeToEdge();
         view = new HomeView(this, this);
         setContentView(view);
@@ -517,6 +518,7 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override public void open(Catalog.Item it) {
         try {
+            if (kidsPinGate(it)) { askPin("Parent PIN", () -> open(it)); return; }   // 0.10.23
             if (it.isAction()) {
                 if (locked() && LockPin.needsPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }   // 0.10.21
                 action(it.action); return;
@@ -545,6 +547,15 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     // ---------- 0.10.21 Lock mode (parent PIN). Soft lock inside CodeAque; full kiosk only if CodeAque is device owner. ----------
     private long pinOkUntil;
+    /** 0.10.23: a parent PIN exists (set from Kids mode or Lock mode). */
+    private boolean pinSet() { return prefs.getString("lockPin", null) != null; }
+    /** 0.10.23: whenever a PIN is set, leaving Kids mode and any Play Store launch from Kids mode need it. */
+    private boolean kidsPinGate(Catalog.Item it) {
+        if (!pinSet() || pinFresh()) return false;
+        if (it.isAction()) return "kidsoff".equals(it.action);
+        if (!prefs.getBoolean("kidsMode", false)) return false;
+        return Catalog.opensStore(it, installed(it));
+    }
     private boolean locked() { return prefs.getBoolean("lockMode", false) && prefs.getString("lockPin", null) != null; }
     /** A correct PIN opens grown-up things for 2 minutes. */
     private boolean pinFresh() { return android.os.SystemClock.elapsedRealtime() < pinOkUntil; }
@@ -574,7 +585,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(title)
-                .setMessage("Enter the parent PIN.\n\nForgot it? Clearing CodeAque's data (Android Settings > Apps > CodeAque > Storage > Clear data) resets it, along with CodeAque's other settings.")
+                .setMessage("Enter the parent PIN." + (pinIsDefault() ? "\n\nStill using 1234 \u2013 change it in Settings." : "")
+                        + "\n\nForgot it? Clearing CodeAque's data (Android Settings > Apps > CodeAque > Storage > Clear data) resets it to 1234, along with CodeAque's other settings.")
                 .setView(e)
                 .setPositiveButton("OK", (d, w) -> {
                     if (LockPin.check(e.getText().toString(), prefs.getString("lockPin", null))) {
@@ -593,30 +605,54 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void lockToggle() {
         if (locked()) {
             new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Turn off Lock mode?")
-                    .setMessage("Settings, Kids mode and Files will open without the PIN again.")
-                    .setPositiveButton("Turn off", (d, w) -> { prefs.edit().putBoolean("lockMode", false).remove("lockPin").apply(); kioskOff(); rescan(); toast("Lock mode is off."); })
-                    .setNeutralButton(deviceOwner() ? "Off + remove full kiosk" : null, deviceOwner() ? (d, w) -> { prefs.edit().putBoolean("lockMode", false).remove("lockPin").apply(); removeOwner(); rescan(); } : null)
+                    .setMessage("Settings and Files will open without the PIN again. Kids mode and the Play Store in Kids mode still need it.")
+                    .setPositiveButton("Turn off", (d, w) -> { prefs.edit().putBoolean("lockMode", false).apply(); kioskOff(); rescan(); toast("Lock mode is off."); })
+                    .setNeutralButton(deviceOwner() ? "Off + remove full kiosk" : null, deviceOwner() ? (d, w) -> { prefs.edit().putBoolean("lockMode", false).apply(); removeOwner(); rescan(); } : null)
                     .setNegativeButton("Cancel", null).show();
             return;
         }
+        // 0.10.23: Lock mode uses the parent PIN (1234 until changed in Settings > Change PIN); asked before turning on
+        askPin("Turn on Lock mode", () -> {
+            prefs.edit().putBoolean("lockMode", true).apply();
+            pinOkUntil = 0; rescan(); lockResume();
+            toast((deviceOwner() ? "Lock mode is on (full kiosk)." : "Lock mode is on.") + (pinIsDefault() ? " Still using 1234 - change it in Settings." : ""));
+        });
+    }
+
+    // ---------- 0.10.23 parent PIN: 1234 out of the box (stored hashed), Settings > Change PIN ----------
+    static final String DEFAULT_PIN = "1234";
+    /** Makes sure a PIN exists: the default 1234, hashed like any other. Also after "Clear data". */
+    private void ensurePin() {
+        if (prefs.getString("lockPin", null) == null)
+            prefs.edit().putString("lockPin", LockPin.newHash(DEFAULT_PIN)).putBoolean("pinDefault", true).putInt("lockWrong", 0).apply();
+    }
+    private boolean pinIsDefault() { return prefs.getBoolean("pinDefault", false); }
+
+    /** Current PIN, then the new PIN twice. */
+    private void changePin() {
         android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
-        android.widget.EditText a = new android.widget.EditText(this), b = new android.widget.EditText(this);
-        for (android.widget.EditText e : new android.widget.EditText[]{a, b}) {
+        android.widget.EditText cur = new android.widget.EditText(this), a = new android.widget.EditText(this), b = new android.widget.EditText(this);
+        for (android.widget.EditText e : new android.widget.EditText[]{cur, a, b}) {
             e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
             e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)}); box.addView(e);
         }
-        a.setHint("New PIN (4-6 digits)"); b.setHint("Type it again");
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Turn on Lock mode")
-                .setMessage("Settings, turning off Kids mode or Lock mode, Android settings, Files and leaving CodeAque will need this PIN. "
-                        + "Phone, contacts, messages and Android settings apps are hidden.\n\nForgot the PIN? Clearing CodeAque's data resets it.")
+        cur.setHint("Current PIN"); a.setHint("New PIN (4-6 digits)"); b.setHint("New PIN again");
+        long wait = prefs.getLong("lockWaitUntil", 0) - System.currentTimeMillis();
+        if (wait > 0) { toast("Too many wrong PINs. Try again in " + ((wait + 999) / 1000) + " s."); return; }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Change PIN")
+                .setMessage(pinIsDefault() ? "Still using 1234 \u2013 pick your own PIN." : "Forgot the PIN? Clearing CodeAque's data resets it to 1234.")
                 .setView(box)
-                .setPositiveButton("Lock", (d, w) -> {
+                .setPositiveButton("Change", (d, w) -> {
+                    if (!LockPin.check(cur.getText().toString(), prefs.getString("lockPin", null))) {
+                        int n = prefs.getInt("lockWrong", 0) + 1;
+                        prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
+                        toast("Wrong current PIN. Nothing was changed."); return;
+                    }
                     String p = a.getText().toString();
-                    if (!LockPin.validPin(p)) { toast("The PIN must be 4 to 6 digits. Nothing was changed."); return; }
-                    if (!p.equals(b.getText().toString())) { toast("The two PINs didn't match. Nothing was changed."); return; }
-                    prefs.edit().putString("lockPin", LockPin.newHash(p)).putBoolean("lockMode", true).putInt("lockWrong", 0).apply();
-                    pinOkUntil = 0; rescan(); lockResume();
-                    toast(deviceOwner() ? "Lock mode is on (full kiosk)." : "Lock mode is on.");
+                    if (!LockPin.validPin(p)) { toast("The new PIN must be 4 to 6 digits. Nothing was changed."); return; }
+                    if (!p.equals(b.getText().toString())) { toast("The two new PINs didn't match. Nothing was changed."); return; }
+                    prefs.edit().putString("lockPin", LockPin.newHash(p)).putBoolean("pinDefault", p.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+                    toast("PIN changed.");
                 })
                 .setNegativeButton("Cancel", null).show();
     }
@@ -806,6 +842,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void store(String pkg) {
+        if (prefs.getBoolean("kidsMode", false) && pinSet() && !pinFresh()) { askPin("Parent PIN", () -> store(pkg)); return; }   // 0.10.23
         try { start(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg))); }
         catch (ActivityNotFoundException e) { start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + pkg))); }
     }
@@ -845,6 +882,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
             case "lock": lockToggle(); break;              // 0.10.21
+            case "changepin": changePin(); break;          // 0.10.23
             case "calltext": callText(); break;            // 0.10.22 Safe contacts
             case "safecontacts": safeContacts(); break;
             case "blockunknown": callRoleToggle("blockUnknown", "Block unknown callers", true); break;

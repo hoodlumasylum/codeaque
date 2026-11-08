@@ -255,6 +255,12 @@ public class CatalogTest {
                     check(!LockPin.needsPin("calltext") && LockPin.needsPin("safecontacts") && LockPin.needsPin("blockunknown") && LockPin.needsPin("safeonly"), "safe contacts pin");
                     check(Catalog.callRow().items.get(0) == Catalog.CALL_TEXT && "calltext".equals(Catalog.CALL_TEXT.action), "call row");
                 }
+                {   // 0.10.23 Kids mode PIN for the Play Store
+                    check(Catalog.opensStore(Catalog.PLAY_STORE, true) && Catalog.opensStore(Catalog.PLAY_STORE, false), "play store tile");
+                    check(Catalog.opensStore(Catalog.KIDS[0], false) && !Catalog.opensStore(Catalog.KIDS[0], true), "Get on uninstalled kids game");
+                    check(!Catalog.opensStore(Catalog.KIDS_OFF, false) && !Catalog.opensStore(Catalog.MARVEL_RIVALS, false) && !Catalog.opensStore(null, false), "not store");
+                    check(!LockPin.needsPin("changepin") && LockPin.validPin("1234") && LockPin.check("1234", LockPin.newHash("1234")), "change pin / default");
+                }
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP

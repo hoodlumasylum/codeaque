@@ -46,7 +46,7 @@ public final class LockPin {
     /** CodeAque actions that need the PIN while Lock mode is on (everything except Wi-Fi, Update and game shortcuts). */
     public static boolean needsPin(String action) {
         if (action == null) return false;
-        return !(action.equals("wifi") || action.equals("update") || action.startsWith("goto:") || action.equals("gfn:rivals") || action.equals("calltext"));
+        return !(action.equals("wifi") || action.equals("update") || action.startsWith("goto:") || action.equals("gfn:rivals") || action.equals("calltext") || action.equals("changepin"));
     }
 
     static String hex(byte[] b) { StringBuilder s = new StringBuilder(); for (byte x : b) s.append(String.format("%02x", x)); return s.toString(); }

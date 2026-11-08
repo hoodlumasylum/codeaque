@@ -241,6 +241,13 @@ public final class Catalog {
     /** 0.10.22: the Call & Text tile (only on devices that can make calls): the parent's safe contacts only. */
     public static final Item CALL_TEXT = act("Call & Text", "phone", "calltext");
     public static Category callRow() { return new Category("calls", "Call & Text", "phone", CALL_TEXT); }
+    /** 0.10.23: does opening this tile go to the Play Store (the Play Store tile, or "Get" on a game that isn't installed)? */
+    public static boolean opensStore(Item it, boolean installed) {
+        if (it == null || it.isAction() || it.isRom() || it.isDeviceApp()) return false;
+        if (it == PLAY_STORE) return true;
+        if (it.packages.contains("com.android.vending")) return true;
+        return !installed && it.webUrl == null && it.storePackage() != null;
+    }
     public static final Item KIDS_WIFI = act("Wi-Fi", "wifi", "wifi");
     /** Packages in after that weren't in before (sorted). */
     public static List<String> newPackages(java.util.Set<String> before, java.util.Set<String> after) {
@@ -373,7 +380,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Lock mode", "gear", "lock"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
         return c;
     }
 
