@@ -248,6 +248,26 @@ public final class Catalog {
         if (it.packages.contains("com.android.vending")) return true;
         return !installed && it.webUrl == null && it.storePackage() != null;
     }
+    /** 0.10.24: streaming, TV, IPTV, video and music apps never show or open in Kids mode (normal mode unchanged). */
+    static final String[] STREAM_WORDS = {"youtube", "netflix", "tiktok", "musically", "ugc.trill", "twitch", "iptv", "videolan", "vlc",
+            "kodi", "xbmc", "plex", "tubi", "pluto", "iplayer", "bbc.", "avod", "primevideo", "disney", "hulu", "crunchyroll", "spotify",
+            "itv", "channel4", "all4", "my5", "skygo", "nowtv", "dazn", "paramount", "hbo", "max.android", "dailymotion", "vimeo",
+            "smarttube", "stremio", "tivimate", "perfectplayer", "mxtech", "streaming", "stream"};
+    public static boolean streamingPkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase(java.util.Locale.ROOT);
+        if (p.contains("boosteroid") || p.contains("geforcenow") || p.contains("steamlink") || p.contains("xcloud") || p.contains("gamepass")) return false;   // cloud gaming, not video
+        for (String w : STREAM_WORDS) if (p.contains(w)) return true;
+        return false;
+    }
+    /** 0.10.24: things Kids mode never shows or opens: All Apps, and streaming / video apps. */
+    public static boolean kidsBlocked(Item it) {
+        if (it == null) return false;
+        if ("allapps".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
+        if (it.isDeviceApp() && streamingPkg(it.pkg)) return true;
+        for (String p : it.packages) if (streamingPkg(p)) return true;
+        return false;
+    }
     public static final Item KIDS_WIFI = act("Wi-Fi", "wifi", "wifi");
     /** Packages in after that weren't in before (sorted). */
     public static List<String> newPackages(java.util.Set<String> before, java.util.Set<String> after) {
@@ -264,7 +284,9 @@ public final class Catalog {
     public static List<Category> kidsMode(List<Item> roms, List<Item> added) {
         List<Category> c = new ArrayList<>();
         c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS));
-        if (!added.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", added.toArray(new Item[0])));
+        List<Item> newGames = new ArrayList<>();   // 0.10.24: no streaming / TV / video apps in Kids mode
+        for (Item a : added) if (!kidsBlocked(a)) newGames.add(a);
+        if (!newGames.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", newGames.toArray(new Item[0])));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
         Category dc = dreamcast(roms, false); c.add(new Category("kdc", dc.label, dc.icon, kidsGamesOnly(dc.items)));   // 0.10.15: games only

@@ -389,7 +389,7 @@ def test_kids_pin_play_store_and_exit():
     m = (SRC / "MainActivity.java").read_text()
     oc = m.split("protected void onCreate(", 1)[1][:400]
     assert "ensurePin();" in oc and 'DEFAULT_PIN = "1234"' in m and "LockPin.newHash(DEFAULT_PIN)" in m
-    op = m.split("public void open(Catalog.Item it) {", 1)[1][:400]
+    op = m.split("public void open(Catalog.Item it) {", 1)[1][:900]
     assert op.index("kidsPinGate(it)") < op.index("action(it.action)")
     g = m.split("private boolean kidsPinGate(", 1)[1].split("private boolean locked()", 1)[0]
     assert '"kidsoff".equals(it.action)' in g and "Catalog.opensStore(" in g
@@ -400,3 +400,10 @@ def test_kids_pin_play_store_and_exit():
     assert cp.index('LockPin.check(cur.getText()') < cp.index('putString("lockPin", LockPin.newHash(p))')
     assert 'remove("lockPin")' not in m and "kidsPinSetup" not in m
     assert 'act("Change PIN", "gear", "changepin")' in (SRC / "Catalog.java").read_text()
+
+
+def test_kids_no_streams_or_all_apps():
+    m = (SRC / "MainActivity.java").read_text()
+    op = m.split("public void open(Catalog.Item it) {", 1)[1][:500]
+    assert 'getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)' in op
+    assert 'if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }' in m.split("private void allApps() {", 1)[1][:200]

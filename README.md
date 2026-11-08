@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.24
+
+- **Kids mode shows games only:** no streaming, TV, IPTV, video or music apps (YouTube, Netflix, TikTok, Twitch, VLC,
+  Kodi, Plex, Pluto TV, Tubi, BBC iPlayer, Spotify and similar), even if one was installed during a Kids session, and
+  no All Apps list. They also won't open from Kids mode. Normal mode is unchanged.
+
 ## What's new in 0.10.23
 
 - **Parent PIN out of the box:** the PIN is 1234 until you change it in Settings > Change PIN (current PIN, then the new

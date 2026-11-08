@@ -261,6 +261,29 @@ public class CatalogTest {
                     check(!Catalog.opensStore(Catalog.KIDS_OFF, false) && !Catalog.opensStore(Catalog.MARVEL_RIVALS, false) && !Catalog.opensStore(null, false), "not store");
                     check(!LockPin.needsPin("changepin") && LockPin.validPin("1234") && LockPin.check("1234", LockPin.newHash("1234")), "change pin / default");
                 }
+                {   // 0.10.24 no streams / All Apps in Kids mode
+                    Catalog.Item yt = Catalog.deviceApp("YouTube", "com.google.android.youtube", "x.Main"), nf = Catalog.deviceApp("Netflix", "com.netflix.mediaclient", "x.Main");
+                    Catalog.Item vlc = Catalog.deviceApp("VLC", "org.videolan.vlc", "x.Main"), game = Catalog.deviceApp("Crossy Road", "com.yodo1.crossyroad", "x.Main");
+                    java.util.List<Catalog.Category> kk = Catalog.kidsMode(java.util.List.of(), java.util.List.of(yt, nf, vlc, game));
+                    java.util.Set<String> ids = new java.util.HashSet<>();
+                    for (Catalog.Category k : kk) {
+                        ids.add(k.id);
+                        for (Catalog.Item i : k.items) {
+                            check(!Catalog.kidsBlocked(i), "kids shows " + i.label);
+                            check(!"allapps".equals(i.action) && !"filemgr".equals(i.action), "no all apps/files tile " + i.label);
+                        }
+                    }
+                    check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
+                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kadded", "kgames", "kstore", "kdc", "kpsp", "kwifi"))), "kids rows exact " + ids);
+                    Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
+                    check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
+                    check(Catalog.kidsBlocked(Catalog.act("All apps", "grid", "allapps")) && Catalog.streamingPkg("tv.twitch.android.app") && Catalog.streamingPkg("com.zhiliaoapp.musically") && Catalog.streamingPkg("tv.pluto.android"), "blocked");
+                    for (Catalog.Item k : Catalog.KIDS) check(!Catalog.kidsBlocked(k), "kids game allowed " + k.label);
+                    for (Catalog.Item k : new Catalog.Item[]{Catalog.ROBLOX, Catalog.MINECRAFT, Catalog.MARVEL_RIVALS, Catalog.PLAY_STORE, Catalog.GEFORCE_NOW}) check(!Catalog.kidsBlocked(k), "allowed " + k.label);
+                    // normal mode unchanged: Streams, Media and All Apps rows are still there
+                    java.util.List<Catalog.Category> nm = Catalog.categories(java.util.List.of(), java.util.List.of(yt), java.util.List.of(), java.util.List.of());
+                    check(Catalog.indexOf(nm, "streams") >= 0 && Catalog.indexOf(nm, "media") >= 0 && Catalog.indexOf(nm, "allapps") >= 0, "normal mode unchanged");
+                }
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP

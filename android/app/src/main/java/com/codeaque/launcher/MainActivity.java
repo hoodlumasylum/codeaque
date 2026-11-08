@@ -518,6 +518,7 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override public void open(Catalog.Item it) {
         try {
+            if (prefs.getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)) { toast("Not available in Kids mode."); return; }   // 0.10.24
             if (kidsPinGate(it)) { askPin("Parent PIN", () -> open(it)); return; }   // 0.10.23
             if (it.isAction()) {
                 if (locked() && LockPin.needsPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }   // 0.10.21
@@ -907,7 +908,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         }
     }
 
-    private void allApps() {                       // text-only list: no app logos on our screen
+    private void allApps() {
+        if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }   // 0.10.24                       // text-only list: no app logos on our screen
         PackageManager pm = getPackageManager();
         Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         List<ResolveInfo> ri = pm.queryIntentActivities(q, 0);
