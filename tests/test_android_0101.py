@@ -323,3 +323,11 @@ def test_ha_dreamcast_covers():
     for n in ["crazy_taxi", "jet_grind_radio", "marvel_vs_capcom", "mortal_kombat_gold", "prince_of_persia", "rayman_2", "shenmue_disc_1", "shenmue_disc_2"]:
         f = AND / f"app/src/main/res/drawable-nodpi/ha_{n}.webp"
         assert f.is_file() and f.stat().st_size < 120_000
+
+
+def test_kids_games_wide_covers():
+    h = (SRC / "HomeView.java").read_text()
+    m = (SRC / "MainActivity.java").read_text()
+    assert 'id.equals("kgames")' in h and "host.wideCover(it)" in h and "Bitmap wideCover(Catalog.Item item);" in h
+    body = m.split("public android.graphics.Bitmap wideCover(", 1)[1].split("private android.graphics.Bitmap playIconFor(", 1)[0]
+    assert body.index("playFeature(pkg)") < body.index("iconBanner(ai)")

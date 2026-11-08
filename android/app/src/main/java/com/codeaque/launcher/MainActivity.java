@@ -222,8 +222,9 @@ public class MainActivity extends Activity implements HomeView.Host {
     /** Not-installed Play tiles: the listing's icon (or feature graphic when wide); installed ones keep their own icon. */
     /** The listing's own wide feature graphic, installed or not (Featured row); null = keep the icon. */
     private final java.util.HashMap<Integer, android.graphics.Bitmap> ownArt = new java.util.HashMap<>();
-    private android.graphics.Bitmap playFeature(Catalog.Item it) {
-        String pkg = it.storePackage(), k = pkg + "#F";
+    private android.graphics.Bitmap playFeature(Catalog.Item it) { return it.storePackage() == null ? null : playFeature(it.storePackage()); }
+    private android.graphics.Bitmap playFeature(String pkg) {
+        String k = pkg + "#F";
         if (playArtCache.containsKey(k)) return playArtCache.get(k);
         java.io.File dir = new java.io.File(getCacheDir(), "playart"), f = PlayArt.featureFile(dir, pkg);
         if (f.isFile()) { android.graphics.Bitmap b = decodeCover(f); playArtCache.put(k, b); return b; }
@@ -233,6 +234,44 @@ public class MainActivity extends Activity implements HomeView.Host {
                 runOnUiThread(() -> { fetching.remove("play:" + pkg); if (!ok || !f.isFile()) playArtCache.put(k, null); view.invalidate(); });
             }).start();
         return null;
+    }
+
+    /** 0.10.17: Kids Games tiles. The game's own Play listing feature graphic (fetched at runtime like GeForce NOW's,
+     *  cached, never bundled); without one, its icon scaled up and centred over a blurred copy of itself. */
+    private final Map<String, android.graphics.Bitmap> wideCache = new HashMap<>();
+    @Override public android.graphics.Bitmap wideCover(Catalog.Item it) {
+        if (it.isRom()) return cover(it);
+        String pkg = it.storePackage() != null ? it.storePackage() : it.pkg;
+        if (pkg != null) { android.graphics.Bitmap f = playFeature(pkg); if (f != null) return f; }
+        android.graphics.Bitmap ai = appIcon(it);
+        if (ai == null && pkg != null && it.isDeviceApp()) ai = playIconFor(pkg);
+        if (ai == null) return null;
+        String k = it.key() + "#" + System.identityHashCode(ai);
+        if (wideCache.containsKey(k)) return wideCache.get(k);
+        android.graphics.Bitmap b = iconBanner(ai);
+        wideCache.put(k, b);
+        return b;
+    }
+    private android.graphics.Bitmap playIconFor(String pkg) {
+        java.io.File f = PlayArt.iconFile(new java.io.File(getCacheDir(), "playart"), pkg);
+        return f.isFile() ? decodeCover(f) : null;
+    }
+    static android.graphics.Bitmap iconBanner(android.graphics.Bitmap ai) {
+        int W = 640, H = 344;
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(W, H, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas cv = new android.graphics.Canvas(out);
+        android.graphics.Paint pp = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.ANTI_ALIAS_FLAG);
+        cv.drawColor(0xFF101418);
+        android.graphics.Bitmap tiny = android.graphics.Bitmap.createScaledBitmap(ai, 6, 6, true);          // blur: shrink hard, then
+        android.graphics.Bitmap mid = android.graphics.Bitmap.createScaledBitmap(tiny, 24, 24, true);       // grow back in smooth steps
+        cv.drawBitmap(mid, null, new android.graphics.RectF(-W * 0.1f, -W * 0.5f + H / 2f, W * 1.1f, W * 0.6f + H / 2f), pp);
+        cv.drawColor(0x66000000);
+        float is = H * 0.62f, cx = W / 2f, cy = H * 0.42f;
+        pp.setColor(0x55000000); cv.drawRoundRect(new android.graphics.RectF(cx - is / 2 + 4, cy - is / 2 + 8, cx + is / 2 + 4, cy + is / 2 + 8), is * 0.2f, is * 0.2f, pp);
+        android.graphics.Path clipP = new android.graphics.Path(); android.graphics.RectF ir = new android.graphics.RectF(cx - is / 2, cy - is / 2, cx + is / 2, cy + is / 2);
+        clipP.addRoundRect(ir, is * 0.2f, is * 0.2f, android.graphics.Path.Direction.CW);
+        cv.save(); cv.clipPath(clipP); pp.setColor(0xFFFFFFFF); cv.drawBitmap(ai, null, ir, pp); cv.restore();
+        return out;
     }
 
     private android.graphics.Bitmap playArt(Catalog.Item it, boolean feature) {

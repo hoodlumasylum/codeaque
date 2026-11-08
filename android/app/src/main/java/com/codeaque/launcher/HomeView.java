@@ -24,6 +24,8 @@ public class HomeView extends View {
         String status();      // "87%" or "87% charging", "" without a battery
         boolean online();
         Bitmap appIcon(Catalog.Item item);
+        /** 0.10.17: Kids Games row: the listing's wide feature graphic, else the icon over a blurred copy of itself. */
+        Bitmap wideCover(Catalog.Item item);
         Bitmap cover(Catalog.Item item);
         String wifi();        // 0.10.5: "Connected to Home" / "Wi-Fi off" / "Not connected"     // 0.9.5: a game picture (the app's own banner, or cached libretro box art), null = none   // an installed app's own icon (null for CodeAque's line-drawn tiles)
     }
@@ -194,11 +196,11 @@ public class HomeView extends View {
     public void setKids(boolean k) { kids = k; invalidate(); }
     static final float KIDS_SCALE = 1.7f;
     private float big() { return kids ? KIDS_SCALE : 1f; }
-    private boolean covers() { String id = cats.get(cat).id; if (kids) return id.equals("kplay") || gameRow(id); return id.equals("mygames") || id.equals("steam") || gameRow(id); }
+    private boolean covers() { String id = cats.get(cat).id; if (kids) return id.equals("kplay") || id.equals("kgames") || gameRow(id); return id.equals("mygames") || id.equals("steam") || gameRow(id); }
     /** 0.10.12: the Dreamcast and handheld game rows use portrait covers (player's own picture or a title card). */
     private static boolean gameRow(String id) { return id.equals("dreamcast") || id.equals("kdc") || id.equals("psp") || id.equals("kpsp"); }      // 0.9.5: portrait box-art tiles
     /** 0.10.6: the Featured / Kids Play row uses wide 16:9-ish covers (feature graphics, Roblox art). */
-    private boolean wide() { String id = cats.get(cat).id; return id.equals("steam") || id.equals("kplay"); }
+    private boolean wide() { String id = cats.get(cat).id; return id.equals("steam") || id.equals("kplay") || (kids && id.equals("kgames")); }
     private float tileH() { return (wide() ? (kids ? 118 : 150) : covers() ? 190 : 112) * s * big(); }
     private float tileW() { return (wide() ? (kids ? 220 : 266) : covers() ? 128 : 156) * s * big(); }
     private float tileGap() { return 14 * s * big(); }
@@ -554,7 +556,8 @@ public class HomeView extends View {
     /** A portrait My Games tile in r: the game's picture (centre-cropped), else CodeAque's own generic art with the app icon. */
     private void coverTile(Canvas c, Catalog.Item it, boolean sel) {
         float rad = 12 * s;
-        Bitmap cov = host.cover(it), ai = cov == null ? host.appIcon(it) : null;
+        boolean kg = kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
+        Bitmap cov = kg ? host.wideCover(it) : host.cover(it), ai = cov == null ? host.appIcon(it) : null;
         c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
         if (it == Catalog.ROBLOX && cov == null) blockyArt(c);   // fallback only; 0.10.6 uses Hoodlum Asylum's own Duat Realm art
         else if (cov != null) {

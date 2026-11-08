@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.17
+
+- Kids Games tiles are now full wide pictures: each game's own Google Play feature graphic (fetched on the device and
+  cached, never bundled). A game without one shows its icon, enlarged and centred over a blurred copy of itself. The
+  game's name stays along the bottom of the tile.
+
 ## What's new in 0.10.16
 
 - Dreamcast games get Hoodlum Asylum's own original covers when the name matches: Crazy Taxi, Jet Grind Radio / Jet Set
