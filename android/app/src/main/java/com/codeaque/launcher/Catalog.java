@@ -370,7 +370,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Lock mode", "gear", "lock"), act("Android settings", "gear", "settings")));
         return c;
     }
 

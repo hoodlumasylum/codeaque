@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="120" android:versionName="0.10.20">
+    android:versionCode="121" android:versionName="0.10.21">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -21,6 +21,8 @@
         <!-- 0.9.4: installed apps and games are found through these entries (no QUERY_ALL_PACKAGES) -->
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>
+        <!-- 0.10.21 Lock mode: other Home apps are not opened from CodeAque while locked -->
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.HOME" /></intent>
         <!-- emulators that open a game file the user picked -->
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="content" android:mimeType="*/*" /></intent>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
@@ -49,5 +51,11 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 0.10.21 Lock mode: optional full kiosk, only if a parent runs
+             adb shell dpm set-device-owner com.codeaque.launcher/.CodeAqueAdmin -->
+        <receiver android:name=".CodeAqueAdmin" android:exported="true" android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+        </receiver>
     </application>
 </manifest>

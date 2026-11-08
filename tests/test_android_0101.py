@@ -69,7 +69,9 @@ def test_home_chooser_never_reprompts():
     assert "RoleManager.ROLE_HOME" in m and "isRoleHeld" in m
     body = m.split("private void maybeAskHomeOnce()", 1)[1].split("\n    }\n", 1)[0]
     assert body.index('getBoolean("homeAsked", false)') < body.index('putBoolean("homeAsked", true)') < body.index("isDefaultHome()") < body.index("createRequestRoleIntent")
-    assert "CATEGORY_HOME" not in m.replace("addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY", "")
+    # never fires a HOME intent; 0.10.21 Lock mode only queries Home apps and pins its own HOME filter (device owner)
+    assert "CATEGORY_HOME" not in m.replace("addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY", "").replace(
+        "queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)", "").replace("home.addCategory(Intent.CATEGORY_HOME);", "")
     assert 'case "home": if (isDefaultHome())' in m
     assert m.count("maybeAskHomeOnce();") == 1
 
@@ -355,3 +357,14 @@ def test_robust_update_download():
     assert "attempt < 4" in f and "setInstanceFollowRedirects(false)" in f and "User-Agent" in f and "Location" in f
     i = m.split("private void install(UpdateInfo u)", 1)[1].split("// ---------- 0.10.1", 1)[0]
     assert "u.apkDigest" in i and "u.apkApiUrl" in i and "getSimpleName()" in i
+
+
+def test_lock_mode():
+    m = (SRC / "MainActivity.java").read_text()
+    man = (AND / "app/src/main/AndroidManifest.xml").read_text()
+    op = m.split("public void open(Catalog.Item it) {", 1)[1].split("private void store(", 1)[0]
+    assert op.index("LockPin.needsPin(it.action)") < op.index("action(it.action); return;") and "LockPin.blocked(it.pkg)" in op
+    assert "blockedTarget(i)" in op and 'case "lock": lockToggle();' in m and "lockResume();" in m.split("protected void onResume()", 1)[1][:400]
+    assert 'putString("lockPin", LockPin.newHash(p))' in m and "startLockTask()" in m and "setLockTaskPackages" in m
+    assert ".CodeAqueAdmin" in man and "BIND_DEVICE_ADMIN" in man and "category.HOME" in man
+    assert 'act("Lock mode", "gear", "lock")' in (SRC / "Catalog.java").read_text()

@@ -31,6 +31,20 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.21
+
+- **Lock mode** (Settings > Lock mode): a parent sets a 4-6 digit PIN, kept on the device only as a salted hash. While
+  it is on, Settings, turning Kids mode or Lock mode off, Android settings shortcuts, Files and other Home apps need the
+  PIN; phone, contacts, messages and Android settings apps are hidden and won't open from CodeAque; if CodeAque stops
+  being the Home app, a PIN prompt appears. Wrong PINs make you wait longer each time. Forgot the PIN? Clear CodeAque's
+  data in Android's app settings to reset it (this also resets CodeAque's other settings).
+- Optional full kiosk (untested on a real device): if a parent makes CodeAque the device owner with
+  `adb shell dpm set-device-owner com.codeaque.launcher/.CodeAqueAdmin` on a device with no accounts, Lock mode also
+  pins CodeAque on screen (lock task, games still open), keeps it as Home and blocks factory reset, safe boot, new users,
+  calls and SMS. Turning Lock mode off offers "Off + remove full kiosk".
+- What the soft lock (no device owner) can't stop: the notification shade and quick settings, incoming calls and their
+  notifications, the power menu, recovery / factory reset, safe mode, and apps opened from outside CodeAque.
+
 ## What's new in 0.10.20
 
 - More reliable in-app updates: each download is retried up to 4 times, redirects are followed safely, and if GitHub's

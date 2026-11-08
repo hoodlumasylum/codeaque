@@ -98,6 +98,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         super.onResume();
         scanDreamcast();
         kidsDiff();
+        lockResume();                 // 0.10.21
         installedCache.clear();       // apps may have been installed while we were away
         immersive();
         rescan();
@@ -179,6 +180,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         for (ResolveInfo r : ri) {
             String pkg = r.activityInfo.packageName;
             if (pkg.equals(getPackageName()) || !seen.add(pkg)) continue;
+            if (locked() && LockPin.blocked(pkg)) continue;   // 0.10.21 hidden while locked
             Catalog.Item it = Catalog.deviceApp(r.loadLabel(pm).toString(), pkg, r.activityInfo.name);
             apps.add(it);
             if (isGame(r.activityInfo.applicationInfo) && !emuPkgs.contains(pkg)) games.add(it);
@@ -513,7 +515,11 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override public void open(Catalog.Item it) {
         try {
-            if (it.isAction()) { action(it.action); return; }
+            if (it.isAction()) {
+                if (locked() && LockPin.needsPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }   // 0.10.21
+                action(it.action); return;
+            }
+            if (locked() && it.isDeviceApp() && LockPin.blocked(it.pkg)) { toast("Locked by a parent."); return; }
             if (Catalog.isPspRom(it)) { forceLandscape(); openInPpsspp(it); return; }   // 0.10.7
             if (Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast(it); return; }
             if (it.isRom()) { forceLandscape(); openRom(it); return; }
@@ -530,7 +536,141 @@ public class MainActivity extends Activity implements HomeView.Host {
         }
     }
 
-    private void start(Intent i) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); }
+    private void start(Intent i) {
+        if (locked() && !pinFresh() && blockedTarget(i)) { toast("Locked by a parent."); return; }   // 0.10.21 Lock mode
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i);
+    }
+
+    // ---------- 0.10.21 Lock mode (parent PIN). Soft lock inside CodeAque; full kiosk only if CodeAque is device owner. ----------
+    private long pinOkUntil;
+    private boolean locked() { return prefs.getBoolean("lockMode", false) && prefs.getString("lockPin", null) != null; }
+    /** A correct PIN opens grown-up things for 2 minutes. */
+    private boolean pinFresh() { return android.os.SystemClock.elapsedRealtime() < pinOkUntil; }
+
+    /** Phone, contacts, messages, Android settings, or another Home app: not opened from CodeAque while locked. */
+    private boolean blockedTarget(Intent i) {
+        String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
+        if (pkg == null) {
+            String a = i.getAction();
+            if (a != null && (a.startsWith("android.settings.") || a.equals(Intent.ACTION_DIAL) || a.equals(Intent.ACTION_CALL) || a.equals(Intent.ACTION_SENDTO))) return true;
+            ResolveInfo r = getPackageManager().resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY);
+            if (r != null && r.activityInfo != null && !"android".equals(r.activityInfo.packageName)) pkg = r.activityInfo.packageName;
+        }
+        return pkg != null && (LockPin.blocked(pkg) || otherHome(pkg));
+    }
+    private boolean otherHome(String pkg) {
+        if (pkg.equals(getPackageName())) return false;
+        for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0))
+            if (r.activityInfo != null && pkg.equals(r.activityInfo.packageName)) return true;
+        return false;
+    }
+
+    private void askPin(String title, Runnable ok) {
+        long wait = prefs.getLong("lockWaitUntil", 0) - System.currentTimeMillis();
+        if (wait > 0) { toast("Too many wrong PINs. Try again in " + ((wait + 999) / 1000) + " s."); return; }
+        android.widget.EditText e = new android.widget.EditText(this);
+        e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(title)
+                .setMessage("Enter the parent PIN.\n\nForgot it? Clearing CodeAque's data (Android Settings > Apps > CodeAque > Storage > Clear data) resets it, along with CodeAque's other settings.")
+                .setView(e)
+                .setPositiveButton("OK", (d, w) -> {
+                    if (LockPin.check(e.getText().toString(), prefs.getString("lockPin", null))) {
+                        prefs.edit().putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+                        pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000; ok.run();
+                    } else {
+                        int n = prefs.getInt("lockWrong", 0) + 1;
+                        prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
+                        toast("Wrong PIN.");
+                    }
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    /** Settings > Lock mode: on = set a new 4-6 digit PIN (typed twice); off = needs the PIN (open() already asked). */
+    private void lockToggle() {
+        if (locked()) {
+            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Turn off Lock mode?")
+                    .setMessage("Settings, Kids mode and Files will open without the PIN again.")
+                    .setPositiveButton("Turn off", (d, w) -> { prefs.edit().putBoolean("lockMode", false).remove("lockPin").apply(); kioskOff(); rescan(); toast("Lock mode is off."); })
+                    .setNeutralButton(deviceOwner() ? "Off + remove full kiosk" : null, deviceOwner() ? (d, w) -> { prefs.edit().putBoolean("lockMode", false).remove("lockPin").apply(); removeOwner(); rescan(); } : null)
+                    .setNegativeButton("Cancel", null).show();
+            return;
+        }
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        android.widget.EditText a = new android.widget.EditText(this), b = new android.widget.EditText(this);
+        for (android.widget.EditText e : new android.widget.EditText[]{a, b}) {
+            e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+            e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)}); box.addView(e);
+        }
+        a.setHint("New PIN (4-6 digits)"); b.setHint("Type it again");
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Turn on Lock mode")
+                .setMessage("Settings, turning off Kids mode or Lock mode, Android settings, Files and leaving CodeAque will need this PIN. "
+                        + "Phone, contacts, messages and Android settings apps are hidden.\n\nForgot the PIN? Clearing CodeAque's data resets it.")
+                .setView(box)
+                .setPositiveButton("Lock", (d, w) -> {
+                    String p = a.getText().toString();
+                    if (!LockPin.validPin(p)) { toast("The PIN must be 4 to 6 digits. Nothing was changed."); return; }
+                    if (!p.equals(b.getText().toString())) { toast("The two PINs didn't match. Nothing was changed."); return; }
+                    prefs.edit().putString("lockPin", LockPin.newHash(p)).putBoolean("lockMode", true).putInt("lockWrong", 0).apply();
+                    pinOkUntil = 0; rescan(); lockResume();
+                    toast(deviceOwner() ? "Lock mode is on (full kiosk)." : "Lock mode is on.");
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private boolean homePromptShown;
+    /** On resume while locked: full kiosk when device owner; otherwise make sure CodeAque is still the Home app. */
+    private void lockResume() {
+        if (!locked()) return;
+        if (deviceOwner()) { kioskOn(); return; }
+        if (!isDefaultHome() && !homePromptShown) {
+            homePromptShown = true;
+            askPin("CodeAque is no longer the Home app", () -> { homePromptShown = false; try { startActivity(new Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception e) { toast("Home settings are not available here"); } });
+        }
+    }
+
+    private boolean deviceOwner() {
+        try { return ((android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE)).isDeviceOwnerApp(getPackageName()); }
+        catch (Exception e) { return false; }
+    }
+    static final String[] KIOSK_RULES = {android.os.UserManager.DISALLOW_FACTORY_RESET, android.os.UserManager.DISALLOW_SAFE_BOOT,
+            android.os.UserManager.DISALLOW_ADD_USER, android.os.UserManager.DISALLOW_OUTGOING_CALLS, android.os.UserManager.DISALLOW_SMS};
+    /** Device owner only (set with adb): lock task over CodeAque plus the games it can open, CodeAque pinned as Home. UNTESTED ON A REAL DEVICE. */
+    private void kioskOn() {
+        try {
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            android.content.ComponentName admin = new android.content.ComponentName(this, CodeAqueAdmin.class);
+            java.util.Set<String> allow = new java.util.TreeSet<>(); allow.add(getPackageName());
+            for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0))
+                if (!LockPin.blocked(r.activityInfo.packageName) && !otherHome(r.activityInfo.packageName)) allow.add(r.activityInfo.packageName);
+            allow.add("com.android.vending"); allow.add("com.google.android.packageinstaller"); allow.add("com.android.packageinstaller");
+            dpm.setLockTaskPackages(admin, allow.toArray(new String[0]));
+            if (android.os.Build.VERSION.SDK_INT >= 28)
+                dpm.setLockTaskFeatures(admin, android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS | android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO);
+            for (String r : KIOSK_RULES) dpm.addUserRestriction(admin, r);
+            IntentFilter home = new IntentFilter(Intent.ACTION_MAIN); home.addCategory(Intent.CATEGORY_HOME); home.addCategory(Intent.CATEGORY_DEFAULT);
+            dpm.addPersistentPreferredActivity(admin, home, new android.content.ComponentName(this, MainActivity.class));
+            startLockTask();
+        } catch (Exception e) { toast("Full kiosk could not start: " + e.getMessage()); }
+    }
+    private void kioskOff() {
+        if (!deviceOwner()) return;
+        try {
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            android.content.ComponentName admin = new android.content.ComponentName(this, CodeAqueAdmin.class);
+            for (String r : KIOSK_RULES) dpm.clearUserRestriction(admin, r);
+            try { stopLockTask(); } catch (Exception ignored) { }
+            dpm.setLockTaskPackages(admin, new String[0]);
+        } catch (Exception ignored) { }
+    }
+    /** Settings > Remove full kiosk: CodeAque gives up device owner (PIN asked by open()). */
+    private void removeOwner() {
+        if (!deviceOwner()) { toast("CodeAque is not the device owner, so there is nothing to remove."); return; }
+        kioskOff();
+        try { ((android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE)).clearDeviceOwnerApp(getPackageName()); toast("Full kiosk removed."); }
+        catch (Exception e) { toast("Could not remove it: " + e.getMessage()); }
+    }
 
     private void store(String pkg) {
         try { start(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg))); }
@@ -571,6 +711,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kids": kidsMode(true); break;
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
+            case "lock": lockToggle(); break;              // 0.10.21
+            case "removeowner": removeOwner(); break;
             case "theme": {
                 String n = Palette.next(theme().id);
                 prefs.edit().putString("theme", n).apply();
@@ -595,7 +737,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         List<ResolveInfo> ri = pm.queryIntentActivities(q, 0);
         final List<String[]> apps = new ArrayList<>();
-        for (ResolveInfo r : ri) if (!r.activityInfo.packageName.equals(getPackageName()))
+        for (ResolveInfo r : ri) if (!r.activityInfo.packageName.equals(getPackageName()) && !(locked() && LockPin.blocked(r.activityInfo.packageName)))
             apps.add(new String[]{r.loadLabel(pm).toString(), r.activityInfo.packageName, r.activityInfo.name});
         Collections.sort(apps, (x, y) -> x[0].compareToIgnoreCase(y[0]));
         String[] names = new String[apps.size()];

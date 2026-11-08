@@ -231,6 +231,19 @@ public class CatalogTest {
                     UpdateInfo ui = UpdateInfo.parse(j);
                     check(ui != null && "b".repeat(64).equals(ui.apkDigest) && "https://api.github.com/repos/h/c/releases/assets/22".equals(ui.apkApiUrl), "apk digest/api url " + (ui == null ? null : ui.apkDigest + " " + ui.apkApiUrl));
                 }
+                {   // 0.10.21 Lock mode
+                    check(LockPin.validPin("1234") && LockPin.validPin("123456") && !LockPin.validPin("123") && !LockPin.validPin("1234567") && !LockPin.validPin("12a4") && !LockPin.validPin(null), "pin format");
+                    String h1 = LockPin.newHash("4821"), h2 = LockPin.newHash("4821");
+                    check(!h1.contains("4821") && !h1.equals(h2) && h1.matches("[0-9a-f]{32}:[0-9a-f]{64}"), "salted hash " + h1);
+                    check(LockPin.check("4821", h1) && LockPin.check("4821", h2) && !LockPin.check("4822", h1) && !LockPin.check("4821", null) && !LockPin.check("4821", "junk"), "pin check");
+                    check(LockPin.backoff(4) == 0 && LockPin.backoff(5) == 30_000 && LockPin.backoff(6) == 60_000 && LockPin.backoff(50) == 600_000, "backoff");
+                    for (String p : new String[]{"com.android.settings", "com.android.dialer", "com.google.android.dialer", "com.android.contacts", "com.google.android.contacts", "com.android.mms", "com.google.android.apps.messaging", "com.android.phone", "com.android.server.telecom", "com.android.tv.settings"})
+                        check(LockPin.blocked(p), "blocked " + p);
+                    for (String p : new String[]{"com.roblox.client", "com.mojang.minecraftpe", "com.flycast.emulator", "org.ppsspp.ppsspp", "com.kiloo.subwaysurf", "com.android.vending", null})
+                        check(!LockPin.blocked(p), "allowed " + p);
+                    check(LockPin.needsPin("settings") && LockPin.needsPin("kidsoff") && LockPin.needsPin("lock") && LockPin.needsPin("filemgr") && LockPin.needsPin("files") && LockPin.needsPin("allapps") && LockPin.needsPin("home")
+                            && !LockPin.needsPin("wifi") && !LockPin.needsPin("update") && !LockPin.needsPin("goto:cloud"), "pin actions");
+                }
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP
