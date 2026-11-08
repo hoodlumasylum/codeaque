@@ -270,6 +270,59 @@ public final class Catalog {
     }
     /** 0.10.26: the big "Kids Mode" tile, first on the normal home: one tap, no PIN to go in (leaving needs the PIN). */
     public static final Item KIDS_ON = act("Kids Mode", "pad", "kidson");
+    // ---------- 0.10.27 where a newly installed app goes (the parent's choice overrides the automatic row) ----------
+    /** Normal-mode rows an app can be put in, in picker order. */
+    public static final String[] SECTIONS = {"mygames", "steam", "games", "cloud", "retro", "streams", "media", "store", "accounts", "allapps"};
+    public static String sectionLabel(String id) {
+        switch (id) {
+            case "mygames": return "My Games"; case "steam": return "Featured"; case "games": return "Games"; case "cloud": return "Cloud";
+            case "retro": return "Retro"; case "streams": return "Streams"; case "media": return "Media"; case "store": return "Games Store";
+            case "accounts": return "Accounts"; default: return "All Apps";
+        }
+    }
+    /** Smart first choice: games -> My Games; video / streaming -> Streams; music, audio, photos -> Media; else All Apps.
+     *  appCategory = ApplicationInfo.category (-1 = none; 0 game, 1 audio, 2 video, 3 image). */
+    public static String guessSection(boolean game, int appCategory, String pkg) {
+        if (game || appCategory == 0) return "mygames";
+        if (appCategory == 2) return "streams";
+        if (appCategory == 1 || appCategory == 3) return "media";
+        if (pkg != null) {
+            String p = pkg.toLowerCase(java.util.Locale.ROOT);
+            if (p.contains("spotify") || p.contains("music") || p.contains("audio") || p.contains("podcast") || p.contains("radio")) return "media";
+            if (streamingPkg(p)) return "streams";
+        }
+        return "allapps";
+    }
+    /** Saved as "pkg=section" strings. */
+    public static java.util.Map<String, String> placements(java.util.Set<String> saved) {
+        java.util.Map<String, String> m = new java.util.HashMap<>();
+        if (saved != null) for (String e : saved) { int i = e.lastIndexOf('='); if (i > 0 && java.util.Arrays.asList(SECTIONS).contains(e.substring(i + 1))) m.put(e.substring(0, i), e.substring(i + 1)); }
+        return m;
+    }
+    public static java.util.Set<String> withPlacement(java.util.Set<String> saved, String pkg, String section) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        if (saved != null) for (String e : saved) if (!e.startsWith(pkg + "=")) out.add(e);
+        if (section != null) out.add(pkg + "=" + section);
+        return out;
+    }
+    /** Moves each placed installed app out of the rows it would land in automatically and into its chosen row. */
+    public static List<Category> applyPlacements(List<Category> cats, java.util.Map<String, String> place, List<Item> apps) {
+        if (place.isEmpty()) return cats;
+        java.util.Map<String, Item> byPkg = new java.util.HashMap<>();
+        for (Item a : apps) if (a.isDeviceApp() && place.containsKey(a.pkg)) byPkg.put(a.pkg, a);
+        if (byPkg.isEmpty()) return cats;
+        List<Category> out = new ArrayList<>();
+        for (Category k : cats) {
+            if (!java.util.Arrays.asList(SECTIONS).contains(k.id)) { out.add(k); continue; }
+            List<Item> l = new ArrayList<>();
+            for (Item i : k.items) if (!(i.isDeviceApp() && byPkg.containsKey(i.pkg))) l.add(i);
+            for (Item a : byPkg.values()) if (k.id.equals(place.get(a.pkg))) l.add(a);
+            out.add(new Category(k.id, k.label, k.icon, l.toArray(new Item[0])));
+        }
+        return out;
+    }
+
+    public static final Item KIDS_THEMES = act("Themes", "palette", "kthemes");
     public static final Item KIDS_WIFI = act("Wi-Fi", "wifi", "wifi");
     /** Packages in after that weren't in before (sorted). */
     public static List<String> newPackages(java.util.Set<String> before, java.util.Set<String> after) {
@@ -283,16 +336,19 @@ public final class Catalog {
     /** roms = the player's own game files; only the Dreamcast ones are shown, and no folder-import tiles. */
     public static List<Category> kidsMode(List<Item> roms) { return kidsMode(roms, Collections.<Item>emptyList()); }
     /** added = games installed during a Kids mode session (0.10.6), shown as their own row. */
-    public static List<Category> kidsMode(List<Item> roms, List<Item> added) {
+    public static List<Category> kidsMode(List<Item> roms, List<Item> added) { return kidsMode(roms, added, Collections.<String>emptySet()); }
+    /** approved = packages a parent added to Kids mode on purpose (0.10.27): shown even if they are video apps. */
+    public static List<Category> kidsMode(List<Item> roms, List<Item> added, java.util.Set<String> approved) {
         List<Category> c = new ArrayList<>();
         c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS));
         List<Item> newGames = new ArrayList<>();   // 0.10.24: no streaming / TV / video apps in Kids mode
-        for (Item a : added) if (!kidsBlocked(a)) newGames.add(a);
+        for (Item a : added) if (!kidsBlocked(a) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
         if (!newGames.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", newGames.toArray(new Item[0])));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
         c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
         Category dc = dreamcast(roms, false); c.add(new Category("kdc", dc.label, dc.icon, kidsGamesOnly(dc.items)));   // 0.10.15: games only
         Category ps = psp(roms, false); c.add(new Category("kpsp", ps.label, ps.icon, kidsGamesOnly(ps.items)));   // 0.10.7 / 0.10.15
+        c.add(new Category("kthemes", "Themes", "palette", KIDS_THEMES));   // 0.10.27: kids can change the look, nothing else
         c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
         return c;
     }
@@ -404,7 +460,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
         return c;
     }
 

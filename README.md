@@ -31,6 +31,17 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.27
+
+- **New app pop-up (normal mode):** when an app is installed, CodeAque shows its name and icon and asks which section
+  it goes in (My Games, Featured, Games, Cloud, Retro, Streams, Media, Games Store, Accounts or All Apps), with a smart
+  guess already picked. "Also add to Kids mode" is off; turning it on needs the parent PIN. Save or Skip.
+- **Settings > Sort apps:** move any app to another section or change its Kids access later (PIN in Lock mode).
+- Apps a parent adds to Kids mode show in Kids mode's "My New Games", even video apps. Everything is stored on the device.
+- **Phoenix theme:** new original theme with Hoodlum Asylum's own fiery phoenix art, rising embers, a big PHOENIX
+  title and red / orange / gold colours. Settings > Theme now opens a picker with big previews.
+- **Kids Themes tile:** kids can pick a theme themselves (no PIN); it changes only the look.
+
 ## What's new in 0.10.26
 
 - **Big Kids Mode button:** the first big tile on the home screen (top row, selected when CodeAque opens). One tap or A

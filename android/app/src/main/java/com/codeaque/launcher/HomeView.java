@@ -290,6 +290,18 @@ public class HomeView extends View {
             p.setColor(0x73000000); c.drawRect(0, 0, W, H, p);
             return;
         }
+        if (T.embers) {                      // 0.10.27 Phoenix: Hoodlum Asylum's own phoenix art + rising embers
+            if (phoenixBg == null) try { phoenixBg = BitmapFactory.decodeResource(getResources(), R.drawable.phoenix_bg); } catch (Throwable ignored) { }
+            if (phoenixBg != null) {
+                float sc = Math.max(W / (float) phoenixBg.getWidth(), H / (float) phoenixBg.getHeight());
+                float bw = phoenixBg.getWidth() * sc, bh = phoenixBg.getHeight() * sc;
+                r.set((W - bw) / 2, (H - bh) / 2, (W + bw) / 2, (H + bh) / 2);
+                p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(phoenixBg, null, r, p);
+                p.setColor(0x59000000); c.drawRect(0, 0, W, H, p);
+                embers(c, W, H);
+                return;
+            }
+        }
         p.setShader(new RadialGradient(W * 0.5f, H * 0.48f, W * 0.6f, T.bgCenter, 0xFF000000, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, W, H, p); p.setShader(null);
         if (T.aura) aura(c, W, H);
@@ -376,6 +388,22 @@ public class HomeView extends View {
 
     private final float[] flakes = new float[180];
     /** Christmas: soft snow drifting down at three depths (60 flakes: cheap on a 2 GB RK3566). */
+    private Bitmap phoenixBg;
+    /** 0.10.27 Phoenix: glowing embers drifting upward (same particle field as the snow, moving the other way). */
+    private void embers(Canvas c, int W, int H) {
+        if (flakes[0] == 0) { java.util.Random rnd = new java.util.Random(11); for (int i = 0; i < flakes.length; i++) flakes[i] = 0.0001f + rnd.nextFloat(); }
+        int[] cols = {0xFFFFD27A, 0xFFFF8A1F, 0xFFFF4A1A};
+        for (int i = 0; i < flakes.length; i += 3) {
+            float depth = flakes[i + 2];
+            float y = H + 10 * s - ((flakes[i + 1] + t * (0.04f + 0.08f * depth)) % 1f) * (H + 20 * s);
+            float x = flakes[i] * W + (float) Math.sin(t * (0.8f + depth) + i) * 22 * s * depth;
+            float life = 1f - Math.abs((y / H) - 0.5f) * 1.2f;
+            p.setColor(cols[(i / 3) % 3]); p.setAlpha((int) Math.max(30, Math.min(230, (80 + 150 * depth) * Math.max(0.3f, life))));
+            c.drawCircle(x, y, (0.9f + 2.2f * depth) * s, p);
+        }
+        p.setAlpha(255);
+    }
+
     private void snow(Canvas c, int W, int H) {
         if (flakes[0] == 0) { java.util.Random rnd = new java.util.Random(11); for (int i = 0; i < flakes.length; i++) flakes[i] = 0.0001f + rnd.nextFloat(); }
         for (int i = 0; i < flakes.length; i += 3) {
@@ -470,7 +498,8 @@ public class HomeView extends View {
         c.drawCircle(cx, ly + lh / 2, 330 * s, p); p.setShader(null); c.restore();
         if (logo != null) { r.set(cx - lw / 2, ly, cx + lw / 2, ly + lh); p.setFilterBitmap(true); c.drawBitmap(logo, null, r, p); }
         float ty = ly + lh + 2 * s;
-        if (!covers()) spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
+        if (T.embers) { heavy = true; p.setLetterSpacing(0.3f); text(c, "PHOENIX", cx, ty + 52 * s, 46 * s, GOLD, Paint.Align.CENTER, true); p.setLetterSpacing(0); heavy = false; }   // 0.10.27
+        else if (!covers()) spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
     }
 
     private void tiles(Canvas c, int W, int H) {

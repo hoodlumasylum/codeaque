@@ -11,6 +11,7 @@ public final class Palette {
     public boolean burst;
     public boolean snow;           // Christmas: falling snow and snow-capped tiles          // Catch: cheerful sunburst + confetti, spinning star on the selected tile
     public String selectSound;
+    public boolean embers;         // 0.10.27 Phoenix: original phoenix art background, rising embers, big PHOENIX wordmark
     public float[] tint;           // 4x5 colour matrix recolouring the emblem (null = the original art)     // sound for launch / select, null = the normal one
 
     Palette(String id, String name, int gold, int goldLight, int goldDark, int accent, int accentLight, int accentMid,
@@ -50,7 +51,15 @@ public final class Palette {
             new int[]{0x44E8F7FF, 0x338FD8FF, 0x33FFFFFF, 0x55E23B3B, 0x3346C46E}, false);
     static { XMAS.snow = true; XMAS.selectSound = "jingle"; }
 
-    public static final Palette[] ALL = {NEON, POWERUP, CATCH, XMAS};
+    /** 0.10.27: original "Phoenix" theme: reds, oranges and golds. */
+    public static final Palette PHOENIX = new Palette("phoenix", "Phoenix",
+            0xFFFF8A1F, 0xFFFFD27A, 0xFFB8380A, 0xFFFFB347, 0xFFFFE0A0, 0xFFFF6A2A,
+            0xFF5A1F, 0xFF3A0806, 0xF0300806, 0xFF5A1408, 0xF0100202, 0xFFE0702A, 0xFF7A240C,
+            0xFFFFF4E8, 0xFFD8A890, 0xFFFFC890, 0xFF1A0402, 0xCCB0400A, 0xCCC02010,
+            new int[]{0x55FF8A1F, 0x44FF3A1A, 0x55FFD27A, 0x33FF5A1F, 0x44FFB347}, false);
+    static { PHOENIX.embers = true; }
+
+    public static final Palette[] ALL = {NEON, POWERUP, CATCH, XMAS, PHOENIX};
 
     public static Palette byId(String id) {
         for (Palette p : ALL) if (p.id.equals(id)) return p;

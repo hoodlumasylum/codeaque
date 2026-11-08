@@ -113,7 +113,7 @@ def test_kids_mode_big_and_locked_down():
     assert "onKeyLongPress" in h and "host.open(Catalog.KIDS_OFF)" in h and "e.startTracking()" in h
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
-    assert 'kidsOn ? Catalog.kidsMode(allRoms, kidsNew) :' in m and 'getBoolean("kidsMode", false)' in m
+    assert 'kidsOn ? Catalog.kidsMode(allRoms, kidsNew, approved)' in m and 'getBoolean("kidsMode", false)' in m
 
 
 def test_geforce_now_web_client_on_handhelds():
@@ -213,7 +213,7 @@ def test_kids_mode_new_games_and_update_tile():
     m = (SRC / "MainActivity.java").read_text()
     assert "Intent.ACTION_PACKAGE_ADDED.equals(i.getAction()) && !i.getBooleanExtra(Intent.EXTRA_REPLACING, false)" in m
     assert "m.kidsInstalled(" in m and "kidsDiff();" in m and "kidsStoreOpened();" in m
-    assert 'Catalog.kidsMode(allRoms, kidsNew)' in m and "You're up to date!" in m
+    assert 'Catalog.kidsMode(allRoms, kidsNew, approved)' in m and "You're up to date!" in m
     ki = m.split("void kidsInstalled(String pkg)", 1)[1].split("\n    }\n", 1)[0]
     assert 'getBoolean("kidsMode", false)' in ki and "getLaunchIntentForPackage(pkg) == null" in ki
 
@@ -309,7 +309,7 @@ def test_scan_cache_shared_with_kids_rows():
     sd = m.split("private void scanDreamcast()", 1)[1]
     assert sd.index('prefs.getStringSet("gameScanCache"') < sd.index("if (dcScanning || !canReadFiles()) return;")
     assert 'prefs.edit().putStringSet("gameScanCache", cache)' in m and "kept the last good list" in m
-    assert "Catalog.kidsMode(allRoms, kidsNew)" in m and "allRoms.addAll(dcFiles)" in m
+    assert "Catalog.kidsMode(allRoms, kidsNew, approved)" in m and "allRoms.addAll(dcFiles)" in m
 
 
 def test_kids_rows_games_only():
@@ -429,3 +429,29 @@ def test_big_kids_mode_button():
     k = m.split('case "kidson":', 1)[1].split("break;", 1)[0]
     assert 'putBoolean("kidsMode", true)' in k and "askPin" not in k and "AlertDialog" not in k
     assert '"kidsoff".equals(it.action)' in m                          # leaving still needs the PIN
+
+
+def test_new_app_placer_and_sort_apps():
+    m = (SRC / "MainActivity.java").read_text()
+    c = (SRC / "Catalog.java").read_text()
+    assert "newAppsCheck();" in m.split("protected void onResume()", 1)[1][:900] and "m.newAppsCheck();" in m
+    nc = m.split("void newAppsCheck()", 1)[1][:700]
+    assert 'getBoolean("kidsMode", false)' in nc and '"knownApps"' in nc
+    ap = m.split("private void appPlacer(", 1)[1].split("private void sortApps()", 1)[0]
+    assert "Catalog.guessSection(" in ap and '"Also add to Kids mode"' in ap and "k.setChecked(false)" in ap and 'askPin("Parent PIN: add to Kids mode"' in ap
+    assert '"Save"' in ap and '"Skip"' in ap and "setIcon(icon)" in ap and '"kidsApproved"' in ap and '"placed"' in ap
+    assert 'case "sortapps": sortApps();' in m and 'act("Sort apps", "grid", "sortapps")' in c and 'LockPin.needsPin' in m
+    assert "Catalog.applyPlacements(" in m and "Catalog.kidsMode(allRoms, kidsNew, approved)" in m
+
+
+def test_phoenix_theme_and_kids_themes():
+    m = (SRC / "MainActivity.java").read_text()
+    h = (SRC / "HomeView.java").read_text()
+    pal = (SRC / "Palette.java").read_text()
+    assert 'new Palette("phoenix", "Phoenix"' in pal and "PHOENIX.embers = true" in pal and "PHOENIX};" in pal
+    assert "R.drawable.phoenix_bg" in h and "private void embers(" in h and '"PHOENIX"' in h
+    f = AND / "app/src/main/res/drawable-nodpi/phoenix_bg.webp"
+    assert f.is_file() and f.stat().st_size < 200_000
+    assert 'case "kthemes": themePicker();' in m and 'case "theme": themePicker();' in m
+    tp = m.split("private void themePicker()", 1)[1].split("private boolean isGamePkg(", 1)[0]
+    assert "Palette.ALL" in tp and 'putString("theme", t.id)' in tp and "askPin" not in tp and "action(" not in tp

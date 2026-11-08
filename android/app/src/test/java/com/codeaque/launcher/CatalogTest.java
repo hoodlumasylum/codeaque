@@ -58,9 +58,9 @@ public class CatalogTest {
                 && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1; wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true"), "rotation cmd");
         check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
         List<Catalog.Category> km = Catalog.kidsMode();
-        check(km.size() == 6 && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(5).items.size() == 2 && km.get(5).items.get(0) == Catalog.KIDS_WIFI && km.get(5).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
+        check(km.size() == 7 && km.get(5).id.equals("kthemes") && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(6).items.size() == 2 && km.get(6).items.get(0) == Catalog.KIDS_WIFI && km.get(6).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
         check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
-        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
+        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
         check(c.get(0).items.get(5) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
@@ -92,7 +92,7 @@ public class CatalogTest {
         check(Palette.byId("nope") == Palette.NEON && Palette.ALL[0] == Palette.NEON, "default theme is Neon");
         check(Palette.NEON.gold == 0xFF3FD4FF && !Palette.NEON.aura && !Palette.NEON.burst, "Neon: cyan accent, calm background");
         check(Palette.POWERUP.name.equals("Power Up") && Palette.POWERUP.aura, "Power Up theme");
-        check(Palette.next("neon").equals("powerup") && Palette.next("powerup").equals("catch") && Palette.next("catch").equals("christmas") && Palette.next("christmas").equals("neon"), "theme picker cycles");
+        check(Palette.next("neon").equals("powerup") && Palette.next("powerup").equals("catch") && Palette.next("catch").equals("christmas") && Palette.next("christmas").equals("phoenix") && Palette.next("phoenix").equals("neon"), "theme picker cycles");
         check(Palette.CATCH.name.equals("Catch") && Palette.CATCH.burst && "chime".equals(Palette.CATCH.selectSound), "Catch theme");
         check("powerup".equals(Palette.POWERUP.selectSound) && Palette.NEON.selectSound == null, "theme sounds");
         Set<String> acts = new HashSet<>();
@@ -276,7 +276,7 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kadded", "kgames", "kstore", "kdc", "kpsp", "kwifi"))), "kids rows exact " + ids);
+                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kadded", "kgames", "kstore", "kdc", "kpsp", "kthemes", "kwifi"))), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
                     check(Catalog.kidsBlocked(Catalog.act("All apps", "grid", "allapps")) && Catalog.streamingPkg("tv.twitch.android.app") && Catalog.streamingPkg("com.zhiliaoapp.musically") && Catalog.streamingPkg("tv.pluto.android"), "blocked");
@@ -295,6 +295,36 @@ public class CatalogTest {
                     check(UpdateInfo.newer("0.10.25", "0.10.24") && UpdateInfo.newer("v0.10.100", "0.10.99") && !UpdateInfo.newer("0.10.24", "0.10.24") && !UpdateInfo.newer("0.10.9", "0.10.24"), "versions");
                 }
                 for (Catalog.Category k : Catalog.kidsMode()) check(!k.items.contains(Catalog.KIDS_ON), "no Kids Mode tile inside Kids mode");
+                {   // 0.10.27 new app placement + parent-approved Kids apps
+                    check(Catalog.guessSection(true, -1, "com.x.game").equals("mygames") && Catalog.guessSection(false, 0, "a.b").equals("mygames"), "game guess");
+                    check(Catalog.guessSection(false, 2, "a.b").equals("streams") && Catalog.guessSection(false, -1, "com.netflix.mediaclient").equals("streams"), "video guess");
+                    check(Catalog.guessSection(false, 1, "a.b").equals("media") && Catalog.guessSection(false, -1, "com.spotify.music").equals("media"), "music guess");
+                    check(Catalog.guessSection(false, 7, "com.example.notes").equals("allapps"), "other guess");
+                    java.util.Set<String> saved = Catalog.withPlacement(null, "com.a", "media");
+                    saved = Catalog.withPlacement(saved, "com.a", "streams"); saved = Catalog.withPlacement(saved, "com.b", "mygames");
+                    java.util.Map<String, String> pl = Catalog.placements(saved);
+                    check(pl.size() == 2 && pl.get("com.a").equals("streams") && pl.get("com.b").equals("mygames"), "placements " + pl);
+                    check(Catalog.placements(java.util.Set.of("x=nowhere", "junk")).isEmpty() && Catalog.withPlacement(saved, "com.a", null).size() == 1, "bad placements ignored / removed");
+                    Catalog.Item ya = Catalog.deviceApp("YouTube", "com.google.android.youtube", "x.M"), gm = Catalog.deviceApp("Crossy Road", "com.yodo1.crossyroad", "x.M");
+                    java.util.List<Catalog.Category> nc = Catalog.categories(java.util.List.of(gm), java.util.List.of(ya, gm), java.util.List.of(), java.util.List.of());
+                    java.util.List<Catalog.Category> moved = Catalog.applyPlacements(nc, java.util.Map.of("com.yodo1.crossyroad", "streams"), java.util.List.of(ya, gm));
+                    check(!moved.get(Catalog.indexOf(moved, "mygames")).items.contains(gm) && !moved.get(Catalog.indexOf(moved, "allapps")).items.contains(gm)
+                            && moved.get(Catalog.indexOf(moved, "streams")).items.contains(gm) && moved.get(Catalog.indexOf(moved, "allapps")).items.contains(ya), "placement overrides automatic rows");
+                    check(Catalog.applyPlacements(nc, java.util.Map.of(), java.util.List.of(ya)) == nc, "no placements = unchanged");
+                    java.util.List<Catalog.Category> kz = Catalog.kidsMode(java.util.List.of(), java.util.List.of(ya), java.util.Set.of("com.google.android.youtube"));
+                    check(kz.get(Catalog.indexOf(kz, "kadded")).items.contains(ya), "parent-approved video app shows in My New Games");
+                    check(Catalog.indexOf(Catalog.kidsMode(java.util.List.of(), java.util.List.of(ya), java.util.Set.of()), "kadded") < 0, "not approved = still filtered");
+                    java.util.Set<String> secIds = new java.util.HashSet<>(); for (Catalog.Category k : nc) secIds.add(k.id);
+                    for (String sec : Catalog.SECTIONS) check(secIds.contains(sec), "section exists " + sec);
+                }
+                {   // 0.10.27 Phoenix theme + Kids Themes tile
+                    Palette ph = Palette.byId("phoenix");
+                    check(ph == Palette.PHOENIX && ph.embers && ph.name.equals("Phoenix") && java.util.Arrays.asList(Palette.ALL).contains(ph) && !Palette.NEON.embers, "phoenix theme");
+                    java.util.List<Catalog.Category> kt = Catalog.kidsMode();
+                    int ti = Catalog.indexOf(kt, "kthemes");
+                    check(ti >= 0 && kt.get(ti).items.size() == 1 && kt.get(ti).items.get(0) == Catalog.KIDS_THEMES && "kthemes".equals(Catalog.KIDS_THEMES.action), "kids themes row: themes only");
+                    check(!LockPin.needsPin("kthemes") && !Catalog.kidsBlocked(Catalog.KIDS_THEMES), "kids themes needs no PIN");
+                }
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP

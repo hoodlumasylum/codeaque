@@ -99,7 +99,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         scanDreamcast();
         kidsDiff();
         lockResume();                 // 0.10.21
-        maybeUpdateCheck();           // 0.10.25: every start / resume, at most every 30 minutes
+        maybeUpdateCheck();           // 0.10.25
+        newAppsCheck();               // 0.10.27: every start / resume, at most every 30 minutes
         installedCache.clear();       // apps may have been installed while we were away
         immersive();
         rescan();
@@ -155,7 +156,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (m == null) return;
             if (Intent.ACTION_PACKAGE_ADDED.equals(i.getAction()) && !i.getBooleanExtra(Intent.EXTRA_REPLACING, false) && i.getData() != null)
                 m.kidsInstalled(i.getData().getSchemeSpecificPart());
-            m.installedCache.clear(); m.icons.clear(); m.coverCache.clear(); m.rescan();
+            m.installedCache.clear(); m.icons.clear(); m.coverCache.clear(); m.rescan(); m.newAppsCheck();
         }
     }
     private final PackageWatch packages = new PackageWatch(this);
@@ -197,8 +198,11 @@ public class MainActivity extends Activity implements HomeView.Host {
         List<Catalog.Item> allRoms = new ArrayList<>(roms); allRoms.addAll(dcFiles);
         List<Catalog.Item> kidsNew = new ArrayList<>();   // 0.10.6: games installed during Kids mode
         java.util.Set<String> kidsSet = prefs.getStringSet("kidsAdded", Collections.<String>emptySet());
-        for (Catalog.Item a : apps) if (kidsSet.contains(a.pkg)) kidsNew.add(a);
-        List<Catalog.Category> cs = new ArrayList<>(kidsOn ? Catalog.kidsMode(allRoms, kidsNew) : Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()));
+        java.util.Set<String> approved = prefs.getStringSet("kidsApproved", Collections.<String>emptySet());   // 0.10.27
+        for (Catalog.Item a : apps) if (kidsSet.contains(a.pkg) || approved.contains(a.pkg)) kidsNew.add(a);
+        List<Catalog.Category> cs = new ArrayList<>(kidsOn ? Catalog.kidsMode(allRoms, kidsNew, approved)
+                : Catalog.applyPlacements(Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()),
+                        Catalog.placements(prefs.getStringSet("placed", null)), apps));
         if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.22: Call & Text, phones only
         view.setCategories(cs);
         if (!romsScanned) { romsScanned = true; scanRoms(); }
@@ -518,7 +522,8 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override public void open(Catalog.Item it) {
         try {
-            if (prefs.getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)) { toast("Not available in Kids mode."); return; }   // 0.10.24
+            if (prefs.getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)
+                    && !(it.isDeviceApp() && prefs.getStringSet("kidsApproved", Collections.<String>emptySet()).contains(it.pkg))) { toast("Not available in Kids mode."); return; }   // 0.10.24; 0.10.27: parent-approved apps open
             if (kidsPinGate(it)) { askPin("Parent PIN", () -> open(it)); return; }   // 0.10.23
             if (it.isAction()) {
                 if (locked() && LockPin.needsPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }   // 0.10.21
@@ -882,6 +887,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kids": kidsMode(true); break;
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
+            case "sortapps": sortApps(); break;            // 0.10.27
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 prefs.edit().putBoolean("kidsMode", true).apply(); rescan(); toast("Kids mode is on. Leaving it needs the parent PIN."); break;
             case "lock": lockToggle(); break;              // 0.10.21
@@ -891,13 +897,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "blockunknown": callRoleToggle("blockUnknown", "Block unknown callers", true); break;
             case "safeonly": callRoleToggle("safeOnly", "Only call safe numbers", false); break;
             case "removeowner": removeOwner(); break;
-            case "theme": {
-                String n = Palette.next(theme().id);
-                prefs.edit().putString("theme", n).apply();
-                view.setTheme(Palette.byId(n));
-                Toast.makeText(this, "Theme: " + Palette.byId(n).name, Toast.LENGTH_SHORT).show();
-                sound("hhselect"); break;
-            }
+            case "theme": themePicker(); break;            // 0.10.27: big preview picker (normal Settings)
+            case "kthemes": themePicker(); break;          // 0.10.27: Kids Themes tile, no PIN, themes only
             case "wallpaper":
                 if (prefs.getString("wallpaper", null) != null) {
                     prefs.edit().remove("wallpaper").apply(); view.setWallpaper(null);
@@ -1353,6 +1354,129 @@ public class MainActivity extends Activity implements HomeView.Host {
                     prefs.edit().putStringSet("kidsAdded", s).apply(); rescan();
                 })
                 .setNegativeButton("Cancel", null).show();
+    }
+
+    // ---------- 0.10.27 new app pop-up: pick its section, optionally add it to Kids mode (PIN) ----------
+    private final java.util.ArrayDeque<String> newAppQueue = new java.util.ArrayDeque<>();
+    private boolean appPopupShowing;
+    /** Normal mode only: apps that weren't there last time get the pop-up, one at a time. First run just remembers. */
+    void newAppsCheck() {
+        java.util.Set<String> now = launchablePkgs(); now.remove(getPackageName());
+        java.util.Set<String> known = prefs.getStringSet("knownApps", null);
+        if (known == null || prefs.getBoolean("kidsMode", false)) { prefs.edit().putStringSet("knownApps", now).apply(); return; }
+        for (String p : Catalog.newPackages(known, now)) if (!newAppQueue.contains(p) && !(locked() && LockPin.blocked(p))) newAppQueue.add(p);
+        prefs.edit().putStringSet("knownApps", now).apply();
+        showNextNewApp();
+    }
+    private void showNextNewApp() {
+        if (appPopupShowing || newAppQueue.isEmpty() || isFinishing()) return;
+        appPopupShowing = true;
+        appPlacer(newAppQueue.poll(), true, () -> { appPopupShowing = false; showNextNewApp(); });
+    }
+
+    /** The picker: app name + icon, big section buttons (smart guess selected), "Also add to Kids mode" (off; on needs the PIN). */
+    private void appPlacer(String pkg, boolean isNew, Runnable done) {
+        PackageManager pm = getPackageManager();
+        String name; android.graphics.drawable.Drawable icon = null; int cat = -1; boolean game = false;
+        try {
+            android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
+            name = pm.getApplicationLabel(ai).toString(); icon = pm.getApplicationIcon(ai); game = isGame(ai);
+            if (android.os.Build.VERSION.SDK_INT >= 26) cat = ai.category;
+        } catch (Exception e) { done.run(); return; }
+        java.util.Map<String, String> placed = Catalog.placements(prefs.getStringSet("placed", null));
+        final String[] pick = {placed.containsKey(pkg) ? placed.get(pkg) : Catalog.guessSection(game, cat, pkg)};
+        java.util.Set<String> appr = prefs.getStringSet("kidsApproved", Collections.<String>emptySet());
+        final boolean[] kids = {appr.contains(pkg)};
+        float dp = getResources().getDisplayMetrics().density;
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding((int) (16 * dp), (int) (8 * dp), (int) (16 * dp), (int) (8 * dp)); sv.addView(box);
+        android.widget.TextView q = new android.widget.TextView(this); q.setText("Where should it go?"); q.setTextSize(20); box.addView(q);
+        java.util.List<android.widget.Button> btns = new java.util.ArrayList<>();
+        Runnable paint = () -> { for (android.widget.Button b : btns) { boolean on = b.getTag().equals(pick[0]); b.setText((on ? "\u2714  " : "") + Catalog.sectionLabel((String) b.getTag())); b.setAlpha(on ? 1f : 0.7f); } };
+        android.widget.GridLayout grid = new android.widget.GridLayout(this); grid.setColumnCount(2);
+        for (String sec : Catalog.SECTIONS) {
+            android.widget.Button b = new android.widget.Button(this); b.setTag(sec); b.setTextSize(20); b.setAllCaps(false); b.setMinHeight((int) (56 * dp));
+            b.setOnClickListener(v -> { pick[0] = sec; paint.run(); });
+            android.widget.GridLayout.LayoutParams lp = new android.widget.GridLayout.LayoutParams(); lp.width = (int) (200 * dp);
+            grid.addView(b, lp); btns.add(b);
+        }
+        box.addView(grid); paint.run();
+        android.widget.Switch k = new android.widget.Switch(this); k.setText("Also add to Kids mode"); k.setTextSize(20); k.setChecked(kids[0]);
+        k.setPadding(0, (int) (12 * dp), 0, 0);
+        k.setOnCheckedChangeListener((v, on) -> {
+            if (!on) { kids[0] = false; return; }
+            if (kids[0]) return;
+            k.setChecked(false);                               // only on after the parent PIN
+            Runnable yes = () -> { kids[0] = true; k.setChecked(true); };
+            if (pinFresh()) yes.run(); else askPin("Parent PIN: add to Kids mode", yes);
+        });
+        box.addView(k);
+        AlertDialog d = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle((isNew ? "New app: " : "") + name).setIcon(icon).setView(sv)
+                .setPositiveButton("Save", (x, w) -> {
+                    java.util.Set<String> a2 = new java.util.HashSet<>(prefs.getStringSet("kidsApproved", Collections.<String>emptySet()));
+                    if (kids[0]) a2.add(pkg); else a2.remove(pkg);
+                    prefs.edit().putStringSet("placed", Catalog.withPlacement(prefs.getStringSet("placed", null), pkg, pick[0]))
+                            .putStringSet("kidsApproved", a2).apply();
+                    rescan(); toast(name + " \u2192 " + Catalog.sectionLabel(pick[0]) + (kids[0] ? " and Kids mode" : ""));
+                })
+                .setNegativeButton("Skip", null)
+                .setOnDismissListener(x -> done.run())
+                .create();
+        d.show();
+        for (int b : new int[]{AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE}) { android.widget.Button bt = d.getButton(b); if (bt != null) { bt.setTextSize(22); bt.setAllCaps(false); } }
+        if (!btns.isEmpty()) for (android.widget.Button b : btns) if (b.getTag().equals(pick[0])) b.requestFocus();
+    }
+
+    /** Settings > Sort apps (PIN in Lock mode via open()): every app, tap one to move it or change Kids access. */
+    private void sortApps() {
+        PackageManager pm = getPackageManager();
+        List<String[]> l = new ArrayList<>();
+        java.util.Map<String, String> placed = Catalog.placements(prefs.getStringSet("placed", null));
+        java.util.Set<String> appr = prefs.getStringSet("kidsApproved", Collections.<String>emptySet());
+        for (String p : launchablePkgs()) {
+            if (p.equals(getPackageName())) continue;
+            String n; try { n = pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString(); } catch (Exception e) { continue; }
+            l.add(new String[]{n, p});
+        }
+        Collections.sort(l, (x, y) -> x[0].compareToIgnoreCase(y[0]));
+        String[] rows = new String[l.size()];
+        for (int i = 0; i < rows.length; i++) {
+            String p = l.get(i)[1];
+            rows[i] = l.get(i)[0] + "   \u2192 " + (placed.containsKey(p) ? Catalog.sectionLabel(placed.get(p)) : "automatic") + (appr.contains(p) ? "  \u2022 Kids" : "");
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Sort apps")
+                .setItems(rows, (d, w) -> appPlacer(l.get(w)[1], false, () -> { }))
+                .setNegativeButton("Done", null).show();
+    }
+
+    /** 0.10.27: big preview tiles for each original CodeAque theme; changes the theme only. */
+    private void themePicker() {
+        float dp = getResources().getDisplayMetrics().density;
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding((int) (12 * dp), (int) (8 * dp), (int) (12 * dp), (int) (8 * dp)); sv.addView(box);
+        AlertDialog[] self = new AlertDialog[1];
+        String cur = theme().id; android.widget.Button focus = null;
+        for (Palette t : Palette.ALL) {
+            android.widget.Button b = new android.widget.Button(this);
+            b.setText((t.id.equals(cur) ? "\u2714  " : "") + t.name.toUpperCase(java.util.Locale.ROOT));
+            b.setTextSize(28); b.setTextColor(t.text); b.setAllCaps(false); b.setMinHeight((int) (84 * dp));
+            b.setTypeface(android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD));
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{t.tileSelTop | 0xFF000000, t.bgCenter | 0xFF000000, t.gold});
+            g.setCornerRadius(16 * dp); g.setStroke((int) (3 * dp), t.gold);
+            b.setBackground(g);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-1, (int) (84 * dp)); lp.setMargins(0, (int) (6 * dp), 0, (int) (6 * dp));
+            b.setOnClickListener(v -> {
+                prefs.edit().putString("theme", t.id).apply(); view.setTheme(t); sound("hhselect");
+                toast("Theme: " + t.name); if (self[0] != null) self[0].dismiss();
+            });
+            box.addView(b, lp); if (t.id.equals(cur)) focus = b;
+        }
+        self[0] = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Themes").setView(sv).setNegativeButton("Close", null).show();
+        if (focus != null) focus.requestFocus();
     }
 
     private boolean isGamePkg(String p) {
