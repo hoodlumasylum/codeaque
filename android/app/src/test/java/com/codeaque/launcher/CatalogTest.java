@@ -284,6 +284,14 @@ public class CatalogTest {
                     java.util.List<Catalog.Category> nm = Catalog.categories(java.util.List.of(), java.util.List.of(yt), java.util.List.of(), java.util.List.of());
                     check(Catalog.indexOf(nm, "streams") >= 0 && Catalog.indexOf(nm, "media") >= 0 && Catalog.indexOf(nm, "allapps") >= 0, "normal mode unchanged");
                 }
+                {   // 0.10.25 update pop-up snooze
+                    long now = 1_000_000_000L, h = 3600_000L;
+                    check(UpdateInfo.snoozed("0.10.26", "0.10.26", now + 4 * h, now) && UpdateInfo.snoozed("0.10.26", "0.10.26", now + h, now), "snoozed");
+                    check(!UpdateInfo.snoozed("0.10.26", "0.10.26", now - 1, now) && !UpdateInfo.snoozed("0.10.27", "0.10.26", now + h, now) && !UpdateInfo.snoozed("0.10.26", "", 0, now), "not snoozed");
+                    check(!UpdateInfo.snoozed("0.10.26", "0.10.26", now + 48 * h, now), "clock jump never hides it for days");
+                    check(UpdateInfo.CHECK_EVERY_MS == 30 * 60_000L && UpdateInfo.RETRY_MS < UpdateInfo.CHECK_EVERY_MS && UpdateInfo.SNOOZE_MS == 4 * h, "timings");
+                    check(UpdateInfo.newer("0.10.25", "0.10.24") && UpdateInfo.newer("v0.10.100", "0.10.99") && !UpdateInfo.newer("0.10.24", "0.10.24") && !UpdateInfo.newer("0.10.9", "0.10.24"), "versions");
+                }
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP

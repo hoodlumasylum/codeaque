@@ -58,8 +58,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         Intent in0 = getIntent();      // am start -e theme powerup  (same as Settings > Theme)
         if (in0 != null && in0.hasExtra("theme")) prefs.edit().putString("theme", Palette.byId(in0.getStringExtra("theme")).id).apply();
         view.setTheme(Palette.byId(prefs.getString("theme", "neon")));
-        loadWallpaper();
-        maybeDailyCheck();
+        loadWallpaper();          // 0.10.25: the update check runs from onResume (start and every return)
         maybeAskHomeOnce();
         maybeSuggestRotation();
         PackageManager pm0 = getPackageManager();        // a TV box / projector: suggest Projector mode once
@@ -100,6 +99,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         scanDreamcast();
         kidsDiff();
         lockResume();                 // 0.10.21
+        maybeUpdateCheck();           // 0.10.25: every start / resume, at most every 30 minutes
         installedCache.clear();       // apps may have been installed while we were away
         immersive();
         rescan();
@@ -1009,6 +1009,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                         .setNegativeButton("Not now", null).show());
             } catch (Exception e) {
                 if (manual) toast("Could not check for updates. Is the Wi-Fi on?");
+                else nextUpdateCheck = android.os.SystemClock.elapsedRealtime() + UpdateInfo.RETRY_MS;   // 0.10.25: quiet retry soon
             } finally { updating = false; }
         }).start();
     }
@@ -1600,19 +1601,24 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     // ---------- 0.10.6 "New update ready" pop-up (also in Kids mode: it only offers the update) ----------
-    private String popupDismissed = "";      // Later: this version, until the next launch
     private boolean popupShowing;
 
+    /** 0.10.25: "Later" (or Back) snoozes this version for 4 hours, saved so it survives a restart. */
+    private void snoozeUpdate(String v) {
+        prefs.edit().putString("updSnoozeVer", v).putLong("updSnoozeUntil", System.currentTimeMillis() + UpdateInfo.SNOOZE_MS).apply();
+    }
+
     void updatePopup(UpdateInfo u, String mine) {
-        if (popupShowing || u.version.equals(popupDismissed) || isFinishing()) return;
+        if (popupShowing || isFinishing()) return;
+        if (UpdateInfo.snoozed(u.version, prefs.getString("updSnoozeVer", ""), prefs.getLong("updSnoozeUntil", 0), System.currentTimeMillis())) return;
         popupShowing = true;
         String news = UpdateInfo.whatsNew(u.notes);
         AlertDialog d = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("New update ready (v" + u.version + ")")
                 .setMessage((news.isEmpty() ? "" : news + "\n\n") + "You have " + mine + ".")
                 .setPositiveButton("Update now", (x, w) -> new Thread(() -> install(u)).start())
-                .setNegativeButton("Later", (x, w) -> popupDismissed = u.version)
-                .setOnCancelListener(x -> popupDismissed = u.version)
+                .setNegativeButton("Later", (x, w) -> snoozeUpdate(u.version))
+                .setOnCancelListener(x -> snoozeUpdate(u.version))
                 .setOnDismissListener(x -> popupShowing = false)
                 .create();
         d.show();
@@ -1628,11 +1634,14 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (now != null) now.requestFocus();                                  // A on the pad = Update now
     }
 
-    private void maybeDailyCheck() {
-        if (UpdateInfo.newer(prefs.getString("updKnown", "0"), myVersion())) { checkUpdate(false); return; }   // known update: ask again each launch
-        long now = System.currentTimeMillis();
-        if (now - prefs.getLong("updChecked", 0) < 24L * 3600 * 1000) return;
-        prefs.edit().putLong("updChecked", now).apply();
+    /** 0.10.25: replaces the once-a-day check (which ran only in onCreate - rare for a Home app - and was skipped for
+     *  24 h even when the check had failed). Runs on every start and resume, at most every 30 minutes, retries in 5 minutes
+     *  after a failure, in normal and Kids mode. Fetches through the robust fetch() (retries, redirects, User-Agent). */
+    private long nextUpdateCheck;
+    private void maybeUpdateCheck() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now < nextUpdateCheck || updating) return;
+        nextUpdateCheck = now + UpdateInfo.CHECK_EVERY_MS;
         checkUpdate(false);
     }
 

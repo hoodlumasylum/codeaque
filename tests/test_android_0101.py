@@ -200,10 +200,10 @@ def test_android_update_popup():
     m = (SRC / "MainActivity.java").read_text()
     pop = m.split("void updatePopup(UpdateInfo u, String mine)", 1)[1].split("\n    }\n", 1)[0]
     assert '"New update ready (v" + u.version + ")"' in pop and '"Update now"' in pop and '"Later"' in pop
-    assert "u.version.equals(popupDismissed)" in pop and "install(u)" in pop and "setTextSize(big)" in pop
+    assert "UpdateInfo.snoozed(u.version" in pop and "install(u)" in pop and "setTextSize(big)" in pop
     assert "Settings" not in pop.replace("SHA256SUMS", "")
     assert "if (!manual) { runOnUiThread(() -> updatePopup(u, mine)); return; }" in m
-    assert 'UpdateInfo.newer(prefs.getString("updKnown", "0"), myVersion())' in m
+    assert 'putString("updKnown", u.version)' in m
 
 
 def test_kids_mode_new_games_and_update_tile():
@@ -407,3 +407,16 @@ def test_kids_no_streams_or_all_apps():
     op = m.split("public void open(Catalog.Item it) {", 1)[1][:500]
     assert 'getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)' in op
     assert 'if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }' in m.split("private void allApps() {", 1)[1][:200]
+
+
+def test_update_popup_every_resume():
+    m = (SRC / "MainActivity.java").read_text()
+    res = m.split("protected void onResume()", 1)[1][:600]
+    assert "maybeUpdateCheck();" in res and "maybeDailyCheck" not in m and "24L * 3600" not in m
+    mc = m.split("private void maybeUpdateCheck()", 1)[1][:300]
+    assert "UpdateInfo.CHECK_EVERY_MS" in mc and "checkUpdate(false)" in mc and "kidsMode" not in mc and "locked()" not in mc
+    cu = m.split("private void checkUpdate(boolean manual)", 1)[1].split("private void install(", 1)[0]
+    assert "get(UpdateInfo.API)" in cu and "UpdateInfo.RETRY_MS" in cu
+    g = m.split("private static String get(String url, String accept)", 1)[1][:200]
+    assert "fetch(url, accept, out, null)" in g                         # the robust 0.10.20 fetch
+    assert "snoozeUpdate(u.version)" in m and "UpdateInfo.SNOOZE_MS" in m

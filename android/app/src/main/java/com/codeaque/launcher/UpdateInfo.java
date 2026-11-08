@@ -7,6 +7,12 @@ import java.util.regex.Pattern;
 public final class UpdateInfo {
     public static final String API = "https://api.github.com/repos/hoodlumasylum/codeaque/releases/latest";
     public static final String APK = "codeaque-launcher.apk";
+    /** 0.10.25: pop-up check timing. */
+    public static final long CHECK_EVERY_MS = 30L * 60 * 1000, RETRY_MS = 5L * 60 * 1000, SNOOZE_MS = 4L * 3600 * 1000;
+    /** Is the pop-up for this version snoozed by "Later"? A newer version than the snoozed one shows straight away. */
+    public static boolean snoozed(String version, String snoozedVer, long until, long now) {
+        return version != null && version.equals(snoozedVer) && now < until && until - now <= SNOOZE_MS;
+    }
 
     public final String version, apkUrl, sumsUrl;
     public String notes = "";
