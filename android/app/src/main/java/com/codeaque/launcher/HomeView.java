@@ -407,8 +407,29 @@ public class HomeView extends View {
 
     private void text(Canvas c, String txt, float x, float y, float size, int col, Paint.Align a, boolean bold) {
         p.setTextSize(size); p.setTextAlign(a); p.setColor(col);
-        p.setTypeface(bold ? Typeface.create("sans-serif", Typeface.BOLD) : Typeface.create("sans-serif", Typeface.NORMAL));
-        c.drawText(txt, x, y, p); p.setTypeface(Typeface.DEFAULT);
+        p.setTypeface(heavy ? Typeface.create("sans-serif-black", Typeface.BOLD) : bold ? Typeface.create("sans-serif", Typeface.BOLD) : Typeface.create("sans-serif", Typeface.NORMAL));
+        if (heavy) p.setShadowLayer(4 * s, 0, 1.5f * s, 0xE6000000);
+        c.drawText(txt, x, y, p); p.clearShadowLayer(); p.setTypeface(Typeface.DEFAULT);
+    }
+
+    /** 0.10.19: tile names drawn big and heavy (sans-serif-black, soft shadow). */
+    private boolean heavy;
+    /** 0.10.19: a tile name as large as fits in maxW on up to 2 lines, bottom line's baseline at y. */
+    private void tileName(Canvas c, String lab, float cx, float y, float maxW, float start, float min) {
+        heavy = true;
+        p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
+        String l1 = lab, l2 = null; float ts = start;
+        for (; ; ts -= 0.5f * s) {
+            p.setTextSize(ts); l1 = lab; l2 = null;
+            if (p.measureText(lab) <= maxW) break;
+            int best = -1; float bw = Float.MAX_VALUE;
+            for (int i = lab.indexOf(' '); i > 0; i = lab.indexOf(' ', i + 1)) { float w = Math.max(p.measureText(lab, 0, i), p.measureText(lab, i + 1, lab.length())); if (w < bw) { bw = w; best = i; } }
+            if (best > 0 && bw <= maxW) { l1 = lab.substring(0, best); l2 = lab.substring(best + 1); break; }
+            if (ts <= min) { if (best > 0) { l1 = lab.substring(0, best); l2 = lab.substring(best + 1); } break; }
+        }
+        if (l2 != null) { text(c, l1, cx, y - ts * 1.05f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true); text(c, l2, cx, y, ts, 0xFFFFFFFF, Paint.Align.CENTER, true); }
+        else text(c, l1, cx, y, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        heavy = false;
     }
 
     private void spaced(Canvas c, String txt, float x, float y, float size, int col, Paint.Align a) {
@@ -497,13 +518,7 @@ public class HomeView extends View {
             } else icon(c, it.icon, r.centerX(), r.top + h * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
             spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
             String lab = it.label.toUpperCase(Locale.ROOT);
-            float ts = (kids ? 26 : 15) * s; p.setTextSize(ts); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-            while (p.measureText(lab) > w - 14 * s && ts > 10 * s) { ts -= 0.5f * s; p.setTextSize(ts); }
-            if (p.measureText(lab) > w - 14 * s && lab.contains(" ")) {
-                int sp = lab.lastIndexOf(' ');
-                text(c, lab.substring(0, sp), r.centerX(), r.top + h * 0.73f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
-                text(c, lab.substring(sp + 1), r.centerX(), r.top + h * 0.73f + ts * 1.1f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
-            } else text(c, lab, r.centerX(), r.top + h * 0.78f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
+            tileName(c, lab, r.centerX(), r.top + h * 0.86f, w - 12 * s, (kids ? 34 : 20) * s, 11 * s);   // 0.10.19 bigger, bolder
             if (!it.isAction() && !host.installed(it)) {
                 String b = it.webUrl != null ? "WEB" : "GET";
                 p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
@@ -530,9 +545,9 @@ public class HomeView extends View {
             path.lineTo(r.right, y); path.lineTo(r.right, y + 3 * s); path.lineTo(r.centerX(), y + r.width() * 0.25f + 3 * s); path.lineTo(r.left, y + 3 * s); path.close(); c.drawPath(path, p); }
         p.setColor(GOLD); c.drawRect(r.left + 10 * s, r.top + r.height() * 0.42f, r.left + 10 * s + r.width() * 0.3f, r.top + r.height() * 0.42f + 3 * s, p);
         String[] words = it.label.toUpperCase(Locale.ROOT).split(" ");
-        float maxW = r.width() - 16 * s, ts = 26 * s;
+        float maxW = r.width() - 16 * s, ts = 34 * s;   // 0.10.19 bigger
         java.util.List<String> lines = new java.util.ArrayList<>();
-        p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
         while (true) {
             p.setTextSize(ts); lines.clear(); String cur = "";
             for (String w : words) { String t = cur.isEmpty() ? w : cur + " " + w; if (p.measureText(t) <= maxW || cur.isEmpty()) cur = t; else { lines.add(cur); cur = w; } }
@@ -543,7 +558,7 @@ public class HomeView extends View {
             ts -= 1 * s;
         }
         float y = r.top + r.height() * 0.42f + 8 * s + ts;
-        for (String l : lines) { text(c, l, r.left + 10 * s, y, ts, 0xFFFFFFFF, Paint.Align.LEFT, true); y += ts * 1.1f; }
+        heavy = true; for (String l : lines) { text(c, l, r.left + 10 * s, y, ts, 0xFFFFFFFF, Paint.Align.LEFT, true); y += ts * 1.1f; } heavy = false;
     }
     private void drawCoverFrame(Canvas c, boolean sel) {
         stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
@@ -583,21 +598,15 @@ public class HomeView extends View {
                 p.setFilterBitmap(true); p.setColor(0xFFFFFFFF); c.drawBitmap(ai, null, iconRect, p); }
             else icon(c, it.icon, r.centerX(), r.top + r.height() * 0.36f, 40 * s, sel ? T.accentLight : 0xFFDDF4FF, 2.2f);
         }
-        p.setShader(new LinearGradient(0, r.bottom - r.height() * 0.34f, 0, r.bottom, 0x00000000, 0xE6000000, Shader.TileMode.CLAMP));
-        c.drawRect(r.left, r.bottom - r.height() * 0.34f, r.right, r.bottom, p); p.setShader(null);
+        p.setShader(new LinearGradient(0, r.bottom - r.height() * 0.48f, 0, r.bottom, 0x00000000, 0xF2000000, Shader.TileMode.CLAMP));   // 0.10.19 taller, darker fade
+        c.drawRect(r.left, r.bottom - r.height() * 0.48f, r.right, r.bottom, p); p.setShader(null);
         c.restore();
         stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
         stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
         c.drawRoundRect(r, rad, rad, stroke); stroke.setShader(null);
         if (T.snow) { p.setColor(0xF2FFFFFF); r2.set(r.left + 6 * s, r.top - 4 * s, r.right - 6 * s, r.top + 5 * s); c.drawRoundRect(r2, 5 * s, 5 * s, p); }
         String lab = it.label.toUpperCase(Locale.ROOT);
-        float ts = 14 * s; p.setTextSize(ts); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        while (p.measureText(lab) > r.width() - 12 * s && ts > 10 * s) { ts -= 0.5f * s; p.setTextSize(ts); }
-        if (p.measureText(lab) > r.width() - 12 * s && lab.contains(" ")) {
-            int sp = lab.lastIndexOf(' ');
-            text(c, lab.substring(0, sp), r.centerX(), r.bottom - 12 * s - ts * 1.1f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
-            text(c, lab.substring(sp + 1), r.centerX(), r.bottom - 12 * s, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
-        } else text(c, lab, r.centerX(), r.bottom - 12 * s, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        tileName(c, lab, r.centerX(), r.bottom - 10 * s, r.width() - 12 * s, 26 * s * big(), 11 * s);   // 0.10.19 bigger, bolder, up to 2 lines
     }
     private final RectF r2 = new RectF();
 

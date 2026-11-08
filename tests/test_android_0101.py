@@ -107,7 +107,7 @@ def test_kids_mode_big_and_locked_down():
     for bad in ("RETROARCH", "romfolder", "settings", "ask", "projector", "k56", "bios"):
         assert bad not in km.lower().replace("kids games", "")
     h = (SRC / "HomeView.java").read_text()
-    assert "KIDS_SCALE = 1.7f" in h and "(kids ? 26 : 15) * s" in h
+    assert "KIDS_SCALE = 1.7f" in h and "(kids ? 34 : 20) * s" in h
     assert "onKeyLongPress" in h and "host.open(Catalog.KIDS_OFF)" in h and "e.startTracking()" in h
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
@@ -339,3 +339,11 @@ def test_ha_dreamcast_covers_0118():
         assert f"R.drawable.ha_{n};" in m
         f = AND / f"app/src/main/res/drawable-nodpi/ha_{n}.webp"
         assert f.is_file() and f.stat().st_size < 120_000
+
+
+def test_big_bold_tile_names():
+    h = (SRC / "HomeView.java").read_text()
+    assert "private void tileName(" in h and '"sans-serif-black"' in h
+    tiles = h.split("private void tiles(", 1)[1].split("private void titleCard(", 1)[0]
+    cover = h.split("private void coverTile(", 1)[1].split("private void blockyArt(", 1)[0]
+    assert "tileName(c, lab" in tiles and "tileName(c, lab" in cover and "0.48f" in cover

@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.19
+
+- Bigger, bolder game names on every tile (Roblox, Minecraft, Marvel Rivals, Kids Games, Dreamcast and PSP games, title
+  cards and the normal home rows), with a darker fade behind them. Long names wrap onto two lines.
+
 ## What's new in 0.10.18
 
 - Five more Hoodlum Asylum original Dreamcast covers: Sonic Adventure, Sonic Adventure 2, Spider-Man, Street Fighter III
