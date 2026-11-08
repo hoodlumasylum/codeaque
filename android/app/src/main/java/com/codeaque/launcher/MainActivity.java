@@ -330,10 +330,30 @@ public class MainActivity extends Activity implements HomeView.Host {
             } catch (Exception ignored) { }
             if (b == null && Catalog.isPspRom(it) && Catalog.isViceCity(it.label))   // 0.10.13: Hoodlum Asylum's own "Vice City" cover
                 b = android.graphics.BitmapFactory.decodeResource(getResources(), R.drawable.ha_vice_city);
+            if (b == null && Catalog.isDreamcastRom(it)) {   // 0.10.16: Hoodlum Asylum's own Dreamcast covers
+                String dn = null; try { java.io.File pf = new java.io.File(Uri.parse(it.uri).getPath()).getParentFile(); if (pf != null) dn = pf.getName(); } catch (Exception ignored) { }
+                String key = Catalog.haDcCover(it.label, dn);
+                int id = key == null ? 0 : haDcRes(key);
+                if (id != 0) b = android.graphics.BitmapFactory.decodeResource(getResources(), id);
+            }
             final android.graphics.Bitmap fb = b;
             runOnUiThread(() -> { gameCovers.put(k, fb); fetching.remove("gc:" + k); if (fb != null) view.invalidate(); });
         }).start();
         return null;
+    }
+
+    private static int haDcRes(String key) {
+        switch (key) {
+            case "crazy_taxi": return R.drawable.ha_crazy_taxi;
+            case "jet_grind_radio": return R.drawable.ha_jet_grind_radio;
+            case "marvel_vs_capcom": return R.drawable.ha_marvel_vs_capcom;
+            case "mortal_kombat_gold": return R.drawable.ha_mortal_kombat_gold;
+            case "prince_of_persia": return R.drawable.ha_prince_of_persia;
+            case "rayman_2": return R.drawable.ha_rayman_2;
+            case "shenmue_disc_1": return R.drawable.ha_shenmue_disc_1;
+            case "shenmue_disc_2": return R.drawable.ha_shenmue_disc_2;
+            default: return 0;
+        }
     }
 
     private java.io.File coverFile(Catalog.Item it) {

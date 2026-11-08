@@ -223,6 +223,8 @@ public class CatalogTest {
                 check(cn.get(0).equals("cover.png") && cn.contains("folder.jpg") && cn.contains("boxart.webp") && cn.contains("shenmue disc 1.jpg"), "cover names " + cn);
                 Catalog.Item gr = Catalog.gameRom("ct.gdi", "file:///storage/emulated/0/ROMS/Dreamcast/Crazy Taxi/ct.gdi");
                 check(Catalog.isDreamcastRom(gr), "gameRom stays a Dreamcast game");
+                check("shenmue_disc_1".equals(Catalog.haDcCover("Shenmue Disc 1")) && "shenmue_disc_1".equals(Catalog.haDcCover("SHENMUE")) && "shenmue_disc_2".equals(Catalog.haDcCover("Shenmue (Disc 2)")) && "shenmue_disc_2".equals(Catalog.haDcCover("shenmue_cd2")) && "shenmue_disc_2".equals(Catalog.haDcCover("Shenmue - Disk 02")), "shenmue covers");
+                check("jet_grind_radio".equals(Catalog.haDcCover("Jet Set Radio")) && "jet_grind_radio".equals(Catalog.haDcCover("jet-grind_radio")) && "crazy_taxi".equals(Catalog.haDcCover("x", "Crazy Taxi")) && "marvel_vs_capcom".equals(Catalog.haDcCover("Marvel vs. Capcom 2")) && "mortal_kombat_gold".equals(Catalog.haDcCover("Mortal Kombat Gold")) && "prince_of_persia".equals(Catalog.haDcCover("Prince of Persia - Arabian Nights")) && "rayman_2".equals(Catalog.haDcCover("RAYMAN 2")) && Catalog.haDcCover("Rayman", "Soul Calibur") == null, "ha dc covers");
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP

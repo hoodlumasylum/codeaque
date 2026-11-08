@@ -314,3 +314,12 @@ def test_kids_rows_games_only():
     c = (SRC / "Catalog.java").read_text()
     assert 'new Category("kdc", dc.label, dc.icon, kidsGamesOnly(dc.items))' in c and 'new Category("kpsp", ps.label, ps.icon, kidsGamesOnly(ps.items))' in c
     assert "return (g.isEmpty() ? items : g).toArray(new Item[0]);" in c
+
+
+def test_ha_dreamcast_covers():
+    m = (SRC / "MainActivity.java").read_text()
+    body = m.split("private android.graphics.Bitmap gameCover(", 1)[1].split("private static int haDcRes(", 1)[0]
+    assert body.index("pick = f") < body.index("Catalog.haDcCover(") and "if (b == null && Catalog.isDreamcastRom(it))" in body
+    for n in ["crazy_taxi", "jet_grind_radio", "marvel_vs_capcom", "mortal_kombat_gold", "prince_of_persia", "rayman_2", "shenmue_disc_1", "shenmue_disc_2"]:
+        f = AND / f"app/src/main/res/drawable-nodpi/ha_{n}.webp"
+        assert f.is_file() and f.stat().st_size < 120_000

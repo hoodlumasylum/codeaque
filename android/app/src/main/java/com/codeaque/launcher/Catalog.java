@@ -68,6 +68,25 @@ public final class Catalog {
         return (g.isEmpty() ? items : g).toArray(new Item[0]);
     }
     public static boolean isViceCity(String label) { return label != null && label.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", "").contains("vicecity"); }
+    /** 0.10.16: Hoodlum Asylum's own Dreamcast covers, matched loosely (any case, no punctuation/spaces). Returns a key or null. */
+    public static String haDcCover(String... names) {
+        for (String raw : names) {
+            if (raw == null) continue;
+            String n = raw.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
+            if (n.contains("shenmue")) {
+                if (n.matches(".*shenmue.*(disc|disk|cd|d)0?(2|ii|two).*")) return "shenmue_disc_2";
+                if (n.contains("shenmue2") || n.contains("shenmueii")) continue;
+                return "shenmue_disc_1";
+            }
+            if (n.contains("crazytaxi")) return "crazy_taxi";
+            if (n.contains("jetgrindradio") || n.contains("jetsetradio")) return "jet_grind_radio";
+            if (n.contains("marvelvscapcom") || n.contains("marvelvcapcom") || n.contains("marvelversuscapcom")) return "marvel_vs_capcom";
+            if (n.contains("mortalkombatgold")) return "mortal_kombat_gold";
+            if (n.contains("princeofpersia")) return "prince_of_persia";
+            if (n.contains("rayman2") || n.contains("raymanii")) return "rayman_2";
+        }
+        return null;
+    }
     public static Item gameRom(String name, String uri) {
         return new Item(cleanTitle(stripExt(name)), "cart", new String[0], null, null, null, name, uri);
     }

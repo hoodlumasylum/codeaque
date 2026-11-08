@@ -31,6 +31,13 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.16
+
+- Dreamcast games get Hoodlum Asylum's own original covers when the name matches: Crazy Taxi, Jet Grind Radio / Jet Set
+  Radio, Marvel vs Capcom, Mortal Kombat Gold, Prince of Persia, Rayman 2 and Shenmue discs 1 and 2. Matching ignores
+  case, spaces and punctuation, and checks the game's folder name too. Shows in normal and Kids mode. Your own cover file
+  in the game's folder still takes priority.
+
 ## What's new in 0.10.15
 
 - **Kids mode:** the Dreamcast and PSP rows show only games. The emulator tile appears only when a row has no games.
