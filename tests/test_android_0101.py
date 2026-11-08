@@ -30,7 +30,7 @@ def test_bootanim_not_bundled_and_manifest_queries():
 
 def test_featured_roblox_minecraft_first_without_logos():
     c = (SRC / "Catalog.java").read_text()
-    assert '"Featured", "display", ROBLOX, MINECRAFT' in c
+    assert '"Featured", "display", KIDS_ON, ROBLOX, MINECRAFT' in c
     assert '"com.roblox.client"' in c and '"com.mojang.minecraftpe"' in c
     h = (SRC / "HomeView.java").read_text()
     assert "cat = 0; catAnim = 0;" in h
@@ -90,7 +90,7 @@ def test_force_landscape_is_opt_in_root_only():
 
 def test_play_store_tile_on_featured():
     c = (SRC / "Catalog.java").read_text()
-    assert '"Featured", "display", ROBLOX, MINECRAFT, PLAY_STORE,' in c and '"com.android.vending"' in c
+    assert '"Featured", "display", KIDS_ON, ROBLOX, MINECRAFT, PLAY_STORE,' in c and '"com.android.vending"' in c
     m = (SRC / "MainActivity.java").read_text()
     assert "Play Store not installed" in m
     assert '<package android:name="com.android.vending" />' in (AND / "app/src/main/AndroidManifest.xml").read_text()
@@ -420,3 +420,12 @@ def test_update_popup_every_resume():
     g = m.split("private static String get(String url, String accept)", 1)[1][:200]
     assert "fetch(url, accept, out, null)" in g                         # the robust 0.10.20 fetch
     assert "snoozeUpdate(u.version)" in m and "UpdateInfo.SNOOZE_MS" in m
+
+
+def test_big_kids_mode_button():
+    m = (SRC / "MainActivity.java").read_text()
+    c = (SRC / "Catalog.java").read_text()
+    assert 'KIDS_ON = act("Kids Mode", "pad", "kidson")' in c and '"Featured", "display", KIDS_ON,' in c
+    k = m.split('case "kidson":', 1)[1].split("break;", 1)[0]
+    assert 'putBoolean("kidsMode", true)' in k and "askPin" not in k and "AlertDialog" not in k
+    assert '"kidsoff".equals(it.action)' in m                          # leaving still needs the PIN

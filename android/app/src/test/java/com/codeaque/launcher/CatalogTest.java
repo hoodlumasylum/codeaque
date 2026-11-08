@@ -42,12 +42,14 @@ public class CatalogTest {
         check(Catalog.nextEffects("auto").equals("on") && Catalog.nextEffects("off").equals("auto"), "effects cycle");
         // themes: default unchanged and first, Power Up available, picker cycles
         // 0.10.1 Featured: Roblox, Minecraft first; store link when missing, no logos
-        check(c.get(0).items.get(0).label.equals("Roblox") && c.get(0).items.get(1).label.equals("Minecraft"), "Roblox, Minecraft first");
-        check("com.roblox.client".equals(c.get(0).items.get(0).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(1).storePackage()), "featured packages");
-        check(c.get(0).items.get(2) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store third on Featured");
-        check(c.get(0).items.get(3) == Catalog.GEFORCE_NOW && Catalog.GEFORCE_NOW.webUrl == null && "com.nvidia.geforcenow".equals(Catalog.GEFORCE_NOW.storePackage()), "GeForce NOW fourth, Play page fallback");
+        // 0.10.26: the big Kids Mode tile comes first, then Roblox, Minecraft, Play Store
+        check(c.get(0).items.get(0) == Catalog.KIDS_ON && "kidson".equals(Catalog.KIDS_ON.action) && !LockPin.needsPin("kidson") && LockPin.needsPin("kidsoff"), "Kids Mode tile first, no PIN to go in");
+        check(c.get(0).items.get(1).label.equals("Roblox") && c.get(0).items.get(2).label.equals("Minecraft"), "Roblox, Minecraft next");
+        check("com.roblox.client".equals(c.get(0).items.get(1).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(2).storePackage()), "featured packages");
+        check(c.get(0).items.get(3) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store third on Featured");
+        check(c.get(0).items.get(4) == Catalog.GEFORCE_NOW && Catalog.GEFORCE_NOW.webUrl == null && "com.nvidia.geforcenow".equals(Catalog.GEFORCE_NOW.storePackage()), "GeForce NOW fourth, Play page fallback");
         check(Catalog.GFN_WEB.equals("https://play.geforcenow.com") && Catalog.gfnInBrowser(true) && !Catalog.gfnInBrowser(false), "GFN web on handhelds");
-        check(c.get(0).items.get(0).webUrl == null && c.get(0).items.get(1).webUrl == null, "featured fall back to the Play Store");
+        check(c.get(0).items.get(1).webUrl == null && c.get(0).items.get(2).webUrl == null, "featured fall back to the Play Store");
         List<Catalog.Item> kids = c.get(Catalog.indexOf(c, "kids")).items;
         check(kids.size() >= 8 && kids.get(0) == Catalog.KIDS[0], "Kids row");
         for (Catalog.Item i : kids) check(i.webUrl == null && i.storePackage() != null && !i.isAction() && !i.icon.contains("logo"), i.label + " is a Play Store app tile");
@@ -60,7 +62,7 @@ public class CatalogTest {
         check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
         for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
-        check(c.get(0).items.get(4) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
+        check(c.get(0).items.get(5) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
         check(Catalog.RIVALS_HEADER.startsWith("https://") && Catalog.RIVALS_HEADER.contains("/2767030/"), "Steam header");
         check("Home".equals(Catalog.cleanSsid("\"Home\"")) && Catalog.cleanSsid("<unknown ssid>") == null && Catalog.cleanSsid(null) == null, "ssid");
@@ -292,6 +294,7 @@ public class CatalogTest {
                     check(UpdateInfo.CHECK_EVERY_MS == 30 * 60_000L && UpdateInfo.RETRY_MS < UpdateInfo.CHECK_EVERY_MS && UpdateInfo.SNOOZE_MS == 4 * h, "timings");
                     check(UpdateInfo.newer("0.10.25", "0.10.24") && UpdateInfo.newer("v0.10.100", "0.10.99") && !UpdateInfo.newer("0.10.24", "0.10.24") && !UpdateInfo.newer("0.10.9", "0.10.24"), "versions");
                 }
+                for (Catalog.Category k : Catalog.kidsMode()) check(!k.items.contains(Catalog.KIDS_ON), "no Kids Mode tile inside Kids mode");
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP

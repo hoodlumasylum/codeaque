@@ -882,6 +882,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kids": kidsMode(true); break;
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
+            case "kidson":                                   // 0.10.26: one tap, no PIN, no question
+                prefs.edit().putBoolean("kidsMode", true).apply(); rescan(); toast("Kids mode is on. Leaving it needs the parent PIN."); break;
             case "lock": lockToggle(); break;              // 0.10.21
             case "changepin": changePin(); break;          // 0.10.23
             case "calltext": callText(); break;            // 0.10.22 Safe contacts

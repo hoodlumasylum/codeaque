@@ -268,6 +268,8 @@ public final class Catalog {
         for (String p : it.packages) if (streamingPkg(p)) return true;
         return false;
     }
+    /** 0.10.26: the big "Kids Mode" tile, first on the normal home: one tap, no PIN to go in (leaving needs the PIN). */
+    public static final Item KIDS_ON = act("Kids Mode", "pad", "kidson");
     public static final Item KIDS_WIFI = act("Wi-Fi", "wifi", "wifi");
     /** Packages in after that weren't in before (sorted). */
     public static List<String> newPackages(java.util.Set<String> before, java.util.Set<String> after) {
@@ -352,7 +354,7 @@ public final class Catalog {
         List<Category> c = new ArrayList<>();
         // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
-        c.add(new Category("steam", "Featured", "display", ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
+        c.add(new Category("steam", "Featured", "display", KIDS_ON, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community")));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.

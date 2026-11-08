@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.26
+
+- **Big Kids Mode button:** the first big tile on the home screen (top row, selected when CodeAque opens). One tap or A
+  turns Kids mode on, no PIN needed. Leaving Kids mode still needs the parent PIN.
+
 ## What's new in 0.10.25
 
 - **Update pop-up fixed:** CodeAque now checks for a new version every time it starts or you come back to it (at most
