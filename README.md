@@ -31,6 +31,19 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.22
+
+- **Safe contacts** (Settings > Safe contacts, PIN-protected in Lock mode): a parent adds names and numbers, or picks
+  them from the phone's contacts (contacts permission asked only when Import is tapped). Stored on the device only.
+- **Call & Text** tile (only on devices that can make calls): lists only the safe contacts with big Call and Text
+  buttons. There is no way to type a number in CodeAque. The call permission is asked the first time.
+- Optional (Android 10+, untested on a real device): **Block unknown callers** rejects incoming calls from numbers not
+  on the list, and **Only call safe numbers** cancels outgoing calls to other numbers while Lock mode is on, from any
+  dialer. Emergency calls are never stopped.
+- Limits: without "Only call safe numbers", a child who reaches the phone or messages app outside CodeAque (for example
+  from a notification) can dial or text anyone; the messages app can change who a text goes to; incoming texts are not
+  filtered.
+
 ## What's new in 0.10.21
 
 - **Lock mode** (Settings > Lock mode): a parent sets a 4-6 digit PIN, kept on the device only as a salted hash. While

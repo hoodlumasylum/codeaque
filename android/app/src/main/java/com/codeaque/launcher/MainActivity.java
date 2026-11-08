@@ -197,7 +197,9 @@ public class MainActivity extends Activity implements HomeView.Host {
         List<Catalog.Item> kidsNew = new ArrayList<>();   // 0.10.6: games installed during Kids mode
         java.util.Set<String> kidsSet = prefs.getStringSet("kidsAdded", Collections.<String>emptySet());
         for (Catalog.Item a : apps) if (kidsSet.contains(a.pkg)) kidsNew.add(a);
-        view.setCategories(kidsOn ? Catalog.kidsMode(allRoms, kidsNew) : Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()));
+        List<Catalog.Category> cs = new ArrayList<>(kidsOn ? Catalog.kidsMode(allRoms, kidsNew) : Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()));
+        if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.22: Call & Text, phones only
+        view.setCategories(cs);
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
 
@@ -637,7 +639,8 @@ public class MainActivity extends Activity implements HomeView.Host {
     static final String[] KIOSK_RULES = {android.os.UserManager.DISALLOW_FACTORY_RESET, android.os.UserManager.DISALLOW_SAFE_BOOT,
             android.os.UserManager.DISALLOW_ADD_USER, android.os.UserManager.DISALLOW_OUTGOING_CALLS, android.os.UserManager.DISALLOW_SMS};
     /** Device owner only (set with adb): lock task over CodeAque plus the games it can open, CodeAque pinned as Home. UNTESTED ON A REAL DEVICE. */
-    private void kioskOn() {
+    private void kioskOn() { kioskOn(new String[0]); }
+    private void kioskOn(String[] extra) {
         try {
             android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
             android.content.ComponentName admin = new android.content.ComponentName(this, CodeAqueAdmin.class);
@@ -645,6 +648,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0))
                 if (!LockPin.blocked(r.activityInfo.packageName) && !otherHome(r.activityInfo.packageName)) allow.add(r.activityInfo.packageName);
             allow.add("com.android.vending"); allow.add("com.google.android.packageinstaller"); allow.add("com.android.packageinstaller");
+            for (String x : extra) if (x != null) allow.add(x);   // 0.10.22: the dialer / SMS app, only for a Safe contacts call or text
             dpm.setLockTaskPackages(admin, allow.toArray(new String[0]));
             if (android.os.Build.VERSION.SDK_INT >= 28)
                 dpm.setLockTaskFeatures(admin, android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS | android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO);
@@ -664,6 +668,135 @@ public class MainActivity extends Activity implements HomeView.Host {
             dpm.setLockTaskPackages(admin, new String[0]);
         } catch (Exception ignored) { }
     }
+    // ---------- 0.10.22 Safe contacts: Call & Text only to numbers a parent added ----------
+    static final int REQ_CONTACTS = 61, REQ_CALL = 62, REQ_ROLE = 63;
+    private SafeContacts.Contact pendingCall;
+    boolean hasPhone() { return getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY); }
+    private List<SafeContacts.Contact> safeList() { return SafeContacts.parse(prefs.getString("safeContacts", "")); }
+    private void saveSafe(List<SafeContacts.Contact> l) { prefs.edit().putString("safeContacts", SafeContacts.write(l)).apply(); }
+    private android.app.AlertDialog.Builder dlg() { return new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert); }
+
+    /** The kid's Call & Text tile: only the safe contacts, big Call and Text buttons. No way to type a number. */
+    private void callText() {
+        List<SafeContacts.Contact> l = safeList();
+        if (!hasPhone()) { toast("This device can't make calls."); return; }
+        if (l.isEmpty()) { toast("No safe contacts yet. Ask a parent to add some in Settings > Safe contacts."); return; }
+        String[] names = new String[l.size()];
+        for (int i = 0; i < names.length; i++) names[i] = l.get(i).name;
+        dlg().setTitle("Call & Text").setItems(names, (d, w) -> {
+            SafeContacts.Contact c = l.get(w);
+            android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
+            int pad = (int) (16 * getResources().getDisplayMetrics().density); box.setPadding(pad, pad, pad, pad);
+            AlertDialog[] self = new AlertDialog[1];
+            for (String which : new String[]{"CALL", "TEXT"}) {
+                android.widget.Button b = new android.widget.Button(this);
+                b.setText((which.equals("CALL") ? "\uD83D\uDCDE  Call " : "\uD83D\uDCAC  Text ") + c.name);
+                b.setTextSize(26); b.setAllCaps(false); b.setMinHeight(pad * 5);
+                b.setOnClickListener(v -> { if (self[0] != null) self[0].dismiss(); if (which.equals("CALL")) safeCall(c); else safeText(c); });
+                box.addView(b);
+            }
+            self[0] = dlg().setTitle(c.name).setView(box).setNegativeButton("Back", null).show();
+        }).setNegativeButton("Close", null).show();
+    }
+
+    private String[] phoneApps() {
+        String dial = null, sms = null;
+        try { dial = ((android.telecom.TelecomManager) getSystemService(TELECOM_SERVICE)).getDefaultDialerPackage(); } catch (Exception ignored) { }
+        try { sms = android.provider.Telephony.Sms.getDefaultSmsPackage(this); } catch (Exception ignored) { }
+        return new String[]{dial, sms};
+    }
+    /** Started directly (not through start(), which blocks phone apps while locked); in full kiosk the dialer and SMS
+     *  app are allowed just for this, and onResume puts the normal kiosk list back. */
+    private void safeLaunch(Intent i) {
+        if (!SafeContacts.allowed(i.getData() == null ? null : i.getData().getSchemeSpecificPart(), safeList())) { toast("That number is not a safe contact."); return; }
+        if (locked() && deviceOwner()) kioskOn(phoneApps());
+        try { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception e) { toast("No app here can do that."); }
+    }
+    private void safeCall(SafeContacts.Contact c) {
+        if (checkSelfPermission(android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+            safeLaunch(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + c.number))); return;
+        }
+        pendingCall = c;
+        requestPermissions(new String[]{android.Manifest.permission.CALL_PHONE}, REQ_CALL);
+    }
+    private void safeText(SafeContacts.Contact c) { safeLaunch(new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + c.number))); }
+
+    /** Parent screen (PIN asked by open() while Lock mode is on): the list, tap one to remove it, Add, Import. */
+    private void safeContacts() {
+        List<SafeContacts.Contact> l = safeList();
+        String[] rows = new String[l.size()];
+        for (int i = 0; i < rows.length; i++) rows[i] = l.get(i).name + "   " + l.get(i).number;
+        dlg().setTitle("Safe contacts (" + l.size() + ")")
+                .setItems(rows, (d, w) -> dlg().setTitle("Remove " + l.get(w).name + "?")
+                        .setPositiveButton("Remove", (d2, w2) -> { l.remove(w); saveSafe(l); safeContacts(); })
+                        .setNegativeButton("Keep", (d2, w2) -> safeContacts()).show())
+                .setPositiveButton("Add", (d, w) -> addSafe())
+                .setNeutralButton("Import from phone", (d, w) -> importSafe())
+                .setNegativeButton("Done", (d, w) -> rescan()).show();
+    }
+    private void addSafe() {
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        android.widget.EditText n = new android.widget.EditText(this), num = new android.widget.EditText(this);
+        n.setHint("Name (e.g. Mum)"); num.setHint("Phone number"); num.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+        box.addView(n); box.addView(num);
+        dlg().setTitle("Add a safe contact").setView(box)
+                .setPositiveButton("Save", (d, w) -> {
+                    List<SafeContacts.Contact> l = safeList();
+                    if (SafeContacts.add(l, n.getText().toString(), num.getText().toString())) { saveSafe(l); toast("Saved."); }
+                    else toast("That number doesn't look right. Nothing was saved.");
+                    safeContacts();
+                }).setNegativeButton("Cancel", (d, w) -> safeContacts()).show();
+    }
+    /** READ_CONTACTS is asked only here, when the parent taps Import. */
+    private void importSafe() {
+        if (checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.READ_CONTACTS}, REQ_CONTACTS); return;
+        }
+        final List<SafeContacts.Contact> found = new ArrayList<>();
+        try (android.database.Cursor cu = getContentResolver().query(android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                new String[]{android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER},
+                null, null, android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")) {
+            while (cu != null && cu.moveToNext()) SafeContacts.add(found, cu.getString(0), cu.getString(1));
+        } catch (Exception e) { toast("Could not read the phone's contacts."); return; }
+        if (found.isEmpty()) { toast("No contacts with phone numbers were found."); safeContacts(); return; }
+        String[] rows = new String[found.size()]; boolean[] pick = new boolean[found.size()];
+        for (int i = 0; i < rows.length; i++) rows[i] = found.get(i).name + "   " + found.get(i).number;
+        dlg().setTitle("Choose safe contacts").setMultiChoiceItems(rows, pick, (d, w, on) -> pick[w] = on)
+                .setPositiveButton("Add chosen", (d, w) -> {
+                    List<SafeContacts.Contact> l = safeList(); int n = 0;
+                    for (int i = 0; i < pick.length; i++) if (pick[i] && SafeContacts.add(l, found.get(i).name, found.get(i).number)) n++;
+                    saveSafe(l); toast(n + " added."); safeContacts();
+                }).setNegativeButton("Cancel", (d, w) -> safeContacts()).show();
+    }
+
+    /** Block unknown callers (call screening role) / Only call safe numbers (call redirection role). Android 10+. UNTESTED ON A REAL DEVICE. */
+    private String roleKey;
+    private void callRoleToggle(String key, String label, boolean screening) {
+        if (!hasPhone()) { toast("This device can't make calls."); return; }
+        if (prefs.getBoolean(key, false)) { prefs.edit().putBoolean(key, false).apply(); toast(label + ": off."); return; }
+        if (android.os.Build.VERSION.SDK_INT < 29) { toast(label + " needs Android 10 or newer."); return; }
+        try {
+            android.app.role.RoleManager rm = getSystemService(android.app.role.RoleManager.class);
+            String role = screening ? android.app.role.RoleManager.ROLE_CALL_SCREENING : android.app.role.RoleManager.ROLE_CALL_REDIRECTION;
+            if (rm == null || !rm.isRoleAvailable(role)) { toast(label + " isn't available on this device."); return; }
+            if (rm.isRoleHeld(role)) { prefs.edit().putBoolean(key, true).apply(); toast(label + ": on."); return; }
+            roleKey = key;
+            startActivityForResult(rm.createRequestRoleIntent(role), REQ_ROLE);
+        } catch (Exception e) { toast(label + " isn't available on this device."); }
+    }
+
+    @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        boolean ok = res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED;
+        if (req == REQ_CONTACTS) { if (ok) importSafe(); else { toast("Contacts were not shared, so nothing was imported."); safeContacts(); } }
+        else if (req == REQ_CALL && pendingCall != null) {
+            SafeContacts.Contact c = pendingCall; pendingCall = null;
+            if (ok) safeLaunch(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + c.number)));
+            else if (!locked()) safeLaunch(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + c.number)));   // fallback: the dialer, number filled in
+            else toast("Calls need a parent to allow them (the phone permission).");
+        }
+    }
+
     /** Settings > Remove full kiosk: CodeAque gives up device owner (PIN asked by open()). */
     private void removeOwner() {
         if (!deviceOwner()) { toast("CodeAque is not the device owner, so there is nothing to remove."); return; }
@@ -712,6 +845,10 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
             case "lock": lockToggle(); break;              // 0.10.21
+            case "calltext": callText(); break;            // 0.10.22 Safe contacts
+            case "safecontacts": safeContacts(); break;
+            case "blockunknown": callRoleToggle("blockUnknown", "Block unknown callers", true); break;
+            case "safeonly": callRoleToggle("safeOnly", "Only call safe numbers", false); break;
             case "removeowner": removeOwner(); break;
             case "theme": {
                 String n = Palette.next(theme().id);
@@ -1464,6 +1601,11 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_ROLE) {   // 0.10.22 call screening / redirection role
+            if (res == RESULT_OK && roleKey != null) { prefs.edit().putBoolean(roleKey, true).apply(); toast("Turned on."); }
+            else toast("Not turned on (the role was not given to CodeAque).");
+            roleKey = null; return;
+        }
         if (req == PICK_ROM_FOLDER && res == RESULT_OK && data != null && data.getData() != null) {
             Uri t = data.getData();
             try { getContentResolver().takePersistableUriPermission(t, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }

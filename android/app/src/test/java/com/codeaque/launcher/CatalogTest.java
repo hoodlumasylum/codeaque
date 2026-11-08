@@ -244,6 +244,17 @@ public class CatalogTest {
                     check(LockPin.needsPin("settings") && LockPin.needsPin("kidsoff") && LockPin.needsPin("lock") && LockPin.needsPin("filemgr") && LockPin.needsPin("files") && LockPin.needsPin("allapps") && LockPin.needsPin("home")
                             && !LockPin.needsPin("wifi") && !LockPin.needsPin("update") && !LockPin.needsPin("goto:cloud"), "pin actions");
                 }
+                {   // 0.10.22 Safe contacts
+                    java.util.List<SafeContacts.Contact> l = new java.util.ArrayList<>();
+                    check(SafeContacts.add(l, "Mum", "07700 900123") && SafeContacts.add(l, "Nan\tx", "+44 (0)7700-900456") && !SafeContacts.add(l, "Bad", "12") && l.size() == 2, "add " + l.size());
+                    check(SafeContacts.add(l, "Mummy", "+447700900123") && l.size() == 2 && l.get(0).name.equals("Mummy"), "same number renames");
+                    check(SafeContacts.allowed("+44 7700 900123", l) && SafeContacts.allowed("07700900456", l) && !SafeContacts.allowed("07700 900999", l) && !SafeContacts.allowed(null, l) && !SafeContacts.allowed("999", l), "allowed");
+                    java.util.List<SafeContacts.Contact> back = SafeContacts.parse(SafeContacts.write(l));
+                    check(back.size() == 2 && back.get(1).name.equals("Nan x") && back.get(1).number.equals("+4407700900456"), "round trip " + SafeContacts.write(l));
+                    check(SafeContacts.parse(null).isEmpty() && SafeContacts.parse("junk\n\tnope\n").isEmpty(), "parse junk");
+                    check(!LockPin.needsPin("calltext") && LockPin.needsPin("safecontacts") && LockPin.needsPin("blockunknown") && LockPin.needsPin("safeonly"), "safe contacts pin");
+                    check(Catalog.callRow().items.get(0) == Catalog.CALL_TEXT && "calltext".equals(Catalog.CALL_TEXT.action), "call row");
+                }
                 check(Catalog.isViceCity("GTA - Vice City Stories") && Catalog.isViceCity("gta_vice.city") && !Catalog.isViceCity("Liberty City"), "vice city");
             }
             {   // 0.10.7 PSP

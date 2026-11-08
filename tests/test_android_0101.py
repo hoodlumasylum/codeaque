@@ -368,3 +368,18 @@ def test_lock_mode():
     assert 'putString("lockPin", LockPin.newHash(p))' in m and "startLockTask()" in m and "setLockTaskPackages" in m
     assert ".CodeAqueAdmin" in man and "BIND_DEVICE_ADMIN" in man and "category.HOME" in man
     assert 'act("Lock mode", "gear", "lock")' in (SRC / "Catalog.java").read_text()
+
+
+def test_safe_contacts():
+    m = (SRC / "MainActivity.java").read_text()
+    man = (AND / "app/src/main/AndroidManifest.xml").read_text()
+    assert "if (hasPhone()) cs.add(" in m and "FEATURE_TELEPHONY" in m
+    ct = m.split("private void callText()", 1)[1].split("private String[] phoneApps()", 1)[0]
+    assert "EditText" not in ct and "safeList()" in ct            # no free number box for the kid
+    sl = m.split("private void safeLaunch(Intent i)", 1)[1].split("private void safeCall(", 1)[0]
+    assert sl.index("SafeContacts.allowed(") < sl.index("startActivity(")
+    imp = m.split("private void importSafe()", 1)[1][:400]
+    assert "requestPermissions(new String[]{android.Manifest.permission.READ_CONTACTS}" in imp
+    assert "else if (!locked()) safeLaunch(new Intent(Intent.ACTION_DIAL" in m        # no dialer fallback while locked
+    assert "CALL_PHONE" in man and "READ_CONTACTS" in man and "BIND_SCREENING_SERVICE" in man and "BIND_CALL_REDIRECTION_SERVICE" in man
+    assert 'android.hardware.telephony" android:required="false"' in man
