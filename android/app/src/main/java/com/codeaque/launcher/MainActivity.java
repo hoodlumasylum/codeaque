@@ -383,6 +383,11 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     private static int haDcRes(String key) {
         switch (key) {
+            case "sonic_adventure": return R.drawable.ha_sonic_adventure;
+            case "sonic_adventure_2": return R.drawable.ha_sonic_adventure_2;
+            case "spider_man": return R.drawable.ha_spider_man;
+            case "street_fighter_3": return R.drawable.ha_street_fighter_3;
+            case "toy_story_2": return R.drawable.ha_toy_story_2;
             case "crazy_taxi": return R.drawable.ha_crazy_taxi;
             case "jet_grind_radio": return R.drawable.ha_jet_grind_radio;
             case "marvel_vs_capcom": return R.drawable.ha_marvel_vs_capcom;

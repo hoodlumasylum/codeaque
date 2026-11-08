@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.18
+
+- Five more Hoodlum Asylum original Dreamcast covers: Sonic Adventure, Sonic Adventure 2, Spider-Man, Street Fighter III
+  Third Strike and Toy Story 2 (Buzz Lightyear to the Rescue). Same loose name matching; your own cover file still wins.
+
 ## What's new in 0.10.17
 
 - Kids Games tiles are now full wide pictures: each game's own Google Play feature graphic (fetched on the device and

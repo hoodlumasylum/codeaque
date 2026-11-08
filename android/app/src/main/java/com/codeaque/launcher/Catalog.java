@@ -78,6 +78,11 @@ public final class Catalog {
                 if (n.contains("shenmue2") || n.contains("shenmueii")) continue;
                 return "shenmue_disc_1";
             }
+            if (n.contains("sonicadventure2") || n.contains("sonicadventureii") || n.contains("sonicadv2")) return "sonic_adventure_2";   // 0.10.18 (before plain Sonic Adventure)
+            if (n.contains("sonicadventure")) return "sonic_adventure";
+            if (n.contains("spiderman")) return "spider_man";
+            if (n.contains("streetfighteriii") || n.contains("streetfighter3") || n.contains("thirdstrike")) return "street_fighter_3";
+            if (n.contains("toystory2") || n.contains("toystoryii") || n.contains("buzzlightyear")) return "toy_story_2";
             if (n.contains("crazytaxi")) return "crazy_taxi";
             if (n.contains("jetgrindradio") || n.contains("jetsetradio")) return "jet_grind_radio";
             if (n.contains("marvelvscapcom") || n.contains("marvelvcapcom") || n.contains("marvelversuscapcom")) return "marvel_vs_capcom";

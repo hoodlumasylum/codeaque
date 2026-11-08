@@ -331,3 +331,11 @@ def test_kids_games_wide_covers():
     assert 'id.equals("kgames")' in h and "host.wideCover(it)" in h and "Bitmap wideCover(Catalog.Item item);" in h
     body = m.split("public android.graphics.Bitmap wideCover(", 1)[1].split("private android.graphics.Bitmap playIconFor(", 1)[0]
     assert body.index("playFeature(pkg)") < body.index("iconBanner(ai)")
+
+
+def test_ha_dreamcast_covers_0118():
+    m = (SRC / "MainActivity.java").read_text()
+    for n in ["sonic_adventure", "sonic_adventure_2", "spider_man", "street_fighter_3", "toy_story_2"]:
+        assert f"R.drawable.ha_{n};" in m
+        f = AND / f"app/src/main/res/drawable-nodpi/ha_{n}.webp"
+        assert f.is_file() and f.stat().st_size < 120_000
