@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.28
+
+- **Home chooser fix:** on rooted devices (Magisk), CodeAque now makes itself the Home app at start-up with `cmd package set-home-activity` (or `pm set-home-activity`) and the Android HOME role, so the "choose Home app" box stops coming back after a restart. Magisk asks once.
+- **Settings > Make CodeAque home:** does the same on demand.
+- **Settings > Hide other launchers (PIN):** turns off the other Home apps with `pm disable-user` (nothing is uninstalled), with an Undo in the same menu.
+- **Update available badge** on the Update tiles (Kids Wi-Fi & Update row and Settings), and the version number is now the first tile in Settings.
+- The update pop-up waits until CodeAque's screen is in front, so another dialog or the Home chooser no longer hides it.
+
 ## What's new in 0.10.27
 
 - **New app pop-up (normal mode):** when an app is installed, CodeAque shows its name and icon and asks which section

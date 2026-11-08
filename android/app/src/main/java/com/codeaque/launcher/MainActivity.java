@@ -36,6 +36,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private SharedPreferences prefs;
 
     @Override protected void onCreate(Bundle b) {
+        Catalog.VERSION = myVersion();   // 0.10.28
         super.onCreate(b);
         prefs = getSharedPreferences("codeaque", MODE_PRIVATE);
         ensurePin();                                  // 0.10.23: default parent PIN 1234 (hashed)
@@ -99,6 +100,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         scanDreamcast();
         kidsDiff();
         lockResume();                 // 0.10.21
+        ensureHome();                 // 0.10.28: stop the Home chooser coming back after restarts
         maybeUpdateCheck();           // 0.10.25
         newAppsCheck();               // 0.10.27: every start / resume, at most every 30 minutes
         installedCache.clear();       // apps may have been installed while we were away
@@ -110,6 +112,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public void onWindowFocusChanged(boolean has) {
         super.onWindowFocusChanged(has);
         if (has) immersive();          // after a dialog, the volume panel or a swipe that showed the bars
+        if (has && pendingPopup != null) { UpdateInfo u = pendingPopup; view.postDelayed(() -> { if (hasWindowFocus() && pendingPopup == u) updatePopup(u, myVersion()); }, 600); }
     }
 
     // ---------- 0.9.4: true full screen (no status or navigation bar, drawn under the camera cut-out) ----------
@@ -882,6 +885,9 @@ public class MainActivity extends Activity implements HomeView.Host {
                 rescan(); break;
             }
             case "update": checkUpdate(true); break;
+            case "about": toast("CodeAque version " + myVersion() + (Catalog.updateAvailable ? " - an update is available" : "")); break;   // 0.10.28
+            case "makehome": makeHome(true); break;              // 0.10.28
+            case "hidelaunchers": hideLaunchers(); break;        // 0.10.28 (PIN in Lock mode; always asks the PIN below)
             case "bootanim": bootAnim(); break;
             case "rotation": rotationToggle(); break;
             case "kids": kidsMode(true); break;
@@ -1002,8 +1008,9 @@ public class MainActivity extends Activity implements HomeView.Host {
             try {
                 UpdateInfo u = UpdateInfo.parse(get(UpdateInfo.API));
                 String mine = myVersion();
-                if (u == null || !UpdateInfo.newer(u.version, mine)) { if (manual) toast("You're up to date! (CodeAque " + mine + ")"); return; }
+                if (u == null || !UpdateInfo.newer(u.version, mine)) { Catalog.updateAvailable = false; if (manual) toast("You're up to date! (CodeAque " + mine + ")"); return; }
                 prefs.edit().putString("updKnown", u.version).apply();
+                Catalog.updateAvailable = true; runOnUiThread(() -> view.invalidate());   // 0.10.28 badge
                 if (!manual) { runOnUiThread(() -> updatePopup(u, mine)); return; }
                 runOnUiThread(() -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle("Update to CodeAque " + u.version + "?")
@@ -1611,6 +1618,61 @@ public class MainActivity extends Activity implements HomeView.Host {
                 .setNegativeButton("Cancel", null).show();
     }
 
+    // ---------- 0.10.28: keep CodeAque as Home ----------
+    private boolean homeTried;
+    /** Once per start: if CodeAque is not the Home app and the device is rooted, set it with su (Magisk asks once). */
+    private void ensureHome() {
+        if (homeTried || isDefaultHome() || !new java.io.File("/system/bin/su").exists() && !new java.io.File("/sbin/su").exists() && !new java.io.File("/system/xbin/su").exists() && !new java.io.File("/debug_ramdisk/su").exists()) return;
+        homeTried = true;
+        makeHome(false);
+    }
+    /** Runs the set-home-activity command (cmd package, then pm) and the HOME role command as root. */
+    private void makeHome(boolean manual) {
+        if (manual && isDefaultHome()) { toast("CodeAque is already your Home app."); }
+        new Thread(() -> {
+            boolean ok = false;
+            for (String c : Catalog.MAKE_HOME_CMDS) if (su(c, null) == 0) { ok = true; break; }
+            if (android.os.Build.VERSION.SDK_INT >= 29 && su(Catalog.ROLE_CMD, null) == 0) ok = true;
+            final boolean done = ok;
+            runOnUiThread(() -> {
+                if (done && isDefaultHome()) { if (manual) toast("CodeAque is now your Home app."); }
+                else if (manual) { toast("Could not set it with root. Pick CodeAque and tap Always."); try { start(new Intent(Settings.ACTION_HOME_SETTINGS)); } catch (Exception e) { } }
+            });
+        }).start();
+    }
+    /** Other apps that answer the HOME button (not CodeAque, not Android Settings' fallback). */
+    private java.util.List<String> otherLaunchers() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0))
+            if (r.activityInfo != null && Catalog.canHideLauncher(r.activityInfo.packageName) && !out.contains(r.activityInfo.packageName)) out.add(r.activityInfo.packageName);
+        return out;
+    }
+    /** PIN-gated: disables the other launchers with pm disable-user (root), or re-enables the ones CodeAque hid. */
+    private void hideLaunchers() {
+        askPin("Hide other launchers", () -> {
+            java.util.Set<String> hidden = new java.util.HashSet<>(prefs.getStringSet("hiddenLaunchers", new java.util.HashSet<>()));
+            java.util.List<String> others = otherLaunchers();
+            StringBuilder m = new StringBuilder("Turns off the other Home apps so Android stops asking which one to use. Nothing is uninstalled.\n\n");
+            m.append(others.isEmpty() ? "No other launchers are on right now." : "Will turn off:\n" + String.join("\n", others));
+            if (!hidden.isEmpty()) m.append("\n\nHidden by CodeAque:\n").append(String.join("\n", hidden));
+            AlertDialog.Builder b = dlg().setTitle("Hide other launchers").setMessage(m.toString()).setNegativeButton("Cancel", null);
+            if (!others.isEmpty()) b.setPositiveButton("Hide them", (d, w) -> new Thread(() -> {
+                java.util.Set<String> h = new java.util.HashSet<>(hidden); int n = 0;
+                for (String pkg : others) if (su("pm disable-user --user 0 " + pkg, null) == 0) { h.add(pkg); n++; }
+                prefs.edit().putStringSet("hiddenLaunchers", h).apply();
+                toast(n == 0 ? "Needs root (Magisk). Nothing was changed." : "Hid " + n + " launcher(s). Undo is in the same menu.");
+                makeHome(false);
+            }).start());
+            if (!hidden.isEmpty()) b.setNeutralButton("Undo (show them again)", (d, w) -> new Thread(() -> {
+                java.util.Set<String> left = new java.util.HashSet<>();
+                for (String pkg : hidden) if (su("pm enable " + pkg, null) != 0) left.add(pkg);
+                prefs.edit().putStringSet("hiddenLaunchers", left).apply();
+                toast(left.isEmpty() ? "The other launchers are back." : "Could not turn some back on: " + String.join(", ", left));
+            }).start());
+            b.show();
+        });
+    }
+
     /** Runs one command as root; the user must allow the Magisk superuser prompt. Returns exit code, -1 if su is missing. */
     private int su(String cmd, StringBuilder out) {
         try {
@@ -1734,8 +1796,12 @@ public class MainActivity extends Activity implements HomeView.Host {
         prefs.edit().putString("updSnoozeVer", v).putLong("updSnoozeUntil", System.currentTimeMillis() + UpdateInfo.SNOOZE_MS).apply();
     }
 
+    private UpdateInfo pendingPopup;
     void updatePopup(UpdateInfo u, String mine) {
         if (popupShowing || isFinishing()) return;
+        // 0.10.28: if the Home chooser, another dialog or the screen is not ours yet, show it when we get focus back
+        if (!hasWindowFocus()) { pendingPopup = u; return; }
+        pendingPopup = null;
         if (UpdateInfo.snoozed(u.version, prefs.getString("updSnoozeVer", ""), prefs.getLong("updSnoozeUntil", 0), System.currentTimeMillis())) return;
         popupShowing = true;
         String news = UpdateInfo.whatsNew(u.notes);

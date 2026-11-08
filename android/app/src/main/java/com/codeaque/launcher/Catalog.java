@@ -330,6 +330,23 @@ public final class Catalog {
         for (String p : after) if (!before.contains(p)) out.add(p);
         Collections.sort(out); return out;
     }
+    /** 0.10.28: set by MainActivity before categories are built; shown in Settings. */
+    public static volatile String VERSION = "?";
+    /** 0.10.28: a newer release is known; draws the "Update available" badge on the update tiles. */
+    public static volatile boolean updateAvailable;
+    public static boolean showsUpdateBadge(Item it) { return updateAvailable && it != null && "update".equals(it.action); }
+    /** 0.10.28: root commands that make CodeAque the Home app (tried in order until one works). */
+    public static final String HOME_ACTIVITY = "com.codeaque.launcher/.MainActivity";
+    public static final String[] MAKE_HOME_CMDS = {
+            "cmd package set-home-activity " + HOME_ACTIVITY,
+            "pm set-home-activity " + HOME_ACTIVITY,
+    };
+    public static final String ROLE_CMD = "cmd role add-role-holder android.app.role.HOME com.codeaque.launcher";
+    /** 0.10.28: packages "Hide other launchers" must never disable (CodeAque itself, Android's Settings / fallback home). */
+    public static boolean canHideLauncher(String pkg) {
+        return pkg != null && !pkg.equals("com.codeaque.launcher") && !pkg.equals("com.android.settings") && !pkg.equals("android") && !pkg.startsWith("com.android.provision");
+    }
+
     public static final Item KIDS_UPDATE = act("Update CodeAque", "download", "update");
     public static final Item KIDS_OFF = act("Turn off Kids mode", "gear", "kidsoff");
     public static List<Category> kidsMode() { return kidsMode(Collections.<Item>emptyList()); }
@@ -457,10 +474,11 @@ public final class Catalog {
                 act("Android accounts", "gear", "accounts")));
         c.add(new Category("allapps", "All Apps", "grid", all.toArray(new Item[0])));
         c.add(new Category("settings", "Settings", "gear",
+                act("CodeAque v" + VERSION, "gear", "about"),   // 0.10.28: version shown clearly, first in Settings
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
         return c;
     }
 

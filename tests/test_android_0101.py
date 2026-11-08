@@ -455,3 +455,15 @@ def test_phoenix_theme_and_kids_themes():
     assert 'case "kthemes": themePicker();' in m and 'case "theme": themePicker();' in m
     tp = m.split("private void themePicker()", 1)[1].split("private boolean isGamePkg(", 1)[0]
     assert "Palette.ALL" in tp and 'putString("theme", t.id)' in tp and "askPin" not in tp and "action(" not in tp
+
+
+def test_home_chooser_fix_and_update_badge():
+    m = (AND.parent / "android/app/src/main/AndroidManifest.xml").read_text()
+    assert m.count("android.intent.category.HOME\" />\n                <category android:name=\"android.intent.category.DEFAULT") == 1
+    assert m.count("<activity ") + m.count("<activity-alias") >= 1 and "activity-alias" not in m
+    a = (AND.parent / "android/app/src/main/java/com/codeaque/launcher/MainActivity.java").read_text()
+    assert "ensureHome();" in a and "Catalog.MAKE_HOME_CMDS" in a and "Catalog.ROLE_CMD" in a
+    assert "pm disable-user --user 0 " in a and '"pm enable "' in a and 'askPin("Hide other launchers"' in a
+    assert "hasWindowFocus()" in a and "pendingPopup" in a and "Catalog.updateAvailable = true" in a
+    h = (AND.parent / "android/app/src/main/java/com/codeaque/launcher/HomeView.java").read_text()
+    assert "UPDATE AVAILABLE" in h

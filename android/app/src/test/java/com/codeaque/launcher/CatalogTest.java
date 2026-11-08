@@ -111,6 +111,20 @@ public class CatalogTest {
         check(h.equals(UpdateInfo.expectedSha("1111  atari-0.9.2.tar.gz\n" + h + "  codeaque-launcher.apk\n")), "sha from sums");
         check(UpdateInfo.expectedSha("zz  codeaque-launcher.apk") == null, "bad sums line ignored");
         check(acts.contains("update"), "Settings has Update");
+        {   // 0.10.28 home fix, update badge, version in Settings
+            Catalog.VERSION = "9.9.9";
+            List<Catalog.Category> c8 = Catalog.categories(List.of(), List.of(), List.of(), List.of(), false, false);
+            List<Catalog.Item> st = c8.get(Catalog.indexOf(c8, "settings")).items;
+            check(st.get(0).label.equals("CodeAque v9.9.9") && "about".equals(st.get(0).action), "version first in Settings");
+            List<String> a8 = new java.util.ArrayList<>(); for (Catalog.Item i : st) a8.add(i.action);
+            check(a8.contains("makehome") && a8.contains("hidelaunchers"), "home actions in Settings");
+            check(LockPin.needsPin("makehome") && LockPin.needsPin("hidelaunchers") && !LockPin.needsPin("about"), "home actions PIN");
+            check(Catalog.MAKE_HOME_CMDS[0].equals("cmd package set-home-activity com.codeaque.launcher/.MainActivity") && Catalog.MAKE_HOME_CMDS[1].startsWith("pm set-home-activity ") && Catalog.ROLE_CMD.equals("cmd role add-role-holder android.app.role.HOME com.codeaque.launcher"), "home cmds");
+            check(!Catalog.canHideLauncher("com.codeaque.launcher") && !Catalog.canHideLauncher("com.android.settings") && Catalog.canHideLauncher("com.magneticchen.daijishou"), "hide launchers safe");
+            Catalog.updateAvailable = false; check(!Catalog.showsUpdateBadge(Catalog.KIDS_UPDATE), "no badge");
+            Catalog.updateAvailable = true; check(Catalog.showsUpdateBadge(Catalog.KIDS_UPDATE) && !Catalog.showsUpdateBadge(Catalog.KIDS_WIFI), "badge");
+            Catalog.updateAvailable = false; Catalog.VERSION = "?";
+        }
         System.out.println("CatalogTest: all checks passed");
     }
 

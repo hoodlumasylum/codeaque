@@ -509,14 +509,14 @@ public class HomeView extends View {
             float x = left + (i - scrollAnim) * (w + gap);
             if (x > W || x + w < 0) continue;
             boolean sel = i == tile && !inCats;
-            Catalog.Item it = its.get(i);
+            Catalog.Item it = its.get(i); badgeItem = it;
             float grow = sel ? 8 * s : 0;
             r.set(x - grow, top - grow * 1.5f, x + w + grow, top + h + grow * 0.5f);
             if (sel) {
                 p.setShader(new RadialGradient(r.centerX(), r.centerY(), w * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), w * 0.85f, p); p.setShader(null);
             }
-            if (covers()) { coverTile(c, it, sel); continue; }
+            if (covers()) { coverTile(c, it, sel); updBadge(c); continue; }
             p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
             c.drawRoundRect(r, 12 * s, 12 * s, p); p.setShader(null);
             stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
@@ -548,6 +548,7 @@ public class HomeView extends View {
             spaced(c, "CODEAQUE", r.centerX(), r.top + h * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
             String lab = it.label.toUpperCase(Locale.ROOT);
             tileName(c, lab, r.centerX(), r.top + h * 0.86f, w - 12 * s, (kids ? 34 : 20) * s, 11 * s);   // 0.10.19 bigger, bolder
+            updBadge(c);
             if (!it.isAction() && !host.installed(it)) {
                 String b = it.webUrl != null ? "WEB" : "GET";
                 p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
@@ -638,6 +639,17 @@ public class HomeView extends View {
         tileName(c, lab, r.centerX(), r.bottom - 10 * s, r.width() - 12 * s, 26 * s * big(), 11 * s);   // 0.10.19 bigger, bolder, up to 2 lines
     }
     private final RectF r2 = new RectF();
+    private Catalog.Item badgeItem;
+    /** 0.10.28: small "Update available" badge on the Update tiles (Kids Wi-Fi & Update row and Settings). */
+    private void updBadge(Canvas c) {
+        if (!Catalog.showsUpdateBadge(badgeItem)) return;
+        p.setShader(null); p.setTextSize(11 * s * big()); p.setFakeBoldText(true); p.setTextAlign(Paint.Align.CENTER);
+        String t = "UPDATE AVAILABLE"; float tw = p.measureText(t) + 14 * s, bh = 18 * s * big();
+        r2.set(r.centerX() - tw / 2, r.top + 6 * s, r.centerX() + tw / 2, r.top + 6 * s + bh);
+        p.setColor(0xFFE53935); c.drawRoundRect(r2, bh / 2, bh / 2, p);
+        p.setColor(0xFFFFFFFF); c.drawText(t, r2.centerX(), r2.centerY() + p.getTextSize() * 0.36f, p);
+        p.setFakeBoldText(false);
+    }
 
     /** Original CodeAque art for the Roblox tile: a bright sky, a grass block world and two of our own blocky buddies. */
     private void blockyArt(Canvas c) {
