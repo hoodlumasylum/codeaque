@@ -31,6 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.20
+
+- More reliable in-app updates: each download is retried up to 4 times, redirects are followed safely, and if GitHub's
+  download server is having trouble the checksum and APK come through GitHub's API instead. Errors now say what went wrong.
+
 ## What's new in 0.10.19
 
 - Bigger, bolder game names on every tile (Roblox, Minecraft, Marvel Rivals, Kids Games, Dreamcast and PSP games, title

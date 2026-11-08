@@ -347,3 +347,11 @@ def test_big_bold_tile_names():
     tiles = h.split("private void tiles(", 1)[1].split("private void titleCard(", 1)[0]
     cover = h.split("private void coverTile(", 1)[1].split("private void blockyArt(", 1)[0]
     assert "tileName(c, lab" in tiles and "tileName(c, lab" in cover and "0.48f" in cover
+
+
+def test_robust_update_download():
+    m = (SRC / "MainActivity.java").read_text()
+    f = m.split("private static void fetch(", 1)[1].split("static final class FatalHttp", 1)[0]
+    assert "attempt < 4" in f and "setInstanceFollowRedirects(false)" in f and "User-Agent" in f and "Location" in f
+    i = m.split("private void install(UpdateInfo u)", 1)[1].split("// ---------- 0.10.1", 1)[0]
+    assert "u.apkDigest" in i and "u.apkApiUrl" in i and "getSimpleName()" in i

@@ -612,14 +612,62 @@ public class MainActivity extends Activity implements HomeView.Host {
         try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "0"; }
     }
 
-    private static String get(String url) throws java.io.IOException {
-        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-        c.setConnectTimeout(10000); c.setReadTimeout(20000); c.setRequestProperty("Accept", "application/vnd.github+json");
-        try (java.io.InputStream in = c.getInputStream(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
-            byte[] b = new byte[16384]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n);
-            return out.toString("UTF-8");
-        } finally { c.disconnect(); }
+    private static String get(String url) throws java.io.IOException { return get(url, "application/vnd.github+json"); }
+    private static String get(String url, String accept) throws java.io.IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        fetch(url, accept, out, null);
+        return out.toString("UTF-8");
     }
+
+    /** 0.10.20: robust download. Up to 4 tries with backoff (1, 2, 4 s), retrying network errors, 5xx and 429; follows
+     *  redirects by hand across hosts (HTTPS only, at most 6 hops); User-Agent; long timeouts. Errors name the real cause. */
+    private static void fetch(String url, String accept, java.io.OutputStream sink, java.security.MessageDigest md) throws java.io.IOException {
+        java.io.IOException last = null;
+        for (int attempt = 0; attempt < 4; attempt++) {
+            if (attempt > 0) try { Thread.sleep(1000L << (attempt - 1)); } catch (InterruptedException ie) { throw new java.io.IOException("interrupted"); }
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            try {
+                String u = url;
+                for (int hop = 0; ; hop++) {
+                    if (hop > 6) throw new java.io.IOException("too many redirects at " + u);
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(u).openConnection();
+                    c.setInstanceFollowRedirects(false);
+                    c.setConnectTimeout(20000); c.setReadTimeout(60000);
+                    c.setRequestProperty("User-Agent", "CodeAque-Updater (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    if (accept != null && u.startsWith("https://api.github.com/")) c.setRequestProperty("Accept", accept);
+                    try {
+                        int code = c.getResponseCode();
+                        if (code >= 300 && code < 400) {
+                            String loc = c.getHeaderField("Location");
+                            if (loc == null) throw new java.io.IOException("HTTP " + code + " without a Location from " + new java.net.URL(u).getHost());
+                            java.net.URL next = new java.net.URL(new java.net.URL(u), loc);
+                            if (!"https".equals(next.getProtocol())) throw new java.io.IOException("refused non-HTTPS redirect to " + next.getHost());
+                            u = next.toString(); continue;
+                        }
+                        if (code != 200) {
+                            java.io.IOException he = new java.io.IOException("HTTP " + code + " from " + new java.net.URL(u).getHost());
+                            if (code >= 500 || code == 429 || code == 408) { last = he; break; }   // worth retrying
+                            throw new FatalHttp(he.getMessage());
+                        }
+                        try (java.io.InputStream in = c.getInputStream()) {
+                            byte[] b = new byte[65536]; int n; long total = 0;
+                            while ((n = in.read(b)) > 0) { buf.write(b, 0, n); total += n; if (total > 100L << 20) throw new FatalHttp("download too big"); }
+                        }
+                        byte[] all = buf.toByteArray();
+                        if (md != null) md.update(all);
+                        sink.write(all);
+                        return;
+                    } finally { c.disconnect(); }
+                }
+            } catch (FatalHttp f) {
+                throw f;
+            } catch (java.io.IOException e) {
+                last = new java.io.IOException(e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+            }
+        }
+        throw last != null ? last : new java.io.IOException("download failed");
+    }
+    static final class FatalHttp extends java.io.IOException { FatalHttp(String m) { super(m); } }
 
     private void toast(String t) { runOnUiThread(() -> Toast.makeText(this, t, Toast.LENGTH_LONG).show()); }
 
@@ -649,16 +697,21 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void install(UpdateInfo u) {
         try {
             toast("Downloading CodeAque " + u.version + " ...");
-            String want = UpdateInfo.expectedSha(get(u.sumsUrl));
+            String want = null;
+            try { want = UpdateInfo.expectedSha(get(u.sumsUrl, null)); }
+            catch (java.io.IOException sumsErr) { if (u.apkDigest == null) throw new java.io.IOException("checksum file: " + sumsErr.getMessage(), sumsErr); }
+            if (want == null) want = u.apkDigest;   // 0.10.20 fallback: GitHub's own digest for the APK asset
             if (want == null) { toast("The release has no checksum for the APK, so it was not installed."); return; }
+            if (u.apkDigest != null && !u.apkDigest.equals(want)) { toast("The release's checksums disagree, so it was not installed."); return; }
             java.io.File f = new java.io.File(getCacheDir(), "update.apk");
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
-            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(u.apkUrl).openConnection();
-            c.setConnectTimeout(10000); c.setReadTimeout(30000);
-            try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
-                byte[] b = new byte[65536]; int n; long total = 0;
-                while ((n = in.read(b)) > 0) { out.write(b, 0, n); md.update(b, 0, n); total += n; if (total > 100L << 20) throw new java.io.IOException("too big"); }
-            } finally { c.disconnect(); }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { fetch(u.apkUrl, null, out, md); }
+            catch (java.io.IOException apkErr) {
+                if (u.apkApiUrl == null) throw new java.io.IOException("APK: " + apkErr.getMessage(), apkErr);
+                md.reset();   // 0.10.20 fallback: the same file through the GitHub API
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { fetch(u.apkApiUrl, "application/octet-stream", out, md); }
+                catch (java.io.IOException e2) { throw new java.io.IOException("APK: " + e2.getMessage(), e2); }
+            }
             StringBuilder hex = new StringBuilder(); for (byte x : md.digest()) hex.append(String.format("%02x", x));
             if (!hex.toString().equals(want)) { f.delete(); toast("The download did not match its checksum, so it was not installed."); return; }
             android.content.pm.PackageInstaller pi = getPackageManager().getPackageInstaller();
@@ -676,7 +729,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             }
             f.delete();
         } catch (Exception e) {
-            toast("The update could not be installed: " + e.getMessage());
+            toast("The update could not be installed (" + e.getClass().getSimpleName() + "): " + e.getMessage() + ". Please try again in a few minutes.");
         }
     }
 

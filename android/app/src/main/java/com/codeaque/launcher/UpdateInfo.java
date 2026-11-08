@@ -9,7 +9,10 @@ public final class UpdateInfo {
     public static final String APK = "codeaque-launcher.apk";
 
     public final String version, apkUrl, sumsUrl;
-    public String notes = "";   // 0.10.6: the release notes (GitHub "body"), for the pop-up's what's-new line
+    public String notes = "";
+    /** 0.10.20: the APK asset's own SHA-256 from the release JSON ("digest"), and its API download URL; fallbacks when the
+     *  github.com download host fails (it was returning 504s for SHA256SUMS.txt). Either may be null. */
+    public String apkDigest, apkApiUrl;   // 0.10.6: the release notes (GitHub "body"), for the pop-up's what's-new line
     UpdateInfo(String version, String apkUrl, String sumsUrl) { this.version = version; this.apkUrl = apkUrl; this.sumsUrl = sumsUrl; }
 
     /** 0.10.6: one short line for the update pop-up: the first real line of the notes, without markdown. */
@@ -66,6 +69,16 @@ public final class UpdateInfo {
         }
         if (apk == null || sums == null) return null;
         UpdateInfo info = new UpdateInfo(t.group(1).replaceFirst("^[vV]", ""), apk, sums);
+        String[] chunks = json.split("\"browser_download_url\"");
+        for (int i = 1; i < chunks.length; i++) {
+            Matcher bu = Pattern.compile("^\\s*:\\s*\"([^\"]+)\"").matcher(chunks[i]);
+            if (!bu.find() || !bu.group(1).endsWith("/" + APK)) continue;
+            String before = chunks[i - 1];
+            Matcher d = Pattern.compile("\"digest\"\\s*:\\s*\"sha256:([0-9a-fA-F]{64})\"").matcher(before);
+            while (d.find()) info.apkDigest = d.group(1).toLowerCase();
+            Matcher a = Pattern.compile("\"url\"\\s*:\\s*\"(https://api\\.github\\.com/repos/[^\"]+/releases/assets/\\d+)\"").matcher(before);
+            while (a.find()) info.apkApiUrl = a.group(1);
+        }
         Matcher b = Pattern.compile("\"body\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").matcher(json);
         if (b.find()) info.notes = unescape(b.group(1));
         return info;
