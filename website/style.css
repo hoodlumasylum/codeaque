@@ -39,7 +39,6 @@ footer{text-align:center;color:var(--dim);padding:28px 16px 48px;border-top:1px 
 @media (min-width:720px){
   .colours{grid-template-columns:repeat(4,1fr)}
   .photos{grid-template-columns:1fr 1fr}
-  .photos figure:last-child{grid-column:1 / -1}
   .features{grid-template-columns:1fr 1fr}
   .features article:last-child{grid-column:1 / -1}
   .card{padding:28px}
