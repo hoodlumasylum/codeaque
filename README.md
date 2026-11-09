@@ -31,6 +31,17 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.30
+
+- The CodeAque icon now fits the home screen, plus new Adult mode and Settings shortcuts.
+- **Icon fix.** The old icon was one square picture that phones zoomed into, so it read "DEAC". It is now a proper Android adaptive icon with the whole CodeAque logo inside the safe area, so round, squircle and rounded-square icon shapes all show the full logo. Older Android versions get padded icons, Android 13+ themed icons get a one-colour version, and TV boxes get a fitted banner.
+- **CodeAque Adult and CodeAque Settings icons.** Two extra icons in the app drawer (drag them to the home screen). Each opens CodeAque and asks for the parent PIN, then goes straight to Adult mode or to Settings. A wrong PIN changes nothing. Long-press the CodeAque icon for the same two shortcuts.
+- **Lock Mode stays locked.** While Lock Mode is on, the two extra icons are switched off, and they come back when Lock Mode is turned off. The long-press shortcuts still ask for the PIN and never show the Lock Mode option, so the hidden 7-tap logo menu is still the only way to turn Lock Mode off.
+- **Grown-ups row in Kids mode.** Big Adult mode and Settings tiles (tap or controller), both behind the parent PIN.
+- **Settings tile on the grown-up home,** right next to the Kids Mode tile at the top.
+
+Not tried yet on a real CodeAque phone: the new icon on Code's launcher, the two extra icons, the long-press shortcuts, and switching the extra icons off in Lock Mode. Some launchers remove an icon from the home screen when it is switched off, so after Lock Mode is turned off the extra icons may need dragging back from the app drawer.
+
 ## What's new in 0.10.29
 
 - One tap opens a tile, swipe left or right to change section, and there is an on-screen Back button.

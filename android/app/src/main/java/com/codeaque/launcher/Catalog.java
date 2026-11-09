@@ -275,6 +275,23 @@ public final class Catalog {
     }
     /** 0.10.26: the big "Kids Mode" tile, first on the normal home: one tap, no PIN to go in (leaving needs the PIN). */
     public static final Item KIDS_ON = act("Kids Mode", "pad", "kidson");
+    /** 0.10.30: a plain Settings tile next to Kids Mode on the grown-up home (jumps to the Settings row, like Y). */
+    public static final Item SETTINGS_TILE = act("Settings", "gear", "goto:settings");
+    /** 0.10.30: Kids mode "Grown-ups" row. Both ask for the parent PIN, then Adult mode opens (Kids mode off)
+     *  on the first row or on Settings. Also used by the CodeAque Adult / CodeAque Settings home-screen icons. */
+    public static final Item ADULT_PIN = act("Adult mode", "pad", "adultpin");
+    public static final Item SETTINGS_PIN = act("Settings", "gear", "settingspin");
+    public static final Item[] KIDS_PARENT = {ADULT_PIN, SETTINGS_PIN};
+    public static final String OPEN_ADULT = "com.codeaque.launcher.OPEN_ADULT", OPEN_SETTINGS = "com.codeaque.launcher.OPEN_SETTINGS";
+    /** 0.10.30: home-screen aliases, turned off while Lock Mode is on. */
+    public static final String[] ALIASES = {".AdultAlias", ".SettingsAlias"};
+    /** 0.10.30: which parent entry opened CodeAque: "adult", "settings" or null (a normal start or Home press).
+     *  cls = the launched component (an activity-alias keeps its own name); action = a long-press shortcut's action. */
+    public static String entryTarget(String action, String cls) {
+        if (OPEN_ADULT.equals(action) || (cls != null && cls.endsWith(".AdultAlias"))) return "adult";
+        if (OPEN_SETTINGS.equals(action) || (cls != null && cls.endsWith(".SettingsAlias"))) return "settings";
+        return null;
+    }
     // ---------- 0.10.27 where a newly installed app goes (the parent's choice overrides the automatic row) ----------
     /** Normal-mode rows an app can be put in, in picker order. */
     public static final String[] SECTIONS = {"mygames", "steam", "games", "cloud", "retro", "streams", "media", "store", "accounts", "allapps"};
@@ -389,6 +406,7 @@ public final class Catalog {
         Category ps = psp(roms, false); c.add(new Category("kpsp", ps.label, ps.icon, kidsGamesOnly(ps.items)));   // 0.10.7 / 0.10.15
         c.add(new Category("kthemes", "Themes", "palette", KIDS_THEMES));   // 0.10.27: kids can change the look, nothing else
         c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
+        c.add(new Category("kparent", "Grown-ups", "gear", KIDS_PARENT));   // 0.10.30: Adult mode and the grown-up menu, both behind the PIN
         return c;
     }
 
@@ -449,7 +467,7 @@ public final class Catalog {
         List<Category> c = new ArrayList<>();
         // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
-        c.add(new Category("steam", "Featured", "display", KIDS_ON, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
+        c.add(new Category("steam", "Featured", "display", KIDS_ON, SETTINGS_TILE, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community")));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.

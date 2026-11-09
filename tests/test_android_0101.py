@@ -30,7 +30,7 @@ def test_bootanim_not_bundled_and_manifest_queries():
 
 def test_featured_roblox_minecraft_first_without_logos():
     c = (SRC / "Catalog.java").read_text()
-    assert '"Featured", "display", KIDS_ON, ROBLOX, MINECRAFT' in c
+    assert '"Featured", "display", KIDS_ON, SETTINGS_TILE, ROBLOX, MINECRAFT' in c
     assert '"com.roblox.client"' in c and '"com.mojang.minecraftpe"' in c
     h = (SRC / "HomeView.java").read_text()
     assert "cat = 0; catAnim = 0;" in h
@@ -64,7 +64,10 @@ def test_home_chooser_never_reprompts():
     filters = man.split("<intent-filter>")[1:]
     home = [f for f in filters if "category.HOME" in f]
     assert len(home) == 1 and "category.LAUNCHER" not in home[0] and "LEANBACK" not in home[0]
-    assert man.count("<activity ") == 1 and "activity-alias" not in man and 'launchMode="singleTask"' in man
+    assert man.count("<activity ") == 1 and 'launchMode="singleTask"' in man
+    # 0.10.30: the CodeAque Adult / Settings aliases are app-drawer entries only, never a second Home
+    for alias in man.split("<activity-alias")[1:]:
+        assert "category.HOME" not in alias.split("</activity-alias>")[0]
     m = (SRC / "MainActivity.java").read_text()
     assert "RoleManager.ROLE_HOME" in m and "isRoleHeld" in m
     body = m.split("private void maybeAskHomeOnce()", 1)[1].split("\n    }\n", 1)[0]
@@ -90,7 +93,7 @@ def test_force_landscape_is_opt_in_root_only():
 
 def test_play_store_tile_on_featured():
     c = (SRC / "Catalog.java").read_text()
-    assert '"Featured", "display", KIDS_ON, ROBLOX, MINECRAFT, PLAY_STORE,' in c and '"com.android.vending"' in c
+    assert '"Featured", "display", KIDS_ON, SETTINGS_TILE, ROBLOX, MINECRAFT, PLAY_STORE,' in c and '"com.android.vending"' in c
     m = (SRC / "MainActivity.java").read_text()
     assert "Play Store not installed" in m
     assert '<package android:name="com.android.vending" />' in (AND / "app/src/main/AndroidManifest.xml").read_text()
@@ -460,7 +463,8 @@ def test_phoenix_theme_and_kids_themes():
 def test_home_chooser_fix_and_update_badge():
     m = (AND.parent / "android/app/src/main/AndroidManifest.xml").read_text()
     assert m.count("android.intent.category.HOME\" />\n                <category android:name=\"android.intent.category.DEFAULT") == 1
-    assert m.count("<activity ") + m.count("<activity-alias") >= 1 and "activity-alias" not in m
+    assert m.count("<activity ") + m.count("<activity-alias") >= 1
+    assert all("category.HOME" not in a.split("</activity-alias>")[0] for a in m.split("<activity-alias")[1:])   # 0.10.30
     a = (AND.parent / "android/app/src/main/java/com/codeaque/launcher/MainActivity.java").read_text()
     assert "ensureHome();" in a and "Catalog.MAKE_HOME_CMDS" in a and "Catalog.ROLE_CMD" in a
     assert "pm disable-user --user 0 " in a and '"pm enable "' in a and 'askPin("Hide other launchers"' in a

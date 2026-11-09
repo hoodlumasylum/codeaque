@@ -67,6 +67,7 @@ debug-style key unless you set `CODEAQUE_KEYSTORE`, `CODEAQUE_KS_PASS` and `CODE
 
 ## What is untested
 
+- **0.10.30 on a real phone:** the adaptive icon on the phone's launcher, the CodeAque Adult and CodeAque Settings icons, the long-press shortcuts, and the extra icons switching off in Lock Mode. The icons were checked as pictures under circle, squircle, rounded-square and teardrop masks, and the plain-Java checks pass. Some launchers drop a switched-off icon from the home screen, so it may need adding again after Lock Mode is turned off.
 - **0.10.29 on a real phone:** Lock Mode, the 7-tap logo menu, Safe contacts calls and texts, call screening, the Downloads tile, one-tap tiles, swipe, the on-screen Back button, and smoother scrolling. They compile and the plain-Java checks pass. They have not been tried on CodeAque phone hardware.
 - Lock Mode cannot block the notification shade or a safe-mode boot without device-owner setup, which this app does not require.
 - Unknown incoming calls still ring unless a parent turns on Block unknown callers and the phone grants the call-screening role (Android 10+). That role is not the default phone app. Incoming texts are not filtered.

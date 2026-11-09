@@ -78,6 +78,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (launch != null) pool.setOnLoadCompleteListener((sp, id, st) -> { Integer want = sounds.get(launch); if (want != null && id == want) sp.play(id, 0.6f, 0.6f, 1, 0, 1f); });
         Intent i = getIntent();     // for screenshots/tests: am start -e cat cloud -e tile 1
         if (i != null && i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
+        if (b == null) parentEntry(i);   // 0.10.30: CodeAque Adult / CodeAque Settings icon or long-press shortcut
     }
 
     @Override protected void onNewIntent(Intent i) {      // pressing Home again, the screenshot extras, or the installer's answer
@@ -91,6 +92,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 Toast.makeText(this, "Update not installed: " + i.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE), Toast.LENGTH_LONG).show();
             return;
         }
+        if (parentEntry(i)) return;      // 0.10.30
         if (i.hasExtra("theme")) { prefs.edit().putString("theme", Palette.byId(i.getStringExtra("theme")).id).apply(); view.setTheme(theme()); }
         if (i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
     }
@@ -217,6 +219,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                         Catalog.placements(prefs.getStringSet("placed", null)), apps));
         if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.29: Phone / Messages in Kids mode and adult mode
         if (locked()) cs = Catalog.applyLockMode(cs);   // Lock mode, Android settings and Home tiles disappear
+        syncAliases();                                  // 0.10.30: Adult / Settings home-screen icons off while locked
         view.setCategories(cs);
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
@@ -676,6 +679,42 @@ public class MainActivity extends Activity implements HomeView.Host {
         });
     }
 
+    // ---------- 0.10.30 Adult mode / Settings: Kids "Grown-ups" row, home-screen icons, long-press shortcuts ----------
+    /** Opened from the CodeAque Adult / CodeAque Settings icon or shortcut: ask for the PIN once CodeAque is on screen. */
+    private boolean parentEntry(Intent i) {
+        if (i == null) return false;
+        String t = Catalog.entryTarget(i.getAction(), i.getComponent() != null ? i.getComponent().getClassName() : null);
+        if (t == null) return false;
+        setIntent(new Intent(Intent.ACTION_MAIN).setClass(this, MainActivity.class));   // handled once, not again after a rotation
+        view.post(() -> parentGo("settings".equals(t), true));
+        return true;
+    }
+    /** Parent PIN first (a wrong PIN or Cancel leaves everything as it was), then Adult mode on the first row or on
+     *  Settings. Lock Mode is not changed: its tile stays hidden, so the 7-tap logo menu is still the only way out. */
+    private void parentGo(boolean toSettings, boolean alwaysAsk) {
+        Runnable go = () -> {
+            boolean wasKids = prefs.getBoolean("kidsMode", false);
+            prefs.edit().putBoolean("kidsMode", false).apply();
+            rescan();
+            view.focus(toSettings ? "settings" : "", 0);   // "" = the first row
+            toast(toSettings ? "Settings" + (wasKids ? ". Kids mode is off; the Kids Mode tile turns it back on." : "")
+                    : wasKids ? "Adult mode. The Kids Mode tile turns Kids mode back on." : "Adult mode.");
+        };
+        if (!alwaysAsk && pinFresh()) go.run();
+        else askPin(toSettings ? "Parent PIN: Settings" : "Parent PIN: Adult mode", go);
+    }
+    /** The two extra home-screen icons are switched off while Lock Mode is on and back on when it is off.
+     *  The long-press shortcuts cannot be switched off (manifest shortcuts), but they still need the PIN. */
+    private void syncAliases() {
+        PackageManager pm = getPackageManager();
+        int want = locked() ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
+        for (String a : Catalog.ALIASES) {
+            android.content.ComponentName cn = new android.content.ComponentName(getPackageName(), getPackageName() + a);
+            try { if (pm.getComponentEnabledSetting(cn) != want) pm.setComponentEnabledSetting(cn, want, PackageManager.DONT_KILL_APP); }
+            catch (Exception ignored) { }
+        }
+    }
+
     /** Hidden parent escape (logo tapped 7 times). Wrong PINs use the same short cooldown as every other PIN prompt. */
     @Override public void logoSecret() {
         if (!locked()) return;
@@ -1042,6 +1081,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kids": kidsMode(true); break;
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
+            case "adultpin": parentGo(false, false); break;      // 0.10.30 Kids "Grown-ups" row (PIN)
+            case "settingspin": parentGo(true, false); break;    // 0.10.30
             case "sortapps": sortApps(); break;            // 0.10.27
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 prefs.edit().putBoolean("kidsMode", true).apply(); rescan(); toast("Kids mode is on. Leaving it needs the parent PIN."); break;
@@ -1717,7 +1758,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(on ? "Turn on Kids mode?" : "Turn off Kids mode?")
                 .setMessage(on ? "The home shows only Play, Kids Games and the Play Store, with big tiles. Retro, game files, Ask and "
-                        + "Settings are hidden. To get Settings back, hold Select (or Y / Menu) for a second."
+                        + "Settings are hidden. To get Settings back, use the Grown-ups row (parent PIN), or hold Select (or Y / Menu) for a second."
                         + (Rotation.suggest(android.os.Build.MANUFACTURER, android.os.Build.MODEL, android.os.Build.HARDWARE, android.os.Build.BOARD) ? " Recommended on this handheld." : "")
                         : "This brings back all rows and Settings.")
                 .setPositiveButton(on ? "Turn on" : "Turn off", (d, w) -> { prefs.edit().putBoolean("kidsMode", on).apply(); rescan(); })

@@ -44,10 +44,11 @@ public class CatalogTest {
         // 0.10.1 Featured: Roblox, Minecraft first; store link when missing, no logos
         // 0.10.26: the big Kids Mode tile comes first, then Roblox, Minecraft, Play Store
         check(c.get(0).items.get(0) == Catalog.KIDS_ON && "kidson".equals(Catalog.KIDS_ON.action) && !LockPin.needsPin("kidson") && LockPin.needsPin("kidsoff"), "Kids Mode tile first, no PIN to go in");
-        check(c.get(0).items.get(1).label.equals("Roblox") && c.get(0).items.get(2).label.equals("Minecraft"), "Roblox, Minecraft next");
-        check("com.roblox.client".equals(c.get(0).items.get(1).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(2).storePackage()), "featured packages");
-        check(c.get(0).items.get(3) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store third on Featured");
-        check(c.get(0).items.get(4) == Catalog.GEFORCE_NOW && Catalog.GEFORCE_NOW.webUrl == null && "com.nvidia.geforcenow".equals(Catalog.GEFORCE_NOW.storePackage()), "GeForce NOW fourth, Play page fallback");
+        check(c.get(0).items.get(1) == Catalog.SETTINGS_TILE && "goto:settings".equals(Catalog.SETTINGS_TILE.action) && !LockPin.needsPin("goto:settings"), "0.10.30: Settings tile second on Featured");
+        check(c.get(0).items.get(2).label.equals("Roblox") && c.get(0).items.get(3).label.equals("Minecraft"), "Roblox, Minecraft next");
+        check("com.roblox.client".equals(c.get(0).items.get(2).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(3).storePackage()), "featured packages");
+        check(c.get(0).items.get(4) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store third on Featured");
+        check(c.get(0).items.get(5) == Catalog.GEFORCE_NOW && Catalog.GEFORCE_NOW.webUrl == null && "com.nvidia.geforcenow".equals(Catalog.GEFORCE_NOW.storePackage()), "GeForce NOW fourth, Play page fallback");
         check(Catalog.GFN_WEB.equals("https://play.geforcenow.com") && Catalog.gfnInBrowser(true) && !Catalog.gfnInBrowser(false), "GFN web on handhelds");
         check(c.get(0).items.get(1).webUrl == null && c.get(0).items.get(2).webUrl == null, "featured fall back to the Play Store");
         List<Catalog.Item> kids = c.get(Catalog.indexOf(c, "kids")).items;
@@ -58,11 +59,11 @@ public class CatalogTest {
                 && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1; wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true"), "rotation cmd");
         check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
         List<Catalog.Category> km = Catalog.kidsMode();
-        check(km.size() == 7 && km.get(5).id.equals("kthemes") && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(6).items.size() == 2 && km.get(6).items.get(0) == Catalog.KIDS_WIFI && km.get(6).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
+        check(km.size() == 8 && km.get(7).id.equals("kparent") && km.get(5).id.equals("kthemes") && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(6).items.size() == 2 && km.get(6).items.get(0) == Catalog.KIDS_WIFI && km.get(6).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
         check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
-        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
+        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
-        check(c.get(0).items.get(5) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
+        check(c.get(0).items.get(6) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
         check(Catalog.RIVALS_HEADER.startsWith("https://") && Catalog.RIVALS_HEADER.contains("/2767030/"), "Steam header");
         check("Home".equals(Catalog.cleanSsid("\"Home\"")) && Catalog.cleanSsid("<unknown ssid>") == null && Catalog.cleanSsid(null) == null, "ssid");
@@ -136,6 +137,13 @@ public class CatalogTest {
             java.util.List<String> left = new java.util.ArrayList<>();
             for (Catalog.Item i : locked.get(Catalog.indexOf(locked, "settings")).items) left.add(i.action);
             check(!left.contains("lock") && !left.contains("settings") && !left.contains("home") && left.contains("downloads") && left.contains("changepin") && left.contains("safecontacts"), "lock hides the exits " + left);
+            // 0.10.30 Grown-ups row in Kids mode and the parent entries (home-screen aliases, long-press shortcuts)
+            for (Catalog.Category k : Catalog.kidsMode()) if (k.id.equals("kparent")) check(k.items.size() == 2 && k.items.get(0) == Catalog.ADULT_PIN && k.items.get(1) == Catalog.SETTINGS_PIN, "grown-ups row");
+            check("adultpin".equals(Catalog.ADULT_PIN.action) && "settingspin".equals(Catalog.SETTINGS_PIN.action) && LockPin.needsPin("adultpin") && LockPin.needsPin("settingspin"), "grown-ups actions need the PIN");
+            check(!Catalog.kidsBlocked(Catalog.ADULT_PIN) && !Catalog.kidsBlocked(Catalog.SETTINGS_PIN) && !Catalog.hiddenInLock("adultpin") && !Catalog.hiddenInLock("settingspin"), "grown-ups tiles shown in Kids mode and Lock mode");
+            check("adult".equals(Catalog.entryTarget(null, "com.codeaque.launcher.AdultAlias")) && "settings".equals(Catalog.entryTarget(null, "com.codeaque.launcher.SettingsAlias"))
+                    && "adult".equals(Catalog.entryTarget(Catalog.OPEN_ADULT, "com.codeaque.launcher.MainActivity")) && "settings".equals(Catalog.entryTarget(Catalog.OPEN_SETTINGS, null))
+                    && Catalog.entryTarget("android.intent.action.MAIN", "com.codeaque.launcher.MainActivity") == null && Catalog.entryTarget(null, null) == null, "entry targets");
             check(Catalog.hiddenInLock("lock") && Catalog.hiddenInLock("settings") && !Catalog.hiddenInLock("wifi") && !Catalog.hiddenInLock("downloads"), "hidden actions");
             for (Catalog.Category k : Catalog.kidsMode()) for (Catalog.Item i : k.items) check(!"downloads".equals(i.action), "no downloads row in kids");
             check(LockPin.needsPin("downloads") && LockPin.needsPin("safecontacts") && !LockPin.needsPin("calltext"), "downloads and safe contacts need the PIN when locked");
@@ -310,7 +318,7 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kadded", "kgames", "kstore", "kdc", "kpsp", "kthemes", "kwifi"))), "kids rows exact " + ids);
+                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kadded", "kgames", "kstore", "kdc", "kpsp", "kthemes", "kwifi", "kparent"))), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
                     check(Catalog.kidsBlocked(Catalog.act("All apps", "grid", "allapps")) && Catalog.streamingPkg("tv.twitch.android.app") && Catalog.streamingPkg("com.zhiliaoapp.musically") && Catalog.streamingPkg("tv.pluto.android"), "blocked");

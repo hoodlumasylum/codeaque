@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="129" android:versionName="0.10.29">
+    android:versionCode="130" android:versionName="0.10.30">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -39,7 +39,8 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
-    <application android:label="CodeAque" android:icon="@drawable/ic_launcher" android:banner="@drawable/ic_launcher"
+    <!-- 0.10.30: adaptive icon (whole logo inside the safe zone, scripts/make_android_icons.py) and a fitted TV banner -->
+    <application android:label="CodeAque" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:banner="@drawable/banner"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" android:hardwareAccelerated="true"
         android:largeHeap="false" android:allowBackup="true" android:requestLegacyExternalStorage="true">
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask"
@@ -58,7 +59,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- 0.10.30: long-press shortcuts (Adult mode, Settings); both ask for the parent PIN first -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+        <!-- 0.10.30: extra home-screen icons. Each opens CodeAque and asks for the parent PIN, then goes to Adult mode
+             or Settings. MainActivity turns both off while Lock Mode is on and back on when it is turned off. -->
+        <activity-alias android:name=".AdultAlias" android:targetActivity=".MainActivity" android:exported="true"
+            android:label="CodeAque Adult" android:icon="@mipmap/ic_launcher_adult" android:roundIcon="@mipmap/ic_launcher_adult_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".SettingsAlias" android:targetActivity=".MainActivity" android:exported="true"
+            android:label="CodeAque Settings" android:icon="@mipmap/ic_launcher_settings" android:roundIcon="@mipmap/ic_launcher_settings_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         <!-- 0.10.21 Lock mode: optional full kiosk, only if a parent runs
              adb shell dpm set-device-owner com.codeaque.launcher/.CodeAqueAdmin -->
         <receiver android:name=".CodeAqueAdmin" android:exported="true" android:permission="android.permission.BIND_DEVICE_ADMIN">

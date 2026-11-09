@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 0.10.30: long-press the CodeAque icon. Both ask for the parent PIN before doing anything. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="adult" android:enabled="true" android:icon="@mipmap/ic_launcher_adult"
+        android:shortcutShortLabel="@string/sc_adult" android:shortcutLongLabel="@string/sc_adult_long">
+        <intent android:action="com.codeaque.launcher.OPEN_ADULT" android:targetPackage="com.codeaque.launcher"
+            android:targetClass="com.codeaque.launcher.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="settings" android:enabled="true" android:icon="@mipmap/ic_launcher_settings"
+        android:shortcutShortLabel="@string/sc_settings" android:shortcutLongLabel="@string/sc_settings_long">
+        <intent android:action="com.codeaque.launcher.OPEN_SETTINGS" android:targetPackage="com.codeaque.launcher"
+            android:targetClass="com.codeaque.launcher.MainActivity" />
+    </shortcut>
+</shortcuts>

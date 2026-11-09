@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_adult">Adult mode</string>
+    <string name="sc_adult_long">CodeAque Adult mode (PIN)</string>
+    <string name="sc_settings">Settings</string>
+    <string name="sc_settings_long">CodeAque Settings (PIN)</string>
+</resources>
