@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="128" android:versionName="0.10.28">
+    android:versionCode="129" android:versionName="0.10.29">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -21,6 +21,8 @@
         <package android:name="com.nvidia.geforcenow" />
         <package android:name="com.android.chrome" />
         <package android:name="com.flycast.emulator" />
+        <!-- 0.10.29 Downloads tile: see LibreTorrent if it is installed (no QUERY_ALL_PACKAGES) -->
+        <package android:name="org.proninyaroslav.libretorrent" />
         <!-- 0.9.4: installed apps and games are found through these entries (no QUERY_ALL_PACKAGES) -->
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.*;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.VelocityTracker;
 import android.view.View;
 
 import java.text.SimpleDateFormat;
@@ -11,9 +12,11 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-/** The whole home screen, drawn on one Canvas: cheap on a 2 GB RK3566 (no layouts, a handful of
- *  paths per frame, 30 fps on "auto"). Gamepad: D-pad / stick, L1 R1 change category, A open,
- *  B back, Y settings. Touch: tap a category or a tile, tap the selected tile again to open it, swipe the tiles. */
+/** The whole home screen, drawn on one Canvas (no child views to lay out or recycle): cheap on a 2 GB RK3566.
+ *  Off-screen tiles are skipped. Cover bitmaps are cached and decoded off the UI thread by MainActivity.
+ *  Gamepad is unchanged: D-pad / stick, L1 R1 change category, A open, B back, Y settings.
+ *  Touch (0.10.29): one tap opens a tile. Swipe left or right moves between sections. A slower drag on a long
+ *  row scrolls it and flings with friction. The on-screen Back button does the same as controller B. */
 public class HomeView extends View {
     public interface Host {
         void open(Catalog.Item item);
@@ -28,6 +31,8 @@ public class HomeView extends View {
         Bitmap wideCover(Catalog.Item item);
         Bitmap cover(Catalog.Item item);
         String wifi();        // 0.10.5: "Connected to Home" / "Wi-Fi off" / "Not connected"     // 0.9.5: a game picture (the app's own banner, or cached libretro box art), null = none   // an installed app's own icon (null for CodeAque's line-drawn tiles)
+        /** 0.10.29: seven quick taps on the CodeAque logo. MainActivity shows the parent PIN only while Lock mode is on. */
+        void logoSecret();
     }
 
     private Palette T = Palette.NEON;
@@ -61,7 +66,18 @@ public class HomeView extends View {
     private Catalog.Item prompt;          // "not installed" panel
     private final float[] motes = new float[36];
     private final SimpleDateFormat clock = new SimpleDateFormat("EEE d MMM  HH:mm", Locale.getDefault());
-    private float downX, downY, s = 1; private boolean dragging; private float dragTiles;
+    private float downX, downY, lastTouchX, s = 1;
+    private long downTime;
+    private boolean rowDrag, sectionSwipe, gestureChose;
+    /** Tile-units per second while a finger fling is coasting. userScroll means the finger owns the scroll
+     *  (focus-follow waits) until the fling slows down. */
+    private float flingV;
+    private boolean userScroll;
+    private VelocityTracker velocity;
+    private int logoTaps; private long logoTapAt;
+    private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
+    private final RectF promptOpen = new RectF(), promptBack = new RectF(), pill = new RectF();
+    private long clockAt; private String clockTxt = "";
 
     public HomeView(Context c, Host host) {
         super(c);
@@ -82,10 +98,11 @@ public class HomeView extends View {
 
     private void setCat(int c) {
         c = (c + cats.size()) % cats.size();
-        if (c != cat) { cat = c; tile = 0; host.sound("hhcat"); }
+        if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; host.sound("hhcat"); }
         invalidate();
     }
     private void setTile(int i) {
+        userScroll = false; flingV = 0;   // the controller takes the scroll back; focus-follow eases to this tile
         i = Math.max(0, Math.min(items().size() - 1, i));
         if (i != tile) { tile = i; host.sound("hhmove"); }
         invalidate();
@@ -115,8 +132,7 @@ public class HomeView extends View {
             case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_BUTTON_START:
                 if (inCats) { inCats = false; host.sound("hhselect"); invalidate(); } else activate(); return true;
             case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_ESCAPE:
-                if (!inCats) inCats = true; else setCat(0);
-                host.sound("hhback"); invalidate(); return true;    // a home screen never closes
+                goBack(); return true;    // a home screen never closes
             case KeyEvent.KEYCODE_BUTTON_Y: case KeyEvent.KEYCODE_MENU: case KeyEvent.KEYCODE_BUTTON_SELECT:
                 if (kids) { if (e.getRepeatCount() == 0) e.startTracking(); return true; }   // only a long hold, see onKeyLongPress
                 setCat(Catalog.indexOf(cats, "settings")); inCats = false; return true;
@@ -146,41 +162,100 @@ public class HomeView extends View {
         return super.onGenericMotionEvent(e);
     }
 
+    /** Same as controller B: leave a prompt, or step back to the category row, then to the first section. */
+    private void goBack() {
+        if (prompt != null) { prompt = null; host.sound("hhback"); invalidate(); return; }
+        if (!inCats) inCats = true; else setCat(0);
+        host.sound("hhback"); invalidate();
+    }
+
+    private float maxScroll() {
+        float step = tileW() + tileGap();
+        if (step <= 1) return 0;
+        float vis = Math.max(1, (getWidth() - 2 * tilesLeft()) / step);
+        return Math.max(0, items().size() - vis);
+    }
+    private float clampScroll(float v) { float m = maxScroll(); return v < 0 ? 0 : v > m ? m : v; }
+
+    /** Seven taps, each within 0.9 s of the last, open the hidden parent menu (only useful while Lock mode is on). */
+    private void logoHit() {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - logoTapAt > 900) logoTaps = 0;
+        logoTapAt = now;
+        if (++logoTaps >= 7) { logoTaps = 0; host.logoSecret(); }
+    }
+
+    private void onTap(float x, float y, float H) {
+        if (prompt != null) {
+            if (promptOpen.contains(x, y)) { Catalog.Item it = prompt; prompt = null; host.open(it); }
+            else { prompt = null; host.sound("hhback"); }
+            invalidate(); return;
+        }
+        if (backBtn.contains(x, y)) { goBack(); return; }
+        if (logoTop.contains(x, y) || logoCenter.contains(x, y)) { logoHit(); return; }
+        if (y < catsBottom() && y > H * 0.12f) {
+            float cw = getWidth() / (float) Math.max(1, cats.size());
+            setCat((int) (x / cw)); inCats = false; return;
+        }
+        if (y > tilesTop() && y < tilesTop() + tileH()) {
+            float step = tileW() + tileGap();
+            int i = (int) Math.floor((x - tilesLeft() + scrollAnim * step) / step);
+            if (i >= 0 && i < items().size()) { inCats = false; tile = i; activate(); }   // one tap opens
+        }
+    }
+
     @Override public boolean onTouchEvent(MotionEvent e) {
         float x = e.getX(), y = e.getY(), H = getHeight();
         if (projector) { x = (x - getWidth() * SAFE) / (1 - 2 * SAFE); y = (y - H * SAFE) / (1 - 2 * SAFE); }
         switch (e.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN: if (splash != null) { splash = null; invalidate(); return true; }
-                downX = x; downY = y; dragging = false; dragTiles = 0; return true;
+            case MotionEvent.ACTION_DOWN:
+                if (splash != null) { splash = null; invalidate(); return true; }
+                downX = x; downY = y; lastTouchX = x; downTime = e.getEventTime();
+                rowDrag = false; sectionSwipe = false; gestureChose = false;
+                if (velocity != null) velocity.recycle();
+                velocity = VelocityTracker.obtain();
+                velocity.addMovement(e);
+                userScroll = false; flingV = 0;
+                return true;
             case MotionEvent.ACTION_MOVE:
-                if (Math.abs(x - downX) > 24 * s && y > tilesTop()) {
-                    dragging = true;
+                if (velocity != null) velocity.addMovement(e);
+                float dx = x - downX, dy = y - downY;
+                if (!gestureChose && Math.hypot(dx, dy) > 28 * s) {
+                    gestureChose = true;
+                    boolean horiz = Math.abs(dx) > Math.abs(dy) * 1.2f;
+                    boolean onTiles = downY > tilesTop() && downY < tilesTop() + tileH();
+                    if (!horiz) { /* a vertical rub is not a tap and not a section change */ }
+                    else if (!onTiles || maxScroll() < 0.5f) sectionSwipe = true;
+                    else {
+                        float vx = Math.abs(dx) / Math.max(1f, e.getEventTime() - downTime);   // px per ms
+                        if (vx > 1.15f) sectionSwipe = true;   // a flick changes section
+                        else rowDrag = true;
+                    }
+                }
+                if (rowDrag) {
                     float step = tileW() + tileGap();
-                    int moved = (int) ((downX - x) / step);
-                    if (moved != (int) dragTiles) { setTile(tile + moved - (int) dragTiles); dragTiles = moved; inCats = false; }
+                    userScroll = true; flingV = 0;
+                    scrollAnim = clampScroll(scrollAnim + (lastTouchX - x) / step);
+                    lastTouchX = x;
+                    invalidate();
                 }
                 return true;
             case MotionEvent.ACTION_UP:
-                if (dragging) return true;
-                if (prompt != null) {
-                    Catalog.Item it = prompt; prompt = null;
-                    if (y > H * 0.5f && x > getWidth() * 0.5f - 200 * s && x < getWidth() * 0.5f) host.open(it); else host.sound("hhback");
-                    invalidate(); return true;
+            case MotionEvent.ACTION_CANCEL:
+                if (velocity != null) { velocity.addMovement(e); velocity.computeCurrentVelocity(1000); }
+                boolean tap = e.getActionMasked() == MotionEvent.ACTION_UP && !gestureChose && Math.hypot(x - downX, y - downY) < 28 * s;
+                if (tap) onTap(x, y, H);
+                else if (sectionSwipe && e.getActionMasked() == MotionEvent.ACTION_UP) {
+                    if (x - downX < -40 * s) setCat(cat + 1);
+                    else if (x - downX > 40 * s) setCat(cat - 1);
+                } else if (rowDrag && e.getActionMasked() == MotionEvent.ACTION_UP && velocity != null) {
+                    float step = Math.max(1f, tileW() + tileGap());
+                    flingV = -velocity.getXVelocity() / step;   // finger left -> later tiles
+                    userScroll = Math.abs(flingV) > 0.15f;
+                    invalidate();
                 }
-                if (y < catsBottom() && y > H * 0.12f) {
-                    float cw = getWidth() / (float) cats.size();
-                    int c = (int) (x / cw);
-                    setCat(c); inCats = false; return true;
-                }
-                if (y > tilesTop() && y < tilesTop() + tileH()) {
-                    float step = tileW() + tileGap();
-                    int i = (int) Math.floor((x - tilesLeft() + scrollAnim * step) / step);
-                    if (i >= 0 && i < items().size()) {
-                        inCats = false;
-                        if (i == tile) activate(); else setTile(i);
-                    }
-                    return true;
-                }
+                if (velocity != null) { velocity.recycle(); velocity = null; }
+                rowDrag = false; sectionSwipe = false;
                 return true;
         }
         return super.onTouchEvent(e);
@@ -201,10 +276,15 @@ public class HomeView extends View {
     private static boolean gameRow(String id) { return id.equals("dreamcast") || id.equals("kdc") || id.equals("psp") || id.equals("kpsp"); }      // 0.9.5: portrait box-art tiles
     /** 0.10.6: the Featured / Kids Play row uses wide 16:9-ish covers (feature graphics, Roblox art). */
     private boolean wide() { String id = cats.get(cat).id; return id.equals("steam") || id.equals("kplay") || (kids && id.equals("kgames")); }
-    private float tileH() { return (wide() ? (kids ? 118 : 150) : covers() ? 190 : 112) * s * big(); }
-    private float tileW() { return (wide() ? (kids ? 220 : 266) : covers() ? 128 : 156) * s * big(); }
-    private float tileGap() { return 14 * s * big(); }
-    private float tilesTop() { return getHeight() - 80 * s - tileH(); }
+    private float tileH() { return (wide() ? (kids ? 118 : 164) : covers() ? 200 : 136) * s * big(); }
+    private float tileW() { return (wide() ? (kids ? 220 : 292) : covers() ? 144 : 188) * s * big(); }
+    private float tileGap() { return 16 * s * big(); }
+    /** Room for the on-screen Back button (at least 48dp) under the tiles. */
+    private float footH() {
+        float den = getResources().getDisplayMetrics().density;
+        return Math.max(78 * s, 56 * den);
+    }
+    private float tilesTop() { return getHeight() - footH() - tileH(); }
     private float tilesLeft() { return 24 * s; }
 
     // ---------- drawing ----------
@@ -234,11 +314,25 @@ public class HomeView extends View {
         if (anim) t += dt;
         float k = anim ? Math.min(1, dt * 12) : 1;          // easing towards the target
         catAnim += (cat - catAnim) * k;
-        float vis = Math.max(1, (int) ((W - 2 * tilesLeft()) / (tileW() + tileGap())));
-        float target = Math.max(0, Math.min(tile - (vis - 1) / 2f, items().size() - vis));
-        target = Math.max(0, Math.round(target));
-        if (Math.abs(target - scrollAnim) > 3) scrollAnim = target;
-        scrollAnim += (target - scrollAnim) * k;
+        float vis = Math.max(1, (W - 2 * tilesLeft()) / (tileW() + tileGap()));
+        float maxScroll = Math.max(0, items().size() - vis);
+        float focusTarget = Math.max(0, Math.min(tile - (vis - 1) / 2f, maxScroll));
+        boolean coast = userScroll;
+        if (userScroll) {
+            // Natural deceleration: speed falls off smoothly instead of stopping in one step.
+            scrollAnim += flingV * dt;
+            flingV *= (float) Math.exp(-3.2 * dt);
+            if (scrollAnim < 0) { scrollAnim = 0; flingV = 0; }
+            if (scrollAnim > maxScroll) { scrollAnim = maxScroll; flingV = 0; }
+            if (Math.abs(flingV) < 0.08f) {
+                userScroll = false; flingV = 0;
+                tile = Math.max(0, Math.min(items().size() - 1, Math.round(scrollAnim + (vis - 1) / 2f)));
+            }
+        } else {
+            float dist = focusTarget - scrollAnim;          // controller focus-follow: always ease, never jump
+            scrollAnim += dist * Math.min(1f, dt * (Math.abs(dist) > 1.5f ? 7f : 12f));
+            if (Math.abs(focusTarget - scrollAnim) < 0.002f) scrollAnim = focusTarget;
+        }
 
         background(c, W, H, anim);
         topBar(c, W, H);
@@ -249,7 +343,7 @@ public class HomeView extends View {
         if (prompt != null) prompt(c, W, H);
         if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
 
-        boolean settling = Math.abs(cat - catAnim) > 0.002f || Math.abs(target - scrollAnim) > 0.002f;
+        boolean settling = coast || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f;
         if (anim || settling) {
             if ("on".equals(fx) || settling) postInvalidateOnAnimation();
             else postInvalidateDelayed(33);                 // auto: 30 fps background on weak chips
@@ -465,9 +559,12 @@ public class HomeView extends View {
     }
 
     private void topBar(Canvas c, int W, int H) {
-        if (logo != null) { r.set(18 * s, 10 * s, 18 * s + 150 * s, 60 * s); p.setFilterBitmap(true); c.drawBitmap(logo, null, r, p); }
+        logoTop.set(18 * s, 10 * s, 18 * s + 150 * s, 60 * s);
+        if (logo != null) { p.setFilterBitmap(true); c.drawBitmap(logo, null, logoTop, p); }
         String st = host.status();
-        String right = clock.format(new Date()) + (st.isEmpty() ? "" : "   " + st);
+        long nowMs = System.currentTimeMillis();
+        if (clockTxt.isEmpty() || nowMs - clockAt > 1000) { clockAt = nowMs; clockTxt = clock.format(new Date()); }
+        String right = clockTxt + (st.isEmpty() ? "" : "   " + st);
         text(c, right, W - 24 * s, 36 * s, 20 * s, TXT, Paint.Align.RIGHT, false);
         p.setTextSize(20 * s);
         float wx = W - 24 * s - p.measureText(right) - 30 * s;
@@ -496,7 +593,8 @@ public class HomeView extends View {
         c.save(); c.scale(1f, 0.45f, cx, ly + lh / 2);     // soft theme-coloured glow behind the white logo
         p.setShader(new RadialGradient(cx, ly + lh / 2, 330 * s, 0x77000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
         c.drawCircle(cx, ly + lh / 2, 330 * s, p); p.setShader(null); c.restore();
-        if (logo != null) { r.set(cx - lw / 2, ly, cx + lw / 2, ly + lh); p.setFilterBitmap(true); c.drawBitmap(logo, null, r, p); }
+        logoCenter.set(cx - lw / 2, ly, cx + lw / 2, ly + lh);
+        if (logo != null) { p.setFilterBitmap(true); c.drawBitmap(logo, null, logoCenter, p); }
         float ty = ly + lh + 2 * s;
         if (T.embers) { heavy = true; p.setLetterSpacing(0.3f); text(c, "PHOENIX", cx, ty + 52 * s, 46 * s, GOLD, Paint.Align.CENTER, true); p.setLetterSpacing(0); heavy = false; }   // 0.10.27
         else if (!covers()) spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
@@ -507,7 +605,7 @@ public class HomeView extends View {
         float top = tilesTop(), w = tileW(), h = tileH(), gap = tileGap(), left = tilesLeft();
         for (int i = 0; i < its.size(); i++) {
             float x = left + (i - scrollAnim) * (w + gap);
-            if (x > W || x + w < 0) continue;
+            if (x > W || x + w < 0) continue;   // skip tiles that are off screen (nothing to recycle: this is one canvas)
             boolean sel = i == tile && !inCats;
             Catalog.Item it = its.get(i); badgeItem = it;
             float grow = sel ? 8 * s : 0;
@@ -529,7 +627,7 @@ public class HomeView extends View {
                     float px = r.centerX() + (float) Math.cos(a) * (w * 0.62f), py = r.centerY() + (float) Math.sin(a) * (h * 0.62f);
                     c.save(); c.rotate((float) Math.toDegrees(a) + 90, px, py);
                     p.setColor(k == 0 ? 0xFFFF4A4A : 0xFFFFD23F);
-                    RectF pill = new RectF(px - 9 * s, py - 4 * s, px + 9 * s, py + 4 * s);
+                    pill.set(px - 9 * s, py - 4 * s, px + 9 * s, py + 4 * s);
                     c.drawRoundRect(pill, 4 * s, 4 * s, p); c.restore();
                 }
             }
@@ -706,15 +804,24 @@ public class HomeView extends View {
     }
 
     private void hints(Canvas c, int W, int H) {
-        float y = H - 24 * s;
-        p.setColor(0x33FFFFFF); c.drawRect(0, H - 52 * s, W, H - 51 * s, p);
-        String[][] hs = {{"A", "Open"}, {"B", "Back"}, {"L1 R1", "Category"}, {"Y", "Settings"}};
-        float x = 24 * s;
+        float den = getResources().getDisplayMetrics().density;
+        float bh = Math.max(44 * s, 48 * den), bw = Math.max(96 * s, 88 * den);
+        float top = H - 8 * s - bh;
+        backBtn.set(16 * s, top, 16 * s + bw, top + bh);
+        p.setShader(null); p.setColor(0xF0141820); c.drawRoundRect(backBtn, 14 * s, 14 * s, p);
+        stroke.setShader(null); stroke.setStrokeWidth(2.2f * s); stroke.setColor(GOLD);
+        c.drawRoundRect(backBtn, 14 * s, 14 * s, stroke);
+        text(c, "Back", backBtn.centerX(), backBtn.centerY() + 7 * s, Math.max(16 * s, 14 * den), 0xFFFFFFFF, Paint.Align.CENTER, true);
+        float y = backBtn.centerY() + 6 * s;
+        p.setColor(0x33FFFFFF); c.drawRect(backBtn.right + 8 * s, backBtn.top, W, backBtn.top + 1, p);
+        String[][] hs = {{"A", "Open"}, {"L1 R1", "Category"}, {"Y", "Settings"}};
+        float x = backBtn.right + 16 * s;
         for (String[] hnt : hs) {
+            if (x > W - 150 * s) break;          // keep Online visible; the Back button is always drawn
             p.setTextSize(13 * s); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-            float bw = Math.max(26 * s, p.measureText(hnt[0]) + 14 * s);
+            float keyW = Math.max(26 * s, p.measureText(hnt[0]) + 14 * s);
             stroke.setStrokeWidth(1.6f * s); stroke.setColor(0xFFDDE7E1);
-            r.set(x, y - 18 * s, x + bw, y + 6 * s); c.drawRoundRect(r, 12 * s, 12 * s, stroke);
+            r.set(x, y - 18 * s, x + keyW, y + 6 * s); c.drawRoundRect(r, 12 * s, 12 * s, stroke);
             text(c, hnt[0], r.centerX(), y - 1.5f * s, 13 * s, 0xFFDDE7E1, Paint.Align.CENTER, true);
             text(c, hnt[1], r.right + 9 * s, y, 18 * s, 0xFFDDE7E1, Paint.Align.LEFT, false);
             p.setTextSize(18 * s);
@@ -728,12 +835,21 @@ public class HomeView extends View {
 
     private void prompt(Canvas c, int W, int H) {
         p.setColor(0xCC000000); c.drawRect(0, 0, W, H, p);
-        r.set(W / 2f - 300 * s, H / 2f - 110 * s, W / 2f + 300 * s, H / 2f + 110 * s);
-        p.setColor(T.prompt); c.drawRoundRect(r, 16 * s, 16 * s, p);
-        stroke.setColor(GOLD); stroke.setStrokeWidth(2 * s); c.drawRoundRect(r, 16 * s, 16 * s, stroke);
-        text(c, prompt.label + " is not installed", W / 2f, r.top + 56 * s, 26 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
-        text(c, "Get it from the Play Store, then come back here.", W / 2f, r.top + 96 * s, 17 * s, DIM, Paint.Align.CENTER, false);
-        text(c, "(A)  Open Play Store          (B)  Not now", W / 2f, r.bottom - 36 * s, 19 * s, GOLD, Paint.Align.CENTER, false);
+        r.set(W / 2f - 320 * s, H / 2f - 130 * s, W / 2f + 320 * s, H / 2f + 150 * s);
+        p.setShader(null); p.setColor(T.prompt); c.drawRoundRect(r, 16 * s, 16 * s, p);
+        stroke.setShader(null); stroke.setColor(GOLD); stroke.setStrokeWidth(2 * s); c.drawRoundRect(r, 16 * s, 16 * s, stroke);
+        text(c, prompt.label + " is not installed", W / 2f, r.top + 52 * s, 24 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        text(c, "Get it from the Play Store, then come back here.", W / 2f, r.top + 90 * s, 16 * s, DIM, Paint.Align.CENTER, false);
+        text(c, "A  open     B  back", W / 2f, r.top + 124 * s, 15 * s, GOLD, Paint.Align.CENTER, false);
+        float bw = 240 * s, bh = Math.max(48 * s, 48 * getResources().getDisplayMetrics().density), gap = 16 * s;
+        float yb = r.bottom - 22 * s - bh;
+        promptBack.set(W / 2f - gap / 2f - bw, yb, W / 2f - gap / 2f, yb + bh);
+        promptOpen.set(W / 2f + gap / 2f, yb, W / 2f + gap / 2f + bw, yb + bh);
+        p.setColor(0xFF1A2228); c.drawRoundRect(promptBack, 12 * s, 12 * s, p);
+        stroke.setColor(0xFFDDE7E1); c.drawRoundRect(promptBack, 12 * s, 12 * s, stroke);
+        text(c, "Back", promptBack.centerX(), promptBack.centerY() + 7 * s, 18 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        p.setColor(GOLD); c.drawRoundRect(promptOpen, 12 * s, 12 * s, p);
+        text(c, "Open Play Store", promptOpen.centerX(), promptOpen.centerY() + 7 * s, 18 * s, 0xFF101418, Paint.Align.CENTER, true);
     }
 
     /** Original line icons (consistent round stroke), drawn in a size x size box centred on cx, cy. */
@@ -831,6 +947,9 @@ public class HomeView extends View {
                 path.moveTo(x0 + 4 * u, y0 + 17 * u); path.lineTo(x0 + 10 * u, y0 + 11 * u); path.lineTo(x0 + 14 * u, y0 + 15 * u);
                 path.lineTo(x0 + 16 * u, y0 + 13 * u); path.lineTo(x0 + 20 * u, y0 + 17 * u); c.drawPath(path, stroke);
                 c.drawCircle(x0 + 16 * u, y0 + 9 * u, 1.5f * u, stroke); break;
+            case "phone":
+                ir.set(x0 + 7 * u, y0 + 2 * u, x0 + 17 * u, y0 + 22 * u); c.drawRoundRect(ir, 3 * u, 3 * u, stroke);
+                c.drawLine(x0 + 10 * u, y0 + 18 * u, x0 + 14 * u, y0 + 18 * u, stroke); break;
             default:
                 c.drawCircle(cx, cy, 8 * u, stroke);
         }

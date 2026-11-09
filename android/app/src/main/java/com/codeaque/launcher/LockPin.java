@@ -2,8 +2,14 @@ package com.codeaque.launcher;
 
 import java.security.SecureRandom;
 
-/** 0.10.21 Lock mode: the parent PIN (4-6 digits) is kept only as "salt:hash" (PBKDF2, 16-byte random salt), on the
- *  device, never sent anywhere. Plain Java so it is unit-tested on a PC. Also which apps Lock mode hides and blocks. */
+/** Parent PIN for Lock mode and the other parent screens. The PIN (4-6 digits, 1234 until changed) is kept only as
+ *  "salt:hash" (PBKDF2, 16-byte random salt) in CodeAque's own settings, on the device, never sent anywhere.
+ *  Plain Java so it is unit-tested on a PC.
+ *
+ *  0.10.29 lock is a soft lock inside CodeAque. It does not need root and it does not need device-owner provisioning.
+ *  What Android will not let an ordinary app block: the notification shade, quick settings, the power menu, and a
+ *  safe-mode boot (which can skip the home screen). Those need device-owner / lock-task, which this build does not
+ *  require, so a phone can always be recovered. */
 public final class LockPin {
     private LockPin() { }
     static final int ITER = 20000;

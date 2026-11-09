@@ -190,6 +190,15 @@ public class MainActivity extends Activity implements HomeView.Host {
             apps.add(it);
             if (isGame(r.activityInfo.applicationInfo) && !emuPkgs.contains(pkg)) games.add(it);
         }
+        if (locked()) {   // 0.10.29: no other launcher is listed, so it cannot be opened from inside CodeAque
+            java.util.Set<String> homes = new java.util.HashSet<>();
+            for (ResolveInfo h : pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0))
+                if (h.activityInfo != null) homes.add(h.activityInfo.packageName);
+            java.util.Iterator<Catalog.Item> it = apps.iterator();
+            while (it.hasNext()) { String pkg = it.next().pkg; if (homes.contains(pkg) && !pkg.equals(getPackageName())) it.remove(); }
+            it = games.iterator();
+            while (it.hasNext()) { String pkg = it.next().pkg; if (homes.contains(pkg) && !pkg.equals(getPackageName())) it.remove(); }
+        }
         java.util.Comparator<Catalog.Item> az = (x, y) -> x.label.compareToIgnoreCase(y.label);
         Collections.sort(apps, az); Collections.sort(games, az);
         List<Catalog.Item> emus = new ArrayList<>();
@@ -206,7 +215,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         List<Catalog.Category> cs = new ArrayList<>(kidsOn ? Catalog.kidsMode(allRoms, kidsNew, approved)
                 : Catalog.applyPlacements(Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()),
                         Catalog.placements(prefs.getStringSet("placed", null)), apps));
-        if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.22: Call & Text, phones only
+        if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.29: Phone / Messages in Kids mode and adult mode
+        if (locked()) cs = Catalog.applyLockMode(cs);   // Lock mode, Android settings and Home tiles disappear
         view.setCategories(cs);
         if (!romsScanned) { romsScanned = true; scanRoms(); }
     }
@@ -216,16 +226,15 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (!it.isDeviceApp()) return playArt(it, false);
         String k = it.key();
         if (icons.containsKey(k)) return icons.get(k);
-        android.graphics.Bitmap b = null;
-        try {
-            android.graphics.drawable.Drawable d = getPackageManager().getActivityIcon(new android.content.ComponentName(it.pkg, it.cls));
-            int px = (int) (64 * getResources().getDisplayMetrics().density);
-            b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+        final String pkg = it.pkg, cls = it.cls;
+        final int px = (int) (64 * getResources().getDisplayMetrics().density);
+        return decodeLater(icons, k, () -> {
+            android.graphics.drawable.Drawable d = getPackageManager().getActivityIcon(new android.content.ComponentName(pkg, cls));
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
             android.graphics.Canvas cv = new android.graphics.Canvas(b);
             d.setBounds(0, 0, px, px); d.draw(cv);
-        } catch (Exception ignored) { }
-        icons.put(k, b);
-        return b;
+            return b;
+        });
     }
 
     // ---------- 0.10.3: pictures from the game's own Google Play listing (runtime only, cached, never bundled) ----------
@@ -239,7 +248,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         String k = pkg + "#F";
         if (playArtCache.containsKey(k)) return playArtCache.get(k);
         java.io.File dir = new java.io.File(getCacheDir(), "playart"), f = PlayArt.featureFile(dir, pkg);
-        if (f.isFile()) { android.graphics.Bitmap b = decodeCover(f); playArtCache.put(k, b); return b; }
+        if (f.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(f));
         if (!PlayArt.missFile(dir, pkg).exists() && online() && fetching.add("play:" + pkg))
             new Thread(() -> {
                 boolean ok = PlayArt.fetch(PlayArt.PLAY, pkg, dir);
@@ -258,15 +267,14 @@ public class MainActivity extends Activity implements HomeView.Host {
         android.graphics.Bitmap ai = appIcon(it);
         if (ai == null && pkg != null && it.isDeviceApp()) ai = playIconFor(pkg);
         if (ai == null) return null;
-        String k = it.key() + "#" + System.identityHashCode(ai);
-        if (wideCache.containsKey(k)) return wideCache.get(k);
-        android.graphics.Bitmap b = iconBanner(ai);
-        wideCache.put(k, b);
-        return b;
+        String k = "wide:" + it.key() + "#" + ai.getWidth() + "x" + ai.getHeight();
+        final android.graphics.Bitmap src = ai;
+        return decodeLater(wideCache, k, () -> iconBanner(src));
     }
     private android.graphics.Bitmap playIconFor(String pkg) {
         java.io.File f = PlayArt.iconFile(new java.io.File(getCacheDir(), "playart"), pkg);
-        return f.isFile() ? decodeCover(f) : null;
+        if (!f.isFile()) return null;
+        return decodeLater(playArtCache, pkg + "#pi", () -> decodeCover(f));
     }
     static android.graphics.Bitmap iconBanner(android.graphics.Bitmap ai) {
         int W = 640, H = 344;
@@ -295,9 +303,9 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (playArtCache.containsKey(k)) return playArtCache.get(k);
         java.io.File dir = new java.io.File(getCacheDir(), "playart");
         java.io.File f = feature ? PlayArt.featureFile(dir, pkg) : PlayArt.iconFile(dir, pkg);
+        if (f.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(f));
         android.graphics.Bitmap b = null;
-        if (f.isFile()) b = decodeCover(f);
-        else if (!PlayArt.missFile(dir, pkg).exists() && online() && fetching.add("play:" + pkg))
+        if (!PlayArt.missFile(dir, pkg).exists() && online() && fetching.add("play:" + pkg))
             new Thread(() -> {
                 boolean ok = PlayArt.fetch(PlayArt.PLAY, pkg, dir);
                 runOnUiThread(() -> { fetching.remove("play:" + pkg); if (ok) { playArtCache.remove(pkg + "#i"); playArtCache.remove(pkg + "#f"); } else { playArtCache.put(pkg + "#i", null); playArtCache.put(pkg + "#f", null); } view.invalidate(); });
@@ -318,9 +326,16 @@ public class MainActivity extends Activity implements HomeView.Host {
         int own = it == Catalog.MARVEL_RIVALS ? R.drawable.duat_realm_s1 : it == Catalog.MINECRAFT ? R.drawable.duat_realm_blocks
                 : it == Catalog.ROBLOX ? R.drawable.duat_realm_bricks : 0;   // 0.10.6: Hoodlum Asylum's own "Duat Realm" art, logos cropped out
         if (own != 0) {
-            if (!ownArt.containsKey(own)) ownArt.put(own, android.graphics.BitmapFactory.decodeResource(getResources(), own));
-            android.graphics.Bitmap b = ownArt.get(own); if (b != null) return b;
+            if (ownArt.containsKey(own)) return ownArt.get(own);
+            final int id = own;
+            if (fetching.add("res:" + id)) new Thread(() -> {
+                android.graphics.Bitmap b = null;
+                try { b = android.graphics.BitmapFactory.decodeResource(getResources(), id); } catch (Exception ignored) { }
+                android.graphics.Bitmap fb = b;
+                runOnUiThread(() -> { ownArt.put(id, fb); fetching.remove("res:" + id); view.invalidate(); });
+            }).start();
             if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
+            return null;
         }
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp() && launchIntent(it) == null) return playArt(it, true);   // 0.10.3
         android.graphics.Bitmap b = null;
@@ -328,21 +343,22 @@ public class MainActivity extends Activity implements HomeView.Host {
             Intent li = launchIntent(it);
             if (li != null && li.getComponent() != null) it = Catalog.deviceApp(it.label, li.getComponent().getPackageName(), li.getComponent().getClassName());
         }
-        if (it.isDeviceApp()) {                  // the game's own TV banner, when it has one
-            try {
-                PackageManager pm = getPackageManager();
-                android.graphics.drawable.Drawable d = pm.getActivityBanner(new android.content.ComponentName(it.pkg, it.cls));
-                if (d == null) d = pm.getApplicationBanner(it.pkg);
-                if (d != null) {
-                    int w = Math.max(1, d.getIntrinsicWidth() > 0 ? d.getIntrinsicWidth() : 320), h = Math.max(1, d.getIntrinsicHeight() > 0 ? d.getIntrinsicHeight() : 180);
-                    b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
-                    d.setBounds(0, 0, w, h); d.draw(new android.graphics.Canvas(b));
-                }
-            } catch (Exception ignored) { }
+        if (it.isDeviceApp()) {                  // the game's own TV banner, decoded off the UI thread
+            final String pkg = it.pkg, cls = it.cls, ck = k;
+            return decodeLater(coverCache, ck, () -> {
+                android.graphics.drawable.Drawable d = getPackageManager().getActivityBanner(new android.content.ComponentName(pkg, cls));
+                if (d == null) d = getPackageManager().getApplicationBanner(pkg);
+                if (d == null) return null;
+                int w = Math.max(1, d.getIntrinsicWidth() > 0 ? Math.min(d.getIntrinsicWidth(), 640) : 320);
+                int h = Math.max(1, d.getIntrinsicHeight() > 0 ? Math.min(d.getIntrinsicHeight(), 360) : 180);
+                android.graphics.Bitmap banner = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+                d.setBounds(0, 0, w, h); d.draw(new android.graphics.Canvas(banner));
+                return banner;
+            });
         } else if (it.isRom() && it.boxart() != null) {
             java.io.File f = coverFile(it);
-            if (f.isFile()) b = decodeCover(f);
-            else { fetchCover(it, f); return null; }           // not cached yet: fetched in the background, shown when it arrives
+            if (f.isFile()) return decodeLater(coverCache, k, () -> decodeCover(f));
+            fetchCover(it, f); return null;           // not cached yet: fetched in the background, shown when it arrives
         }
         coverCache.put(k, b);
         return b;
@@ -417,6 +433,21 @@ public class MainActivity extends Activity implements HomeView.Host {
         return new java.io.File(dir, Integer.toHexString(it.boxart().hashCode()) + ".png");
     }
 
+    /** Puts the bitmap in cache on the UI thread when the background decode finishes. A miss is cached too, so a
+     *  bad file is not decoded again on every frame. Never call BitmapFactory on the UI thread from the draw path. */
+    private android.graphics.Bitmap decodeLater(Map<String, android.graphics.Bitmap> cache, String key, java.util.concurrent.Callable<android.graphics.Bitmap> job) {
+        if (cache.containsKey(key)) return cache.get(key);
+        if (!fetching.add("dec:" + key)) return null;
+        new Thread(() -> {
+            android.graphics.Bitmap b = null;
+            try { b = job.call(); } catch (Exception ignored) { }
+            android.graphics.Bitmap fb = b;
+            runOnUiThread(() -> { cache.put(key, fb); fetching.remove("dec:" + key); if (view != null) view.invalidate(); });
+        }).start();
+        return null;
+    }
+
+    /** Downsamples so the long side is about 400px. Background thread only. */
     private android.graphics.Bitmap decodeCover(java.io.File f) {
         android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options(); o.inJustDecodeBounds = true;
         android.graphics.BitmapFactory.decodeFile(f.getPath(), o);
@@ -529,7 +560,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                     && !(it.isDeviceApp() && prefs.getStringSet("kidsApproved", Collections.<String>emptySet()).contains(it.pkg))) { toast("Not available in Kids mode."); return; }   // 0.10.24; 0.10.27: parent-approved apps open
             if (kidsPinGate(it)) { askPin("Parent PIN", () -> open(it)); return; }   // 0.10.23
             if (it.isAction()) {
-                if (locked() && LockPin.needsPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }   // 0.10.21
+                if (mustPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }
                 action(it.action); return;
             }
             if (locked() && it.isDeviceApp() && LockPin.blocked(it.pkg)) { toast("Locked by a parent."); return; }
@@ -566,6 +597,12 @@ public class MainActivity extends Activity implements HomeView.Host {
         return Catalog.opensStore(it, installed(it));
     }
     private boolean locked() { return prefs.getBoolean("lockMode", false) && prefs.getString("lockPin", null) != null; }
+    /** Safe contacts and Downloads always ask for the parent PIN. Everything else uses the lock list only while Lock mode is on. */
+    private boolean mustPin(String action) {
+        if (action == null) return false;
+        if (action.equals("safecontacts") || action.equals("downloads") || action.equals("blockunknown") || action.equals("safeonly")) return true;
+        return locked() && LockPin.needsPin(action);
+    }
     /** A correct PIN opens grown-up things for 2 minutes. */
     private boolean pinFresh() { return android.os.SystemClock.elapsedRealtime() < pinOkUntil; }
 
@@ -623,9 +660,36 @@ public class MainActivity extends Activity implements HomeView.Host {
         // 0.10.23: Lock mode uses the parent PIN (1234 until changed in Settings > Change PIN); asked before turning on
         askPin("Turn on Lock mode", () -> {
             prefs.edit().putBoolean("lockMode", true).apply();
-            pinOkUntil = 0; rescan(); lockResume();
-            toast((deviceOwner() ? "Lock mode is on (full kiosk)." : "Lock mode is on.") + (pinIsDefault() ? " Still using 1234 - change it in Settings." : ""));
+            pinOkUntil = 0; rescan();
+            toast("Lock mode is on. That option is now hidden. Tap the CodeAque logo 7 times quickly, then enter the PIN, to turn it off or open Android settings."
+                    + (pinIsDefault() ? " Still using 1234 - change it in Settings, Change PIN." : ""));
+            // No root and no device-owner needed. If CodeAque is not already the home screen, the parent picks it
+            // and taps Always. start() would refuse this while locked, so this parent step opens the screen directly.
+            if (!isDefaultHome()) {
+                homePromptShown = true;
+                makeHome(false);
+                toast("Pick CodeAque and tap Always, so it stays the home screen.");
+                try { startActivity(new Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+                catch (Exception e) { toast("Home settings are not available on this device."); }
+            }
+            lockResume();
         });
+    }
+
+    /** Hidden parent escape (logo tapped 7 times). Wrong PINs use the same short cooldown as every other PIN prompt. */
+    @Override public void logoSecret() {
+        if (!locked()) return;
+        askPin("Parent PIN", () -> dlg().setTitle("Parent")
+                .setItems(new String[]{"Turn off Lock Mode", "Open Android Settings"}, (d, w) -> {
+                    if (w == 0) {
+                        prefs.edit().putBoolean("lockMode", false).apply();
+                        kioskOff(); rescan(); toast("Lock mode is off.");
+                    } else {
+                        // Only after the right PIN. The shade and a safe-mode boot still cannot be blocked here.
+                        try { startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+                        catch (Exception e) { toast("Android settings could not be opened on this device."); }
+                    }
+                }).setNegativeButton("Cancel", null).show());
     }
 
     // ---------- 0.10.23 parent PIN: 1234 out of the box (stored hashed), Settings > Change PIN ----------
@@ -721,27 +785,43 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void saveSafe(List<SafeContacts.Contact> l) { prefs.edit().putString("safeContacts", SafeContacts.write(l)).apply(); }
     private android.app.AlertDialog.Builder dlg() { return new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert); }
 
-    /** The kid's Call & Text tile: only the safe contacts, big Call and Text buttons. No way to type a number. */
+    private android.widget.LinearLayout col() {
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int) (12 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, pad);
+        return box;
+    }
+    private android.widget.Button bigButton(String label) {
+        android.widget.Button b = new android.widget.Button(this);
+        b.setText(label); b.setAllCaps(false); b.setTextSize(22);
+        b.setMinHeight((int) (64 * getResources().getDisplayMetrics().density));
+        return b;
+    }
+
+    /** Kids mode Phone / Messages: only the safe contacts. A tap calls or texts that one number. No keypad, no other people. */
     private void callText() {
-        List<SafeContacts.Contact> l = safeList();
         if (!hasPhone()) { toast("This device can't make calls."); return; }
-        if (l.isEmpty()) { toast("No safe contacts yet. Ask a parent to add some in Settings > Safe contacts."); return; }
-        String[] names = new String[l.size()];
-        for (int i = 0; i < names.length; i++) names[i] = l.get(i).name;
-        dlg().setTitle("Call & Text").setItems(names, (d, w) -> {
-            SafeContacts.Contact c = l.get(w);
-            android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
-            int pad = (int) (16 * getResources().getDisplayMetrics().density); box.setPadding(pad, pad, pad, pad);
-            AlertDialog[] self = new AlertDialog[1];
-            for (String which : new String[]{"CALL", "TEXT"}) {
-                android.widget.Button b = new android.widget.Button(this);
-                b.setText((which.equals("CALL") ? "\uD83D\uDCDE  Call " : "\uD83D\uDCAC  Text ") + c.name);
-                b.setTextSize(26); b.setAllCaps(false); b.setMinHeight(pad * 5);
-                b.setOnClickListener(v -> { if (self[0] != null) self[0].dismiss(); if (which.equals("CALL")) safeCall(c); else safeText(c); });
-                box.addView(b);
-            }
-            self[0] = dlg().setTitle(c.name).setView(box).setNegativeButton("Back", null).show();
-        }).setNegativeButton("Close", null).show();
+        List<SafeContacts.Contact> l = safeList();
+        if (l.isEmpty()) { toast("No safe contacts yet. A parent can add some in Settings, Safe contacts."); return; }
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        android.widget.LinearLayout box = col();
+        for (SafeContacts.Contact c : l) {
+            android.widget.Button b = bigButton(c.name + "\n" + c.number);
+            b.setOnClickListener(v -> contactActions(c));
+            box.addView(b);
+        }
+        sv.addView(box);
+        dlg().setTitle("Phone / Messages").setView(sv).setNegativeButton("Back", null).show();
+    }
+    private void contactActions(SafeContacts.Contact c) {
+        android.widget.LinearLayout box = col();
+        android.widget.Button call = bigButton("Call " + c.name), text = bigButton("Text " + c.name);
+        AlertDialog[] self = new AlertDialog[1];
+        call.setOnClickListener(v -> { if (self[0] != null) self[0].dismiss(); safeCall(c); });
+        text.setOnClickListener(v -> { if (self[0] != null) self[0].dismiss(); safeText(c); });
+        box.addView(call); box.addView(text);
+        self[0] = dlg().setTitle(c.name).setMessage("Only this number. There is no keypad.").setView(box).setNegativeButton("Back", null).show();
     }
 
     private String[] phoneApps() {
@@ -761,23 +841,64 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (checkSelfPermission(android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
             safeLaunch(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + c.number))); return;
         }
-        pendingCall = c;
-        requestPermissions(new String[]{android.Manifest.permission.CALL_PHONE}, REQ_CALL);
+        dlg().setTitle("Allow calls?")
+                .setMessage("CodeAque asks to call " + c.name + " itself, so the number cannot be changed. If you say no, the phone app opens with this number filled in, and that app may show its own keypad.")
+                .setPositiveButton("Continue", (d, w) -> { pendingCall = c; requestPermissions(new String[]{android.Manifest.permission.CALL_PHONE}, REQ_CALL); })
+                .setNegativeButton("Back", null).show();
     }
     private void safeText(SafeContacts.Contact c) { safeLaunch(new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + c.number))); }
 
-    /** Parent screen (PIN asked by open() while Lock mode is on): the list, tap one to remove it, Add, Import. */
+    /** Parent screen, always behind the PIN: add, edit and remove. Stored only on this phone. */
     private void safeContacts() {
         List<SafeContacts.Contact> l = safeList();
-        String[] rows = new String[l.size()];
-        for (int i = 0; i < rows.length; i++) rows[i] = l.get(i).name + "   " + l.get(i).number;
-        dlg().setTitle("Safe contacts (" + l.size() + ")")
-                .setItems(rows, (d, w) -> dlg().setTitle("Remove " + l.get(w).name + "?")
-                        .setPositiveButton("Remove", (d2, w2) -> { l.remove(w); saveSafe(l); safeContacts(); })
-                        .setNegativeButton("Keep", (d2, w2) -> safeContacts()).show())
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        android.widget.LinearLayout box = col();
+        if (l.isEmpty()) {
+            android.widget.TextView t = new android.widget.TextView(this);
+            t.setText("No safe contacts yet. Add a name and a number. They stay on this phone.");
+            t.setTextSize(18); box.addView(t);
+        }
+        for (int i = 0; i < l.size(); i++) {
+            int index = i;
+            android.widget.Button b = bigButton(l.get(i).name + "\n" + l.get(i).number);
+            b.setOnClickListener(v -> contactMenu(index));
+            box.addView(b);
+        }
+        sv.addView(box);
+        dlg().setTitle("Safe contacts").setView(sv)
                 .setPositiveButton("Add", (d, w) -> addSafe())
                 .setNeutralButton("Import from phone", (d, w) -> importSafe())
-                .setNegativeButton("Done", (d, w) -> rescan()).show();
+                .setNegativeButton("Back", null).show();
+    }
+    private void contactMenu(int index) {
+        List<SafeContacts.Contact> l = safeList();
+        if (index < 0 || index >= l.size()) { safeContacts(); return; }
+        SafeContacts.Contact c = l.get(index);
+        dlg().setTitle(c.name)
+                .setPositiveButton("Edit", (d, w) -> editSafe(index))
+                .setNeutralButton("Remove", (d, w) -> {
+                    List<SafeContacts.Contact> cur = safeList();
+                    if (index >= 0 && index < cur.size()) { cur.remove(index); saveSafe(cur); toast("Removed."); }
+                    safeContacts();
+                })
+                .setNegativeButton("Back", (d, w) -> safeContacts()).show();
+    }
+    private void editSafe(int index) {
+        List<SafeContacts.Contact> l = safeList();
+        if (index < 0 || index >= l.size()) { safeContacts(); return; }
+        SafeContacts.Contact c = l.get(index);
+        android.widget.LinearLayout box = col();
+        android.widget.EditText n = new android.widget.EditText(this), num = new android.widget.EditText(this);
+        n.setHint("Name"); num.setHint("Phone number"); num.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+        n.setText(c.name); num.setText(c.number);
+        box.addView(n); box.addView(num);
+        dlg().setTitle("Edit " + c.name).setView(box)
+                .setPositiveButton("Save", (d, w) -> {
+                    List<SafeContacts.Contact> cur = safeList();
+                    if (SafeContacts.update(cur, index, n.getText().toString(), num.getText().toString())) { saveSafe(cur); toast("Saved."); }
+                    else toast("That number doesn't look right, or it is already in the list. Nothing was changed.");
+                    safeContacts();
+                }).setNegativeButton("Back", (d, w) -> safeContacts()).show();
     }
     private void addSafe() {
         android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
@@ -837,8 +958,11 @@ public class MainActivity extends Activity implements HomeView.Host {
         else if (req == REQ_CALL && pendingCall != null) {
             SafeContacts.Contact c = pendingCall; pendingCall = null;
             if (ok) safeLaunch(new Intent(Intent.ACTION_CALL, Uri.parse("tel:" + c.number)));
-            else if (!locked()) safeLaunch(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + c.number)));   // fallback: the dialer, number filled in
-            else toast("Calls need a parent to allow them (the phone permission).");
+            else {
+                // Permission denied: Android's own phone app, number filled in. It may show a keypad. That is an Android limit.
+                toast("Calls were not allowed, so the phone app opens with this number. It may show its own keypad.");
+                safeLaunch(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + c.number)));
+            }
         }
     }
 
@@ -848,6 +972,31 @@ public class MainActivity extends Activity implements HomeView.Host {
         kioskOff();
         try { ((android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE)).clearDeviceOwnerApp(getPackageName()); toast("Full kiosk removed."); }
         catch (Exception e) { toast("Could not remove it: " + e.getMessage()); }
+    }
+
+    /** Adult-mode Downloads. LibreTorrent if it is installed, otherwise its Play Store or F-Droid page.
+     *  Never a ROM, piracy or IPTV link. The tile is not in Kids mode; this refuses as well. */
+    private void openDownloads() {
+        if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }
+        Intent launch = null;
+        try { launch = getPackageManager().getLaunchIntentForPackage(Catalog.LIBRETORRENT); } catch (Exception ignored) { }
+        if (launch != null) { start(launch); return; }
+        dlg().setTitle("Downloads")
+                .setMessage("LibreTorrent is not installed. Open its store page? CodeAque does not add any other download sites.")
+                .setPositiveButton("Play Store", (d, w) -> openStorePage(true))
+                .setNeutralButton("F-Droid", (d, w) -> openStorePage(false))
+                .setNegativeButton("Back", null).show();
+    }
+    private void openStorePage(boolean play) {
+        String pkg = Catalog.LIBRETORRENT;
+        if (play) {
+            try { start(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg))); }
+            catch (ActivityNotFoundException e) {
+                start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)));
+            }
+        } else {
+            start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://f-droid.org/packages/" + pkg + "/")));
+        }
     }
 
     private void store(String pkg) {
@@ -897,6 +1046,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 prefs.edit().putBoolean("kidsMode", true).apply(); rescan(); toast("Kids mode is on. Leaving it needs the parent PIN."); break;
             case "lock": lockToggle(); break;              // 0.10.21
+            case "downloads": openDownloads(); break;      // 0.10.29 adult only, PIN already asked
             case "changepin": changePin(); break;          // 0.10.23
             case "calltext": callText(); break;            // 0.10.22 Safe contacts
             case "safecontacts": safeContacts(); break;
@@ -923,7 +1073,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         List<ResolveInfo> ri = pm.queryIntentActivities(q, 0);
         final List<String[]> apps = new ArrayList<>();
-        for (ResolveInfo r : ri) if (!r.activityInfo.packageName.equals(getPackageName()) && !(locked() && LockPin.blocked(r.activityInfo.packageName)))
+        for (ResolveInfo r : ri) if (!r.activityInfo.packageName.equals(getPackageName()) && !(locked() && (LockPin.blocked(r.activityInfo.packageName) || otherHome(r.activityInfo.packageName))))
             apps.add(new String[]{r.loadLabel(pm).toString(), r.activityInfo.packageName, r.activityInfo.name});
         Collections.sort(apps, (x, y) -> x[0].compareToIgnoreCase(y[0]));
         String[] names = new String[apps.size()];
@@ -1551,7 +1701,10 @@ public class MainActivity extends Activity implements HomeView.Host {
     private android.graphics.Bitmap rivalsHeader() {
         if (rivalsPic != null) return rivalsPic;
         java.io.File f = new java.io.File(new java.io.File(getCacheDir(), "playart"), "steam-2767030.header.jpg");
-        if (f.isFile()) return rivalsPic = decodeCover(f);
+        if (f.isFile()) {
+            if (rivalsPic != null) return rivalsPic;
+            return decodeLater(coverCache, "rivals-header", () -> { rivalsPic = decodeCover(f); return rivalsPic; });
+        }
         if (!rivalsTried && online()) {
             rivalsTried = true;
             new Thread(() -> { f.getParentFile().mkdirs(); boolean ok = PlayArt.save(Catalog.RIVALS_HEADER, f); if (ok) runOnUiThread(view::invalidate); }).start();
@@ -1862,23 +2015,30 @@ public class MainActivity extends Activity implements HomeView.Host {
         loadWallpaper();
     }
 
-    /** Decodes the chosen picture at about screen size, so a big photo costs a few MB, not hundreds. */
+    /** Decodes the chosen picture off the UI thread, at about screen size, so a big photo costs a few MB, not hundreds. */
     private void loadWallpaper() {
         String s = prefs.getString("wallpaper", null);
         if (s == null) { view.setWallpaper(null); return; }
-        try {
-            Uri u = Uri.parse(s);
-            android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
-            o.inJustDecodeBounds = true;
-            try (java.io.InputStream in = getContentResolver().openInputStream(u)) { android.graphics.BitmapFactory.decodeStream(in, null, o); }
-            int maxSide = Math.max(getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels);
-            o.inSampleSize = Catalog.sampleSize(Math.max(o.outWidth, o.outHeight), maxSide);
-            o.inJustDecodeBounds = false;
-            try (java.io.InputStream in = getContentResolver().openInputStream(u)) { view.setWallpaper(android.graphics.BitmapFactory.decodeStream(in, null, o)); }
-        } catch (Exception e) {
-            prefs.edit().remove("wallpaper").apply(); view.setWallpaper(null);
-            Toast.makeText(this, "Could not open that picture", Toast.LENGTH_SHORT).show();
-        }
+        final int maxSide = Math.max(getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels);
+        new Thread(() -> {
+            try {
+                Uri u = Uri.parse(s);
+                android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                try (java.io.InputStream in = getContentResolver().openInputStream(u)) { android.graphics.BitmapFactory.decodeStream(in, null, o); }
+                o.inSampleSize = Catalog.sampleSize(Math.max(o.outWidth, o.outHeight), maxSide);
+                o.inJustDecodeBounds = false;
+                android.graphics.Bitmap b;
+                try (java.io.InputStream in = getContentResolver().openInputStream(u)) { b = android.graphics.BitmapFactory.decodeStream(in, null, o); }
+                android.graphics.Bitmap fb = b;
+                runOnUiThread(() -> view.setWallpaper(fb));
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    prefs.edit().remove("wallpaper").apply(); view.setWallpaper(null);
+                    Toast.makeText(this, "Could not open that picture", Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
     }
 
     @Override public void sound(String n) {

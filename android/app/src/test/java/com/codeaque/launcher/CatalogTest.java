@@ -125,6 +125,26 @@ public class CatalogTest {
             Catalog.updateAvailable = true; check(Catalog.showsUpdateBadge(Catalog.KIDS_UPDATE) && !Catalog.showsUpdateBadge(Catalog.KIDS_WIFI), "badge");
             Catalog.updateAvailable = false; Catalog.VERSION = "?";
         }
+        {   // 0.10.29 touch-era parent tools: Downloads, Lock mode tile hides, Phone / Messages, edit a safe contact
+            check(Catalog.LIBRETORRENT.equals("org.proninyaroslav.libretorrent") && "downloads".equals(Catalog.DOWNLOADS.action), "libretorrent");
+            check(Catalog.kidsBlocked(Catalog.DOWNLOADS) && !Catalog.kidsBlocked(Catalog.CALL_TEXT), "downloads never in kids, phone is allowed");
+            check("Phone / Messages".equals(Catalog.CALL_TEXT.label) && "calltext".equals(Catalog.CALL_TEXT.action), "phone tile");
+            java.util.List<String> parentActs = new java.util.ArrayList<>();
+            for (Catalog.Item i : c.get(Catalog.indexOf(c, "settings")).items) parentActs.add(i.action);
+            check(parentActs.contains("downloads") && parentActs.contains("lock") && parentActs.contains("safecontacts") && parentActs.contains("settings"), "parent tiles present before lock");
+            java.util.List<Catalog.Category> locked = Catalog.applyLockMode(c);
+            java.util.List<String> left = new java.util.ArrayList<>();
+            for (Catalog.Item i : locked.get(Catalog.indexOf(locked, "settings")).items) left.add(i.action);
+            check(!left.contains("lock") && !left.contains("settings") && !left.contains("home") && left.contains("downloads") && left.contains("changepin") && left.contains("safecontacts"), "lock hides the exits " + left);
+            check(Catalog.hiddenInLock("lock") && Catalog.hiddenInLock("settings") && !Catalog.hiddenInLock("wifi") && !Catalog.hiddenInLock("downloads"), "hidden actions");
+            for (Catalog.Category k : Catalog.kidsMode()) for (Catalog.Item i : k.items) check(!"downloads".equals(i.action), "no downloads row in kids");
+            check(LockPin.needsPin("downloads") && LockPin.needsPin("safecontacts") && !LockPin.needsPin("calltext"), "downloads and safe contacts need the PIN when locked");
+            java.util.List<SafeContacts.Contact> people = new java.util.ArrayList<>();
+            check(SafeContacts.add(people, "Mum", "07700900123") && SafeContacts.update(people, 0, "Mummy", "07700900123") && people.get(0).name.equals("Mummy"), "edit name");
+            check(SafeContacts.update(people, 0, "Dad", "+447700900999") && people.get(0).number.equals("+447700900999"), "edit number");
+            check(!SafeContacts.update(people, 0, "X", "12") && people.get(0).name.equals("Dad") && !SafeContacts.update(people, 5, "Z", "07700900111") && !SafeContacts.update(null, 0, "A", "07700900111"), "bad edit refused");
+            check(SafeContacts.add(people, "Nan", "07700900456") && !SafeContacts.update(people, 1, "Nan2", "07700900999".substring(0, 0) + people.get(0).number), "cannot steal another number");
+        }
         System.out.println("CatalogTest: all checks passed");
     }
 

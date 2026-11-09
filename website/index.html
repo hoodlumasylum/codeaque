@@ -3,142 +3,106 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeAque — game launcher for PC, handhelds and Android</title>
-<meta name="description" content="CodeAque: one gamepad-friendly home for cloud gaming, retro emulators and streaming. Free for PC (dual boot), Win600 handhelds and Android.">
-<meta property="og:title" content="CodeAque">
-<meta property="og:description" content="Gaming, cloud, emulation and streaming in one gamepad-friendly launcher.">
-<meta property="og:image" content="https://codeaque.com/img/hero.jpg">
+<title>CodeAque Phone</title>
+<meta name="description" content="The CodeAque Phone is a kids gaming phone that runs CodeAque. Games-only Kids mode, themes, a parent PIN, Lock Mode and Safe Contacts.">
+<meta property="og:title" content="CodeAque Phone">
+<meta property="og:description" content="A kids gaming phone that runs CodeAque. Not on sale yet.">
+<meta property="og:image" content="https://codeaque.com/assets/poster.jpg">
 <link rel="icon" href="img/favicon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<video class="hero-video" autoplay muted loop playsinline preload="metadata" poster="assets/poster.jpg" width="1280" height="720">
+  <source src="assets/promo.mp4" type="video/mp4">
+</video>
+
 <header class="nav">
   <a href="#top" class="brand"><img src="img/logo.png" alt="CodeAque"></a>
   <nav>
-    <a href="#live">News</a><a href="#pc">PC</a><a href="#handheld">Handheld</a><a href="#android">Android</a><a href="#shots">Screenshots</a><a href="#usb" class="pill">USB</a>
+    <a href="#phone">Phone</a>
+    <a href="#kids">Kids mode</a>
+    <a href="#themes">Themes</a>
+    <a href="#features">Features</a>
+    <a href="#specs">Specs</a>
   </nav>
 </header>
 
-<section id="top" class="hero">
-  <img class="hero-art" src="img/hero.jpg" alt="CodeAque splash screen: INITIALISING SYSTEM">
-  <div class="hero-text">
-    <h1>Your games. One home.</h1>
-    <p>Cloud gaming, retro emulators and streaming in one launcher you drive with a gamepad — on PC, Win600 handhelds and Android.</p>
-    <div class="cta">
-      <a class="btn primary" href="#pc">Download for PC</a>
-      <a class="btn" href="https://github.com/hoodlumasylum/codeaque/releases/latest/download/codeaque-launcher.apk">Download for Android / Projector / TV box</a>
-    </div>
+<main id="top">
+<section id="phone" class="card">
+  <h1>The CodeAque Phone</h1>
+  <p class="lead">A kids gaming phone that runs CodeAque. Big tiles, a controller or a finger, and a parent PIN for the things only a grown-up should open.</p>
+  <div class="photos">
+    <figure><img src="img/phone-blue.jpg" alt="CodeAque Phone in blue, seen from the back" width="960" height="960"><figcaption>Blue</figcaption></figure>
+    <figure><img src="img/phone-silver.jpg" alt="CodeAque Phone in silver, seen from the back" width="960" height="960"><figcaption>Silver</figcaption></figure>
+    <figure><img src="img/box.jpg" alt="Red CodeAque retail box with the CodeAque logo" width="1004" height="1004"><figcaption>The box</figcaption></figure>
   </div>
+  <p>Kids mode is games only, with big tiles that are easy to tap. A parent sets who the child can call, and can keep CodeAque as the screen the phone opens on.</p>
 </section>
 
-<main>
-<section id="live" class="card live">
-  <span class="tag">NEW</span>
-  <img class="live-logo" src="img/logo.png" alt="CODEAQUE">
-  <h2>CodeAque is live 🎮</h2>
-  <p class="lead">A brand-new gaming system built for players. Boot your PC straight into a console-style home screen: your games, cloud gaming and emulators in one place. Pick a theme (Neon, Power Up, Catch, or the new Christmas snow) and update everything with one tap.</p>
-  <h3>Works on</h3>
-  <ul class="works">
-    <li><strong>Windows PCs and laptops</strong> (64-bit Intel/AMD) with dual-boot, so Windows stays safe</li>
-    <li><strong>Android phones and handhelds</strong> via the CodeAque app</li>
-    <li><strong>Handheld gaming PCs</strong> like the Anbernic Win600 <span class="soon">coming soon</span></li>
+<section id="kids" class="card">
+  <h2>Kids mode</h2>
+  <p class="lead">Games only, on big tiles. Streaming apps are not shown here. This is not a monitor for other apps.</p>
+  <figure class="wide"><img src="img/phoenix.jpg" alt="CodeAque home screen with the Phoenix theme and the Themes section selected" width="1600" height="714"><figcaption>Phoenix theme, with Themes selected</figcaption></figure>
+  <ul>
+    <li><strong>Kids Mode button.</strong> One tap on the big Kids Mode button turns Kids mode on. No PIN is needed to go in.</li>
+    <li><strong>Parent PIN.</strong> Leaving Kids mode needs the parent PIN. Opening the Play Store from Kids mode needs it too. The PIN starts as 1234 until a parent changes it in Settings, Change PIN. It is stored only on the phone, as a salted hash.</li>
+    <li><strong>Play Store.</strong> The Play Store tile is there, behind that PIN, so a parent can add a game. The child does not get a keypad for the phone, and does not get every app on the device.</li>
   </ul>
-  <p>Download free at <a href="#pc">codeaque.com</a>, or grab the <a href="#usb">CodeAque USB on TikTok Shop</a>, dropping December.</p>
-  <div class="cta left">
-    <a class="btn primary" href="#pc">Download free</a>
-    <a class="btn" href="#tiktok">CodeAque USB on TikTok Shop</a>
+</section>
+
+<section id="themes" class="card">
+  <h2>Themes</h2>
+  <p class="lead">Phoenix, and the other CodeAque looks. Kids can change the look from the Themes tile. It changes colours and art only.</p>
+  <figure class="wide"><img src="img/themes.jpg" alt="CodeAque Themes screen with the theme choices along the top" width="1600" height="714"><figcaption>The Themes screen</figcaption></figure>
+  <p>The looks include Phoenix, Neon, Power Up, Catch and Christmas. The pictures on this page are the real screens.</p>
+</section>
+
+<section id="features" class="card">
+  <h2>For parents and for play</h2>
+  <div class="features">
+    <article>
+      <h3>Lock Mode</h3>
+      <p>A parent turns Lock Mode on with the parent PIN. The Lock Mode option then disappears from Settings, and CodeAque stays the home screen, so a child cannot open Android settings or another launcher from inside CodeAque.</p>
+      <p>If a parent needs it back: tap the CodeAque logo 7 times quickly, enter the PIN, then choose Turn off Lock Mode or Open Android Settings. Five wrong PINs in a row means a short wait.</p>
+      <p class="note">Android still allows the notification shade, and a safe-mode start can skip a home screen. An ordinary app cannot fully block those, and CodeAque does not need special device setup to turn Lock Mode on.</p>
+    </article>
+    <article>
+      <h3>Safe Contacts</h3>
+      <p>A parent opens Settings, Safe contacts, enters the PIN, and adds, edits or removes a name and a number. They stay on the phone.</p>
+      <p>In Kids mode, Phone / Messages shows only those people. A tap calls or texts that number. There is no keypad and no other contacts.</p>
+      <p class="note">Calls from unknown numbers can still ring unless a parent turns on Block unknown callers and the phone allows it. CodeAque is not the phone's default dialer. Incoming texts are not filtered.</p>
+    </article>
+    <article>
+      <h3>Controller and touch</h3>
+      <p>A controller and the touch screen both work. Tiles open with one tap. Swipe left or right to move between sections. A Back button is on the screen, in the same place controller B goes back.</p>
+    </article>
   </div>
 </section>
 
-<section id="pc" class="card">
-  <h2>Download for PC</h2>
-  <p class="lead">Install CodeAque next to Windows (dual boot) with the Live USB, or add it to a Linux PC you already have.</p>
-  <div class="grid2">
-    <div class="box">
-      <h3>Live USB (dual boot)</h3>
-      <p>A USB stick that starts the PC straight into CodeAque. Try it without changing anything, or install it next to Windows.</p>
-      <a class="btn primary" href="https://github.com/hoodlumasylum/codeaque/releases/tag/v0.5.9">Live USB image</a>
-      <p class="small">Download both <code>.iso.part1</code> and <code>.iso.part2</code> files and <code>SHA256SUMS</code>. The image is from 0.5.9 — once installed, use <em>Settings &gt; Update CodeAque</em> to get the latest version.</p>
-    </div>
-    <div class="box">
-      <h3>Already on Linux?</h3>
-      <p>Get the latest app and run the installer.</p>
-      <a class="btn" href="https://github.com/hoodlumasylum/codeaque/releases/latest">Latest release</a>
-      <pre><code>git clone https://github.com/hoodlumasylum/codeaque.git
-cd codeaque &amp;&amp; ./install.sh</code></pre>
-    </div>
-  </div>
-
-  <div class="guide">
-    <h3>Dual-boot guide</h3>
-    <div class="warn"><strong>Back up first.</strong> Installing changes the drive's partitions. Copy your important files to another drive or the cloud before you start, and keep your PC plugged in.</div>
-    <ol>
-      <li><strong>Make the stick.</strong> On Windows, join the two parts (<code>copy /b codeaque-live-0.5.9.iso.part1 + codeaque-live-0.5.9.iso.part2 codeaque-live-0.5.9.iso</code>), then write the <code>.iso</code> to a 16 GB+ USB stick with Rufus in ISO mode.</li>
-      <li><strong>Make room.</strong> In Windows open <em>Disk Management</em>, right-click your C: drive, choose <em>Shrink Volume</em> and free at least 40 GB.</li>
-      <li><strong>Start from the stick.</strong> Restart and tap the boot-menu key (often F12, F11, F8 or Esc) and pick the USB stick.</li>
-      <li><strong>Try or install.</strong> Choose <em>Try CodeAque</em> to look around, or <em>Install CodeAque</em>. On <em>Installation type</em> keep <em>Install alongside Windows Boot Manager</em>.</li>
-      <li><strong>Pick at every start.</strong> After installing, a menu lets you choose CodeAque or Windows each time the PC starts.</li>
-    </ol>
-    <p class="small">Full step-by-step guide: <a href="https://github.com/hoodlumasylum/codeaque/blob/main/docs/live-usb.md">Live USB guide</a>. No games, ROMs, BIOS files, firmware or keys are included — bring your own.</p>
-  </div>
-</section>
-
-<section id="handheld" class="card">
-  <h2>Handheld &amp; Win600</h2>
-  <p class="lead">A big-text, gamepad-only Handheld mode made for 1280x720 handhelds such as the Anbernic Win600.</p>
-  <div class="grid2">
-    <div class="box">
-      <h3>One-command installer</h3>
-      <p>Installs CodeAque, the emulators it supports, sets them up for the built-in pad and starts in Handheld mode.</p>
-      <a class="btn primary" href="https://github.com/hoodlumasylum/codeaque/releases/latest/download/install-win600.sh">install-win600.sh</a>
-      <pre><code>bash install-win600.sh</code></pre>
-      <p class="small"><a href="https://github.com/hoodlumasylum/codeaque/blob/main/docs/win600.md">Win600 guide</a> (Linux Mint, boot keys, step by step). Not yet tested on a real Win600.</p>
-    </div>
-    <img class="shot" src="img/handheld.jpg" alt="CodeAque Handheld mode home screen" loading="lazy">
-  </div>
-</section>
-
-<section id="android" class="card">
-  <h2>Android launcher</h2>
-  <p class="lead">A light home-screen app for Android handhelds (RG353V, RG3566 and similar): touch and gamepad, themes, your own wallpaper.</p>
-  <div class="grid2">
-    <div class="box">
-      <a class="btn primary big" href="https://github.com/hoodlumasylum/codeaque/releases/latest/download/codeaque-launcher.apk">Download for Android / Projector / TV box</a>
-      <ol class="small">
-        <li><strong>Allow installs:</strong> when Android asks, allow <em>Install unknown apps</em> for your browser.</li>
-        <li><strong>Open the APK:</strong> open <code>codeaque-launcher.apk</code> from Downloads and tap Install.</li>
-        <li><strong>Make it Home:</strong> press Home and choose CodeAque, then <em>Always</em>. Works with touch, a gamepad or a TV remote.</li>
-      </ol>
-      <p class="small"><a href="https://github.com/hoodlumasylum/codeaque/blob/main/docs/android.md">Android guide</a>. Tested on an Android 11 emulator.</p>
-    </div>
-    <img class="shot" src="img/android.jpg" alt="CodeAque Android launcher" loading="lazy">
-  </div>
-</section>
-
-<section id="shots" class="card">
-  <h2>Screenshots</h2>
-  <div class="gallery">
-    <figure><img src="img/pc.jpg" alt="PC launcher" loading="lazy"><figcaption>PC launcher</figcaption></figure>
-    <figure><img src="img/emulators.jpg" alt="Retro emulators hub" loading="lazy"><figcaption>Retro emulators hub</figcaption></figure>
-    <figure><img src="img/handheld.jpg" alt="Handheld mode" loading="lazy"><figcaption>Handheld mode</figcaption></figure>
-    <figure><img src="img/android.jpg" alt="Android launcher, Neon theme" loading="lazy"><figcaption>Android — Neon</figcaption></figure>
-    <figure><img src="img/android-powerup.jpg" alt="Android launcher, Power Up theme" loading="lazy"><figcaption>Android — Power Up</figcaption></figure>
-    <figure><img src="img/android-catch.jpg" alt="Android launcher, Catch theme" loading="lazy"><figcaption>Android — Catch</figcaption></figure>
-  </div>
-</section>
-
-<section id="usb" class="card usb">
-  <h2>The CodeAque USB</h2>
-  <p class="lead">Prefer a ready-made stick? Get the CodeAque USB, ready to plug in and play.</p>
-  <!-- TODO: replace #tiktok with the TikTok Shop product URL -->
-  <a class="btn primary big" href="#tiktok">Get the CodeAque USB on TikTok Shop</a>
+<section id="specs" class="card">
+  <h2>Specs</h2>
+  <p class="placeholder">Full specs coming soon</p>
 </section>
 </main>
 
 <footer>
-  <img src="img/logo.png" alt="CodeAque" class="flogo">
-  <p>CodeAque is free software. No games, ROMs, BIOS files, firmware or keys are included. Game and service names belong to their owners.</p>
-  <p><a href="https://github.com/hoodlumasylum/codeaque">Source on GitHub</a> · <a href="https://github.com/hoodlumasylum/codeaque/releases">All releases</a></p>
+  <img src="img/logo.png" alt="" class="flogo">
+  <p>Not on sale yet. Follow us on <a href="https://www.tiktok.com/">TikTok</a></p>
 </footer>
+<script>
+(function () {
+  var v = document.querySelector("video");
+  if (v && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    v.removeAttribute("autoplay");
+    v.pause();
+  }
+  document.querySelectorAll("img").forEach(function (img) {
+    img.addEventListener("error", function () {
+      var fig = img.closest("figure");
+      if (fig) fig.remove();
+    });
+  });
+})();
+</script>
 </body>
 </html>
