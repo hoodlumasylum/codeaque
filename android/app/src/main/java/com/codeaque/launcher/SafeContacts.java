@@ -61,4 +61,16 @@ public final class SafeContacts {
         list.add(new Contact(n, num));
         return true;
     }
+
+    /** 0.10.29: change the name or number of the contact at index. False if the index or number is no good,
+     *  or another contact already uses that number. */
+    public static boolean update(List<Contact> list, int index, String name, String number) {
+        if (list == null || index < 0 || index >= list.size()) return false;
+        String num = clean(number), n = name == null ? "" : name.replace('\t', ' ').replace('\n', ' ').trim();
+        if (num == null) return false;
+        if (n.isEmpty()) n = num;
+        for (int i = 0; i < list.size(); i++) if (i != index && same(list.get(i).number, num)) return false;
+        list.set(index, new Contact(n, num));
+        return true;
+    }
 }

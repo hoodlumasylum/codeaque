@@ -31,6 +31,21 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.29
+
+- One tap opens a tile, swipe left or right to change section, and there is an on-screen Back button.
+- Rows scroll more smoothly, with a finger fling and when you move with a controller.
+- **Lock Mode.** In Settings, a parent turns Lock Mode on with the parent PIN. The PIN starts as 1234 and is changed in Settings, Change PIN. It is saved only on the device, as a salted hash, and it is never sent anywhere. Once Lock Mode is on, the Lock Mode option disappears from Settings. CodeAque stays the home screen, so a child cannot open Android settings or another launcher from inside CodeAque. The way out is hidden on purpose: tap the CodeAque logo 7 times quickly, enter the PIN, then choose Turn off Lock Mode or Open Android Settings. After 5 wrong PINs there is a short wait before the next try.
+- **Safe contacts.** Settings, Safe contacts asks for the PIN, then a parent can add, edit or remove a name and a number. They stay on the device. In Kids mode, Phone / Messages shows only those people. A tap calls or texts that number. There is no keypad and no other contacts.
+- **Downloads** (grown-up home only, behind the PIN). Opens LibreTorrent if it is installed, or its Play Store or F-Droid page if it is not. It is never shown in Kids mode. CodeAque does not link to ROM, piracy or IPTV sites.
+- The website home page is now the CodeAque Phone. It is not on sale.
+
+Lock Mode does not need root, and it does not need the phone set up as a device owner. Android still lets someone pull down the notification shade, and a safe-mode start can still skip a home screen. An ordinary app cannot fully block those, and this version does not try to.
+
+Safe contacts cannot stop every incoming call from an unknown number by itself. A parent can turn on Block unknown callers (Android 10 or newer). The phone then has to grant CodeAque the call-screening role. That is not the same as becoming the default phone app, some phones do not offer the role, and incoming texts are not filtered. If calls are not allowed, the phone's own app opens with the number filled in, and that app may show a keypad. Taking over the default phone app is future work.
+
+Not tried yet on a real CodeAque phone: Lock Mode, the 7-tap parent menu, Safe contacts calls and texts, call screening, the Downloads tile, one-tap tiles, swipe, the on-screen Back button, and the smoother scrolling. The checks that run on a computer did pass. Please try it on the phone.
+
 ## What's new in 0.10.28
 
 - **Home chooser fix:** on rooted devices (Magisk), CodeAque now makes itself the Home app at start-up with `cmd package set-home-activity` (or `pm set-home-activity`) and the Android HOME role, so the "choose Home app" box stops coming back after a restart. Magisk asks once.

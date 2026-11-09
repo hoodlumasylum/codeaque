@@ -24,10 +24,10 @@ From a PC with adb instead: `adb install codeaque-launcher.apk`.
 
 | Pad | Touch | Does |
 |---|---|---|
-| D-pad / left stick | tap | move |
-| L1 / R1 | tap a category | change category |
-| A | tap the selected tile | open |
-| B | | back to the category row |
+| D-pad / left stick | | move between tiles (the row follows smoothly) |
+| L1 / R1 | swipe left or right | change section |
+| A | tap a tile once | open |
+| B | Back button | back to the category row |
 | Y (or Select) | | Settings |
 
 * Tiles open the installed app. If it is missing, the tile says **GET** and A opens its Play Store page.
@@ -67,7 +67,10 @@ debug-style key unless you set `CODEAQUE_KEYSTORE`, `CODEAQUE_KS_PASS` and `CODE
 
 ## What is untested
 
-- The full self-update install prompt hasn't been run end to end: the only release so far is 0.9.2 itself. The version check was tested on the emulator.
+- **0.10.29 on a real phone:** Lock Mode, the 7-tap logo menu, Safe contacts calls and texts, call screening, the Downloads tile, one-tap tiles, swipe, the on-screen Back button, and smoother scrolling. They compile and the plain-Java checks pass. They have not been tried on CodeAque phone hardware.
+- Lock Mode cannot block the notification shade or a safe-mode boot without device-owner setup, which this app does not require.
+- Unknown incoming calls still ring unless a parent turns on Block unknown callers and the phone grants the call-screening role (Android 10+). That role is not the default phone app. Incoming texts are not filtered.
+- The full self-update install prompt hasn't been run end to end on this release. The version check was tested on a computer.
 
 
 * The wallpaper picker (Android's file chooser) was not clicked through on the emulator; the themes were.
