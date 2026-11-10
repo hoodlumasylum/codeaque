@@ -128,6 +128,120 @@ SELECTED_WORLD_GAMES: list[WebApp] = [
     WebApp("wgdave", "Korea · DAVE THE DIVER", "https://store.steampowered.com/app/1868140/DAVE_THE_DIVER/", browse=True),
     WebApp("wgeternal", "Korea · Eternal Return", "https://store.steampowered.com/app/1049590/Eternal_Return/", browse=True),
 ]
+
+# 0.10.31 Trilogies tab: story series Steam store links only (no game files, no third-party art).
+# Co-op games live in COOP_PAGES / the Co-op tab. openSteamStore prefers steam://store/<id> when Steam is installed.
+STRONG_PC_NOTE = "Needs a strong PC, try cloud gaming."
+EA_APP_NOTE = "May need the EA app alongside Steam."
+TRILOGY_PAGES: list[WebApp] = [
+    # Uncharted
+    WebApp("truncharted", "Uncharted: Legacy of Thieves", "https://store.steampowered.com/app/1659420/", browse=True, note=STRONG_PC_NOTE),
+    # Tomb Raider
+    WebApp("trtri", "Tomb Raider I-III Remastered", "https://store.steampowered.com/app/2478970/", browse=True),
+    WebApp("trivvi", "Tomb Raider IV-VI Remastered", "https://store.steampowered.com/app/2525380/", browse=True),
+    WebApp("trlegend", "Tomb Raider: Legend", "https://store.steampowered.com/app/7000/", browse=True),
+    WebApp("tranniv", "Tomb Raider: Anniversary", "https://store.steampowered.com/app/8000/", browse=True),
+    WebApp("trunder", "Tomb Raider: Underworld", "https://store.steampowered.com/app/8140/", browse=True),
+    WebApp("tr2013", "Tomb Raider (2013)", "https://store.steampowered.com/app/203160/", browse=True),
+    WebApp("trrise", "Rise of the Tomb Raider", "https://store.steampowered.com/app/391220/", browse=True),
+    WebApp("trshadow", "Shadow of the Tomb Raider", "https://store.steampowered.com/app/750920/", browse=True),
+    WebApp("trlara_gol", "Lara Croft and the Guardian of Light", "https://store.steampowered.com/app/35130/", browse=True),
+    WebApp("trlara_osiris", "Lara Croft and the Temple of Osiris", "https://store.steampowered.com/app/289690/", browse=True),
+    WebApp("trlarago", "Lara Croft GO", "https://store.steampowered.com/app/540840/", browse=True),
+    # Grand Theft Auto
+    WebApp("trgta3", "Grand Theft Auto III", "https://store.steampowered.com/app/12100/", browse=True),
+    WebApp("trgta_vc", "Grand Theft Auto: Vice City", "https://store.steampowered.com/app/12110/", browse=True),
+    WebApp("trgta_sa", "Grand Theft Auto: San Andreas", "https://store.steampowered.com/app/12120/", browse=True),
+    WebApp("trgta3de", "GTA III – The Definitive Edition", "https://store.steampowered.com/app/1546970/", browse=True),
+    WebApp("trgtavcde", "GTA Vice City – The Definitive Edition", "https://store.steampowered.com/app/1546990/", browse=True),
+    WebApp("trgtasade", "GTA San Andreas – The Definitive Edition", "https://store.steampowered.com/app/1547000/", browse=True),
+    WebApp("trgta4", "Grand Theft Auto IV: Complete Edition", "https://store.steampowered.com/app/12210/", browse=True),
+    WebApp("trgta_eflc", "GTA: Episodes from Liberty City", "https://store.steampowered.com/app/12220/", browse=True),
+    WebApp("trgtav", "Grand Theft Auto V Legacy", "https://store.steampowered.com/app/271590/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("trgtave", "Grand Theft Auto V Enhanced", "https://store.steampowered.com/app/3240220/", browse=True, note=STRONG_PC_NOTE),
+    # Assassin's Creed (main games on Steam)
+    WebApp("trac1", "Assassin's Creed", "https://store.steampowered.com/app/15100/", browse=True),
+    WebApp("trac2", "Assassin's Creed II", "https://store.steampowered.com/app/33230/", browse=True),
+    WebApp("tracbros", "Assassin's Creed Brotherhood", "https://store.steampowered.com/app/48190/", browse=True),
+    WebApp("tracrevel", "Assassin's Creed Revelations", "https://store.steampowered.com/app/201870/", browse=True),
+    WebApp("trac3", "Assassin's Creed III", "https://store.steampowered.com/app/208480/", browse=True),
+    WebApp("trac3r", "Assassin's Creed III Remastered", "https://store.steampowered.com/app/911400/", browse=True),
+    WebApp("trac4", "Assassin's Creed IV Black Flag", "https://store.steampowered.com/app/242050/", browse=True),
+    WebApp("tracrogue", "Assassin's Creed Rogue", "https://store.steampowered.com/app/311560/", browse=True),
+    WebApp("tracunity", "Assassin's Creed Unity", "https://store.steampowered.com/app/289650/", browse=True),
+    WebApp("tracsynd", "Assassin's Creed Syndicate", "https://store.steampowered.com/app/368500/", browse=True),
+    WebApp("tracorigins", "Assassin's Creed Origins", "https://store.steampowered.com/app/582160/", browse=True),
+    WebApp("tracodyssey", "Assassin's Creed Odyssey", "https://store.steampowered.com/app/812140/", browse=True),
+    WebApp("tracvalhalla", "Assassin's Creed Valhalla", "https://store.steampowered.com/app/2208920/", browse=True),
+    WebApp("tracmirage", "Assassin's Creed Mirage", "https://store.steampowered.com/app/3035570/", browse=True),
+    WebApp("tracshadows", "Assassin's Creed Shadows", "https://store.steampowered.com/app/3159330/", browse=True),
+    # Mystery & Puzzles — The Talos Principle
+    WebApp("trtalos", "The Talos Principle", "https://store.steampowered.com/app/257510/", browse=True),
+    WebApp("trtalos2", "The Talos Principle 2", "https://store.steampowered.com/app/835960/", browse=True),
+    WebApp("trtalosrw", "The Talos Principle: Reawakened", "https://store.steampowered.com/app/2806640/", browse=True),
+    # Life is Strange
+    WebApp("trlis", "Life is Strange (Episode 1)", "https://store.steampowered.com/app/319630/", browse=True),
+    WebApp("trlisrem", "Life is Strange Remastered", "https://store.steampowered.com/app/1265920/", browse=True),
+    WebApp("trlisbts", "Life is Strange: Before the Storm", "https://store.steampowered.com/app/554620/", browse=True),
+    WebApp("trlisbtsr", "Life is Strange: Before the Storm Remastered", "https://store.steampowered.com/app/1265930/", browse=True),
+    WebApp("trlis2", "Life is Strange 2", "https://store.steampowered.com/app/532210/", browse=True),
+    WebApp("trliscs", "The Awesome Adventures of Captain Spirit", "https://store.steampowered.com/app/845070/", browse=True),
+    WebApp("trlistc", "Life is Strange: True Colors", "https://store.steampowered.com/app/936790/", browse=True),
+    WebApp("trlisde", "Life is Strange: Double Exposure", "https://store.steampowered.com/app/1874000/", browse=True),
+    WebApp("trlisreun", "Life is Strange: Reunion", "https://store.steampowered.com/app/2624870/", browse=True),
+]
+# app id for each Trilogies page (kept next to the list so tests can check both)
+TRILOGY_APPIDS: dict[str, int] = {
+    "truncharted": 1659420, "trtri": 2478970, "trivvi": 2525380, "trlegend": 7000, "tranniv": 8000,
+    "trunder": 8140, "tr2013": 203160, "trrise": 391220, "trshadow": 750920, "trlara_gol": 35130,
+    "trlara_osiris": 289690, "trlarago": 540840, "trgta3": 12100, "trgta_vc": 12110, "trgta_sa": 12120,
+    "trgta3de": 1546970, "trgtavcde": 1546990, "trgtasade": 1547000, "trgta4": 12210, "trgta_eflc": 12220,
+    "trgtav": 271590, "trgtave": 3240220, "trac1": 15100, "trac2": 33230, "tracbros": 48190,
+    "tracrevel": 201870, "trac3": 208480, "trac3r": 911400, "trac4": 242050, "tracrogue": 311560,
+    "tracunity": 289650, "tracsynd": 368500, "tracorigins": 582160, "tracodyssey": 812140,
+    "tracvalhalla": 2208920, "tracmirage": 3035570, "tracshadows": 3159330,
+    "trtalos": 257510, "trtalos2": 835960, "trtalosrw": 2806640,
+    "trlis": 319630, "trlisrem": 1265920, "trlisbts": 554620, "trlisbtsr": 1265930, "trlis2": 532210,
+    "trliscs": 845070, "trlistc": 936790, "trlisde": 1874000, "trlisreun": 2624870,
+}
+
+# 0.10.31 Co-op tab: Hazelight / EA co-op + popular online co-op RPGs (Steam store links only).
+# Diablo III is not on Steam, so it is left out. Diablo II: Resurrected is listed as the Infernal Edition page on Steam.
+COOP_PAGES: list[WebApp] = [
+    # Story co-op (may need the EA app)
+    WebApp("coop_awayout", "A Way Out", "https://store.steampowered.com/app/1222700/", browse=True, note=EA_APP_NOTE),
+    WebApp("coop_itt", "It Takes Two", "https://store.steampowered.com/app/1426210/", browse=True, note=EA_APP_NOTE),
+    WebApp("coop_split", "Split Fiction", "https://store.steampowered.com/app/2001120/", browse=True, note=EA_APP_NOTE),
+    # RPG co-op
+    WebApp("coop_dos2", "Divinity: Original Sin 2", "https://store.steampowered.com/app/435150/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_bg3", "Baldur's Gate 3", "https://store.steampowered.com/app/1086940/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_d4", "Diablo IV", "https://store.steampowered.com/app/2344520/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_d2r", "Diablo II: Resurrected", "https://store.steampowered.com/app/2536520/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_bl2", "Borderlands 2", "https://store.steampowered.com/app/49520/", browse=True),
+    WebApp("coop_bl3", "Borderlands 3", "https://store.steampowered.com/app/397540/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_grim", "Grim Dawn", "https://store.steampowered.com/app/219990/", browse=True),
+    WebApp("coop_tl2", "Torchlight II", "https://store.steampowered.com/app/200710/", browse=True),
+    WebApp("coop_ds3", "Dark Souls III", "https://store.steampowered.com/app/374320/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_elden", "Elden Ring", "https://store.steampowered.com/app/1245620/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_mhw", "Monster Hunter: World", "https://store.steampowered.com/app/582010/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_poe", "Path of Exile", "https://store.steampowered.com/app/238960/", browse=True),
+    WebApp("coop_poe2", "Path of Exile 2", "https://store.steampowered.com/app/2694490/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_rem2", "Remnant II", "https://store.steampowered.com/app/1282100/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_tina", "Tiny Tina's Wonderlands", "https://store.steampowered.com/app/1286680/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_dd2", "Dragon's Dogma 2", "https://store.steampowered.com/app/2054970/", browse=True, note=STRONG_PC_NOTE),
+    WebApp("coop_stardew", "Stardew Valley", "https://store.steampowered.com/app/413150/", browse=True),
+    WebApp("coop_terraria", "Terraria", "https://store.steampowered.com/app/105600/", browse=True),
+    WebApp("coop_valheim", "Valheim", "https://store.steampowered.com/app/892970/", browse=True),
+]
+COOP_APPIDS: dict[str, int] = {
+    "coop_awayout": 1222700, "coop_itt": 1426210, "coop_split": 2001120,
+    "coop_dos2": 435150, "coop_bg3": 1086940, "coop_d4": 2344520, "coop_d2r": 2536520,
+    "coop_bl2": 49520, "coop_bl3": 397540, "coop_grim": 219990, "coop_tl2": 200710,
+    "coop_ds3": 374320, "coop_elden": 1245620, "coop_mhw": 582010, "coop_poe": 238960,
+    "coop_poe2": 2694490, "coop_rem2": 1282100, "coop_tina": 1286680, "coop_dd2": 2054970,
+    "coop_stardew": 413150, "coop_terraria": 105600, "coop_valheim": 892970,
+}
+
 BY_ID = {w.id: w for w in WEBAPPS}
 BY_ID[SUPPORT.id] = SUPPORT
 UNREAL = WebApp("unrealpage", "Unreal Engine for Linux (Epic's page)", "https://www.unrealengine.com/en-US/linux", browse=True,
@@ -146,7 +260,7 @@ FREE_TV: list[WebApp] = [
     WebApp("itvx", "ITVX", "https://www.itv.com/", True, note="UK only."),
     WebApp("channel4", "Channel 4", "https://www.channel4.com/", True, note="UK only."),
 ]
-for _sp in STORE_PAGES + WORLD_PAGES + SELECTED_WORLD_GAMES + FREE_TV:
+for _sp in STORE_PAGES + WORLD_PAGES + SELECTED_WORLD_GAMES + TRILOGY_PAGES + COOP_PAGES + FREE_TV:
     BY_ID[_sp.id] = _sp
 
 

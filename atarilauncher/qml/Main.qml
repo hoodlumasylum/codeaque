@@ -627,6 +627,7 @@ Window {
         else if (r.kind === "escexit") { backend.toggleEscExit(); refreshSetup(true) }
         else if (r.kind === "anim") { backend.toggleAnimations(); refreshSetup(true) }
         else if (r.kind === "effects") { backend.cycleEffects(); refreshSetup(true) }
+        else if (r.kind === "rotate") { backend.cycleScreenRotate(); refreshSetup(true) }
         else if (r.kind === "handheld") { backend.setHandheld(!backend.handheld); refreshSetup(true) }
         else if (r.kind === "padreminder") { backend.togglePadReminder(); refreshSetup(true) }
         else if (r.kind === "covers") { backend.downloadCoversNow(); refreshSetup(true) }
@@ -803,7 +804,8 @@ Window {
                 else if (id === "update") win.openUpdate("library")
                 else if (id.indexOf("emu:") === 0) backend.launchEmulator(id.substring(4))
                 else if (id === "getgames") backend.getGames()
-                else if (id.indexOf("store:") === 0) backend.openStorePage(id.substring(6))     // the same in-app updater as Settings > Update CodeAque
+                else if (id.indexOf("steamstore:") === 0) backend.openSteamStore(id.substring(11))
+                else if (id.indexOf("store:") === 0) backend.openStorePage(id.substring(6))     // Games Store / World Games / Trilogies HTTPS fallback
             }
         }
 

@@ -59,3 +59,13 @@ def test_no_terminal_installer_checks_the_release_and_needs_no_terminal():
     assert "Terminal=false" in d and "scripts/web-install.sh" in d
     s = (ROOT / "scripts/web-install.sh").read_text()
     assert "sha256sum -c" in s and "--no-system-packages" in s and "pkexec" in s and "sudo" not in s
+
+
+def test_win600_main_applies_rotation(tmp_path, monkeypatch):
+    monkeypatch.setattr(win600, "MARKER", tmp_path / "win600-setup")
+    monkeypatch.setattr(win600, "SETTINGS", {})
+    monkeypatch.setattr(win600, "turn_on_handheld", lambda *a: None)
+    calls = []
+    monkeypatch.setattr(win600.rotate, "apply", lambda *a, **k: calls.append(a or ("auto",)) or "ok")
+    assert win600.main(["--emulators-only"]) == 0
+    assert calls and calls[0][0] == "auto"

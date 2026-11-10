@@ -16,7 +16,7 @@ def _cats():
 
 def test_categories_match_the_layout_and_games_starts_with_cloud_gaming():
     cats = handheld.categories(demo_library().games)
-    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "World Games", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Downloads",
+    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "World Games", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Trilogies", "Co-op", "Downloads",
                                           "All Apps", "Accounts", "Settings"]
     games = cats[5]["tiles"]
     assert games[0]["title"] == "Cloud Gaming" and games[0]["kind"] == "list" and games[0]["items"]
@@ -107,10 +107,10 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         assert hs.property("cat") == 6
         ui.key(Qt.Key_Up, 100); assert hs.property("zone") == "cats"
         ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 7
-        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 14  # Y: Settings
+        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 16  # Y: Settings (0.10.31: Trilogies + Co-op)
         ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100)   # tiles: back to Wi-Fi
-        for _ in range(5):
-            ui.key(Qt.Key_Right, 60)                     # ... Leave Handheld
+        for _ in range(6):
+            ui.key(Qt.Key_Right, 60)                     # ... Leave Handheld (0.10.31: Rotate screen tile)
         ui.key(Qt.Key_Return, 150)
         assert ui.backend.handheld is False and not hs.property("visible")
         assert not ui.warnings, ui.warnings
@@ -132,7 +132,7 @@ def test_settings_row(app, tmp_path, monkeypatch):
 def test_handheld_settings_offer_the_in_app_updater():
     from atarilauncher import handheld
     keys = [k for k, _, _ in handheld.SETTINGS_TILES]
-    assert keys[-1] == "update" and keys.index("leave") == 5            # added last, the other tiles keep their places
+    assert keys[-1] == "update" and keys.index("leave") == 6 and "rotate" in keys  # 0.10.31: Rotate screen before All settings
     main = (Path(handheld.__file__).with_name("qml") / "Main.qml").read_text()
     assert 'id === "update") win.openUpdate("library")' in main
     hh = (Path(handheld.__file__).with_name("qml") / "HandheldScreen.qml").read_text()
@@ -204,3 +204,69 @@ def test_world_games_selected_steam_app_ids():
     from atarilauncher import webapps
     for page, appid in zip(webapps.SELECTED_WORLD_GAMES, (650700, 2358720, 1876890, 1868140, 1049590)):
         assert page.url.startswith(f"https://store.steampowered.com/app/{appid}/")
+
+
+def test_trilogies_are_steam_store_shortcuts_only():
+    """0.10.31: Trilogies tab is story-series Get-on-Steam links only (co-op lives on its own tab)."""
+    from urllib.parse import urlsplit
+    from atarilauncher import webapps
+
+    tiles = _cats()["trilogies"]["tiles"]
+    assert len(tiles) == len(webapps.TRILOGY_PAGES) == len(webapps.TRILOGY_APPIDS)
+    titles = {t["title"] for t in tiles}
+    assert "Uncharted: Legacy of Thieves" in titles
+    assert any("Tomb Raider" in t for t in titles)
+    assert any("Grand Theft Auto" in t or t.startswith("GTA ") for t in titles)
+    assert any("Assassin" in t for t in titles)
+    assert "The Talos Principle" in titles and "The Talos Principle 2" in titles
+    assert any("Life is Strange" in t for t in titles)
+    assert "A Way Out" not in titles and "Baldur's Gate 3" not in titles
+    for t in tiles:
+        assert t["action"].startswith("steamstore:")
+        assert t["kind"] == "action" and t["items"] == []
+        assert t["icon"] == "c_pc"
+        appid = t["action"].removeprefix("steamstore:")
+        assert appid.isdigit() and int(appid) == t["steam_appid"]
+        page = next(p for p in webapps.TRILOGY_PAGES if webapps.TRILOGY_APPIDS[p.id] == int(appid))
+        assert page.url.startswith(f"https://store.steampowered.com/app/{appid}/")
+        assert urlsplit(page.url).hostname == "store.steampowered.com"
+        assert page.browse
+    notes = {t["title"]: t.get("note", "") for t in tiles}
+    assert "strong pc" in notes["Uncharted: Legacy of Thieves"].lower()
+    assert "strong pc" in notes["Grand Theft Auto V Legacy"].lower()
+    assert "strong pc" in notes["Grand Theft Auto V Enhanced"].lower()
+    for page in webapps.TRILOGY_PAGES:
+        appid = webapps.TRILOGY_APPIDS[page.id]
+        assert page.url.startswith(f"https://store.steampowered.com/app/{appid}/")
+
+
+def test_coop_tab_steam_shortcuts_and_notes():
+    """0.10.31: Co-op tab — Hazelight/EA + RPG co-op, verified Steam ids, strong-PC / EA notes."""
+    from urllib.parse import urlsplit
+    from atarilauncher import webapps
+
+    tiles = _cats()["coop"]["tiles"]
+    assert len(tiles) == len(webapps.COOP_PAGES) == len(webapps.COOP_APPIDS)
+    titles = {t["title"] for t in tiles}
+    for need in ("A Way Out", "It Takes Two", "Split Fiction", "Baldur's Gate 3", "Elden Ring",
+                 "Stardew Valley", "Terraria", "Valheim", "Path of Exile 2", "Diablo IV"):
+        assert need in titles
+    assert "Diablo III" not in titles   # not on Steam
+    notes = {t["title"]: t.get("note", "") for t in tiles}
+    assert "ea app" in notes["A Way Out"].lower()
+    assert "strong pc" in notes["Baldur's Gate 3"].lower()
+    assert "strong pc" in notes["Elden Ring"].lower()
+    assert notes["Stardew Valley"] == ""
+    for t in tiles:
+        appid = t["action"].removeprefix("steamstore:")
+        page = next(p for p in webapps.COOP_PAGES if webapps.COOP_APPIDS[p.id] == int(appid))
+        assert page.url.startswith(f"https://store.steampowered.com/app/{appid}/")
+        assert urlsplit(page.url).hostname == "store.steampowered.com"
+
+
+def test_handheld_category_row_scrolls_and_never_packs_equal_widths():
+    """0.10.31: the QML category row uses a Flickable, not equal-width packing that overlapped on the Win600."""
+    q = QML.read_text()
+    assert "hhCatsFlick" in q and "Flickable" in q
+    assert "width / Math.max(1, hh.cats.length)" not in q
+    assert "cramped" in q and "ensureVisible" in q

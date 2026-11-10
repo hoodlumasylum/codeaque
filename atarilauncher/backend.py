@@ -353,6 +353,7 @@ class Backend(QObject):
         if self._first_run:
             self._prefill_first_run()
         self.rescan(initial=True)
+        self.apply_screen_rotate()          # 0.10.31: Win600 portrait panel → landscape (no-op elsewhere)
         # Bluetooth pairing, controller batteries, Screen to TV
         self._win_busy = False
         self._win_msg = ""
@@ -5476,6 +5477,31 @@ class Backend(QObject):
         self._save_prefs()
         self.uiPrefsChanged.emit()
 
+    def apply_screen_rotate(self) -> str:
+        """Apply Settings > Rotate screen. Auto only rotates a Win600-like portrait panel; normal PCs are untouched."""
+        from . import rotate as _rot
+        if self._demo or os.environ.get("ATARI_NO_ROTATE"):
+            return ""
+        try:
+            msg = _rot.apply(getattr(self.cfg, "screen_rotate", "auto") or "auto")
+        except Exception as exc:  # pragma: no cover
+            msg = f"Rotate screen failed: {exc}"
+            print(f"[atari] {msg}")
+        return msg
+
+    @Slot()
+    def cycleScreenRotate(self) -> None:
+        """Settings / Handheld: step Auto → Normal → Left → Right → Inverted → Auto, apply now, save."""
+        from . import rotate as _rot
+        order = list(_rot.MODES)
+        cur = getattr(self.cfg, "screen_rotate", "auto") or "auto"
+        self.cfg.screen_rotate = order[(order.index(cur) + 1) % len(order)] if cur in order else "auto"
+        self._save_prefs()
+        msg = self.apply_screen_rotate()
+        if msg:
+            self.show_toast(msg, 5000)
+        self.uiPrefsChanged.emit()
+
     @Property(bool, notify=uiPrefsChanged)
     def handheld(self):
         """Handheld mode: the small-screen home (Cloud Gaming + Retro only). Settings toggle, or --handheld for one start."""
@@ -5527,6 +5553,34 @@ class Backend(QObject):
             return
         if not self._running:
             self._launch_game(Game(gid=page.gid, title=page.title, platform=_wa.STREAMING, platform_name="Games Store"))
+
+    @Slot(str)
+    def openSteamStore(self, appid: str) -> None:
+        """Trilogies / Co-op Get-on-Steam tile: open the official Steam store page. Uses steam://store/<id> when Steam is installed,
+        otherwise the HTTPS store page in CodeAque's browser. Never downloads a game file."""
+        from . import webapps as _wa
+        appid = "".join(c for c in str(appid) if c.isdigit())
+        if not appid:
+            return
+        page = next((p for p in (_wa.TRILOGY_PAGES + _wa.COOP_PAGES)
+                     if str((_wa.TRILOGY_APPIDS | _wa.COOP_APPIDS).get(p.id)) == appid), None)
+        # Prefer the Steam client when it is on this machine (native or Flatpak)
+        base = launcher.steam_base_command(self.cfg)
+        steam_ok = False
+        if base:
+            if base[0] == "flatpak":
+                steam_ok = bool(shutil.which("flatpak"))
+            else:
+                steam_ok = bool(shutil.which(base[0]))
+        if steam_ok:
+            try:
+                subprocess.Popen(base + [f"steam://store/{appid}"], env=launcher.clean_env(),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return
+            except OSError as exc:
+                print(f"[atari] steam://store/{appid} failed ({exc}); opening the web store instead")
+        if page is not None and not self._running:
+            self._launch_game(Game(gid=page.gid, title=page.title, platform=_wa.STREAMING, platform_name="Steam Store"))
 
     @Slot(str)
     def launchEmulator(self, emu_id: str) -> None:
@@ -6107,6 +6161,12 @@ class Backend(QObject):
         rows.append({"kind": "effects", "title": "Reduce effects", "value": _fxv,
                      "detail": "Turns off the see-through blur, soft shadows and the big blurred picture behind the home screen. "
                                "AUTO = on by itself for weak graphics chips. Press to step AUTO / ON / OFF."})
+        from . import rotate as _rot
+        _srv = _rot.label(getattr(self.cfg, "screen_rotate", "auto"))
+        rows.append({"kind": "rotate", "title": "Rotate screen", "value": _srv,
+                     "detail": "For the Anbernic Win600 (portrait 720x1280 panel). AUTO = landscape when that panel is found "
+                               "(usually RIGHT; set CODEAQUE_ROTATE=left if it goes the wrong way). NORMAL / LEFT / RIGHT / "
+                               "INVERTED apply now. Does nothing on a normal landscape screen. Press to step."})
         rows.append({"kind": "handheld", "title": "Console home (same as Android)", "value": "ON" if self.handheld else "OFF",
                      "detail": "A home made for small handheld screens: only Cloud Gaming and Retro, big text, all by controller. "
                                "CodeAque then starts in it every time. Turn it off here, or with Y > Leave handheld mode."})

@@ -19,11 +19,12 @@ VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
 CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("store", "Games Store", "cart"), ("world", "World Games", "pad"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
               ("streams", "Streams", "stream"), ("media", "Media", "film"), ("music", "Music", "music"),
-              ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("accounts", "Accounts", "app"), ("settings", "Settings", "gear"))
+              ("trilogies", "Trilogies", "pad"), ("coop", "Co-op", "pad"), ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("accounts", "Accounts", "app"), ("settings", "Settings", "gear"))
 # 0.9.4: PC games already installed on this machine (shown in My Games); retro ROMs, web pages and apps are elsewhere
 PC_GAME_PLATFORMS = ("steam", "heroic", "lutris", "windows", "epic", "gog", "amazon")
 SETTINGS_TILES = (("wifi", "Wi-Fi", "wifi"), ("controllers", "Controllers", "pad"), ("addgames", "Add games", "usb"),
-                  ("effects", "Reduce effects", "sparkle"), ("settings", "All settings", "gear"),
+                  ("effects", "Reduce effects", "sparkle"), ("rotate", "Rotate screen", "monitor"),
+                  ("settings", "All settings", "gear"),
                   ("leave", "Classic home", "exit"), ("power", "Power", "power"), ("ask", "Ask CodeAque", "app"),
                   ("update", "Update CodeAque", "download"))
 
@@ -205,6 +206,31 @@ def all_apps(games) -> list:
     return [_launch_tile(g, "app") for g in sorted(lst, key=lambda g: g.title.lower())]
 
 
+
+def trilogy_tiles() -> list:
+    """Trilogies tab: Get-on-Steam store shortcuts only (official Steam pages; no game files, no third-party logos)."""
+    from . import webapps
+    out = []
+    for i, p in enumerate(webapps.TRILOGY_PAGES):
+        appid = webapps.TRILOGY_APPIDS[p.id]
+        out.append({"key": f"steamstore:{appid}", "title": p.title, "icon": "c_pc", "kind": "action",
+                    "action": f"steamstore:{appid}", "items": [], "hue": 0.08 + (i % 12) * 0.07,
+                    "note": p.note or "", "steam_appid": appid})
+    return out
+
+
+def coop_tiles() -> list:
+    """Co-op tab: Hazelight / EA co-op and popular online co-op RPGs (Steam store links only)."""
+    from . import webapps
+    out = []
+    for i, p in enumerate(webapps.COOP_PAGES):
+        appid = webapps.COOP_APPIDS[p.id]
+        out.append({"key": f"steamstore:{appid}", "title": p.title, "icon": "c_pc", "kind": "action",
+                    "action": f"steamstore:{appid}", "items": [], "hue": 0.55 + (i % 12) * 0.05,
+                    "note": p.note or "", "steam_appid": appid})
+    return out
+
+
 def categories(games, store=None, cfg=None, home=None) -> list:
     games = list(games)
     cloud = sorted((g for g in games if is_cloud(g)), key=lambda g: [w.id for w in webapps.WEBAPPS].index(g.gid[4:])
@@ -251,6 +277,10 @@ def categories(games, store=None, cfg=None, home=None) -> list:
                  "hue": 0.05 + i * 0.13} for i, w in enumerate(_wa.FREE_TV)]
         elif key == "music":
             tiles = [_launch_tile(g, "music") for g in music]
+        elif key == "trilogies":
+            tiles = trilogy_tiles()
+        elif key == "coop":
+            tiles = coop_tiles()
         elif key == "downloads":
             tiles = [{"key": "downloads", "title": "Downloads", "icon": "download", "kind": "action", "action": "downloads", "items": []}]
         else:

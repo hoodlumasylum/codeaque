@@ -1,12 +1,14 @@
-"""Win600 set-up: Handheld mode on, and 1280x720 fullscreen + built-in pad defaults for the emulators.
+"""Win600 set-up: Handheld mode on, 1280x720 fullscreen + built-in pad defaults, and landscape rotation.
 
 Only sets keys; anything else in the emulator's own settings is left alone. Safe to run again.
+Rotation uses atarilauncher.rotate (same as the in-app Settings > Rotate screen) and is a no-op on
+normal landscape screens.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from . import config
+from . import config, rotate
 
 HOME = Path.home()
 VAR = HOME / ".var/app"
@@ -90,6 +92,9 @@ MARKER = Path.home() / ".config/atari/win600-setup"   # install.sh refreshes the
 def main(argv: list[str] | None = None) -> int:
     import sys
     argv = sys.argv[1:] if argv is None else argv
+    if "--rotate-only" in argv:
+        print(rotate.apply("auto"))
+        return 0
     if "--emulators-only" not in argv:
         turn_on_handheld()
         print("Handheld mode: on")
@@ -102,6 +107,11 @@ def main(argv: list[str] | None = None) -> int:
                 print("Set up:", path.name)
         except OSError as e:
             print("Skipped", path, "-", e)
+    # 0.10.31: landscape for the portrait panel (also on --emulators-only so in-app updates get it)
+    try:
+        print(rotate.apply("auto"))
+    except Exception as exc:
+        print("Rotation skipped:", exc)
     return 0
 
 

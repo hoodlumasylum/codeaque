@@ -2,7 +2,8 @@
 # CodeAque for the Anbernic Win600 (Linux Mint / Ubuntu). One command:
 #   bash scripts/install-win600.sh
 # Installs CodeAque, every emulator CodeAque supports (Flathub / official releases), sets them up for
-# the 1280x720 screen and the built-in pad, turns on Handheld mode and starts CodeAque at login.
+# the 1280x720 screen and the built-in pad, turns the portrait panel to landscape, turns on Handheld
+# mode and starts CodeAque at login. Rotation: CODEAQUE_ROTATE=left if the default (right) is wrong.
 # Safe to run again. No BIOS, firmware, keys, ROMs or games are included - bring your own.
 # Options:  --no-emulators   skip the emulator downloads     --no-autostart   do not start at login
 set -u
@@ -31,7 +32,7 @@ if [ "$EMU" = 1 ]; then
     chrome kodi moonlight antimicrox ffmpeg 7zip unrar playerctl || echo "Some emulators failed - run this script again later."
 else say "Step 3/5: skipped (--no-emulators)"; fi
 
-say "Step 4/5: settings for the 1280x720 screen and the built-in pad"
+say "Step 4/5: settings for the 1280x720 screen, landscape rotation and the built-in pad"
 PY="$APP_DIR/.venv/bin/python"; [ -x "$PY" ] || PY=python3
 PYTHONPATH="$APP_DIR" "$PY" -m atarilauncher.win600 || echo "Could not write every emulator setting - they still work with their own defaults."
 
@@ -39,6 +40,7 @@ say "Step 5/5: done"
 cat <<T
 CodeAque is installed in Handheld mode.
  - Restart (or log out and in) and CodeAque opens by itself.
+ - The portrait panel is rotated to landscape (Settings > Rotate screen to change; CODEAQUE_ROTATE=left if it is sideways the wrong way).
  - Add your own games: Settings > Add games. BIOS files you own: Settings > Add BIOS files.
  - To leave Handheld mode: Settings > Leave Handheld.
 T

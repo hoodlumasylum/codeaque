@@ -31,6 +31,13 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.31
+
+- **Rotate screen (Win600).** On launch, CodeAque detects the Win600's portrait panel (720x1280) and rotates it (and the touchscreen) to landscape. Settings > Rotate screen steps Auto / Normal / Left / Right / Inverted. Auto is the default. The Win600 installer and in-app updates also set this. Untested on a real device yet.
+- **Handheld tab bar on small screens.** The top category row scrolls sideways and keeps the selected tab in view. On cramped screens (Win600 1280x720, and smaller like 800x480) unselected tabs show the icon only and the selected tab shows its name, so labels never overlap.
+- **Co-op tab.** A Way Out, It Takes Two, Split Fiction (note: may need the EA app) plus popular co-op RPGs (Baldur's Gate 3, Elden Ring, Diablo IV, Borderlands, Stardew Valley, Terraria, Valheim, and more). Heavy games note they need a strong PC. Diablo III is not on Steam so it is left out.
+- **Trilogies tab.** Get-on-Steam shortcuts for Uncharted, Tomb Raider, GTA, Assassin's Creed, The Talos Principle and Life is Strange. Official Steam store links only (opens `steam://store/<id>` when Steam is installed, otherwise the HTTPS store page). No game files, no third-party logos. Uncharted and GTA V note that they need a strong PC (try cloud gaming). The co-op games note they may need the EA app.
+
 ## What's new in 0.10.30
 
 - The CodeAque icon now fits the home screen, plus new Adult mode and Settings shortcuts.

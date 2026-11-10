@@ -58,6 +58,7 @@ FocusScope {
         if (tile.kind === "list") { listIdx = 0; zone = "list" }
         else if (tile.kind === "launch") backend.launchGid(tile.gid)
         else if (tile.action === "effects") backend.cycleEffects()
+        else if (tile.action === "rotate") backend.cycleScreenRotate()
         else hh.menuAction(tile.action)
     }
     function handleKey(e) {
@@ -192,56 +193,103 @@ FocusScope {
         }
     }
 
-    // ------------------------------------------------------------ category row
+    // ------------------------------------------------------------ category row (0.10.31: scrolls on small screens; never overlaps)
     Item {
         id: catRow
         objectName: "hhCats"
         x: 60 * hh.s; width: parent.width - 120 * hh.s
         y: 84 * hh.s; height: 124 * hh.s
-        readonly property real step: width / Math.max(1, hh.cats.length)
+        // Icon-only width for unselected tabs; selected tab grows to fit its label. Keeps 1280x720 and 800x480 readable.
+        readonly property real iconW: 72 * hh.s
+        readonly property real gap: 6 * hh.s
+        readonly property bool cramped: {
+            // Estimate: if every tab showed a short label, would they overflow? Prefer icon-only when yes.
+            var n = Math.max(1, hh.cats.length)
+            return (n * (iconW + 48 * hh.s)) > width
+        }
+        function ensureVisible() {
+            if (!catFlick || !catInner) return
+            var item = catInner.children[hh.cat]
+            if (!item) return
+            var left = item.x
+            var right = item.x + item.width
+            var viewL = catFlick.contentX
+            var viewR = viewL + catFlick.width
+            if (left < viewL) catFlick.contentX = Math.max(0, left - 12 * hh.s)
+            else if (right > viewR) catFlick.contentX = Math.min(catFlick.contentWidth - catFlick.width, right - catFlick.width + 12 * hh.s)
+        }
+        Connections {
+            target: hh
+            function onCatChanged() { Qt.callLater(catRow.ensureVisible) }
+        }
         Text { x: -40 * hh.s; anchors.verticalCenter: parent.verticalCenter; text: "\u2039"; color: hh.cat > 0 ? "white" : "#444"
                font.pixelSize: 54 * hh.s }
         Text { x: parent.width + 14 * hh.s; anchors.verticalCenter: parent.verticalCenter; text: "\u203a"
                color: hh.cat < hh.cats.length - 1 ? "white" : "#444"; font.pixelSize: 54 * hh.s }
-        Repeater {
-            model: hh.cats
-            Item {
-                id: ci
-                required property var modelData
-                required property int index
-                readonly property bool on: index === hh.cat
-                width: catRow.step; height: catRow.height
-                x: index * catRow.step
-                scale: on ? 1.12 : 0.92
-                Behavior on scale { enabled: hh.anim; NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
-                Item {
-                    id: ciIcon
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: 14 * hh.s; width: 64 * hh.s; height: width
-                    Icon { id: ciGlyph; anchors.fill: parent; name: ci.modelData.icon; size: parent.width; stroke: 1.8
-                           color: ci.on ? "#9debff" : "#e6ebec" }
-                    MultiEffect {   // the chosen category glows
-                        visible: ci.on && hh.fx
-                        source: ciGlyph; anchors.fill: ciGlyph
-                        shadowEnabled: true; shadowColor: hh.glow; shadowBlur: 1.0; shadowScale: 1.1
-                        shadowHorizontalOffset: 0; shadowVerticalOffset: 0
+        Flickable {
+            id: catFlick
+            objectName: "hhCatsFlick"
+            anchors.fill: parent
+            clip: true
+            interactive: contentWidth > width
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: catInner.width
+            contentHeight: height
+            Behavior on contentX { enabled: hh.anim; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Row {
+                id: catInner
+                objectName: "hhCatsInner"
+                height: parent.height
+                spacing: catRow.gap
+                Repeater {
+                    model: hh.cats
+                    Item {
+                        id: ci
+                        required property var modelData
+                        required property int index
+                        readonly property bool on: index === hh.cat
+                        // Selected: always show the label. Unselected: label only when there is room for every tab.
+                        readonly property bool showLabel: on || !catRow.cramped
+                        width: Math.max(catRow.iconW, (showLabel ? Math.max(catRow.iconW, lab.implicitWidth + 16 * hh.s) : catRow.iconW))
+                        height: catRow.height
+                        scale: on ? 1.08 : 0.94
+                        Behavior on scale { enabled: hh.anim; NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+                        Behavior on width { enabled: hh.anim; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        Item {
+                            id: ciIcon
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: 10 * hh.s; width: 56 * hh.s; height: width
+                            Icon { id: ciGlyph; anchors.fill: parent; name: ci.modelData.icon; size: parent.width; stroke: 1.8
+                                   color: ci.on ? "#9debff" : "#e6ebec" }
+                            MultiEffect {   // the chosen category glows
+                                visible: ci.on && hh.fx
+                                source: ciGlyph; anchors.fill: ciGlyph
+                                shadowEnabled: true; shadowColor: hh.glow; shadowBlur: 1.0; shadowScale: 1.1
+                                shadowHorizontalOffset: 0; shadowVerticalOffset: 0
+                            }
+                        }
+                        Text {
+                            id: lab
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: ciIcon.bottom; anchors.topMargin: 6 * hh.s
+                            visible: ci.showLabel
+                            text: ci.modelData.title
+                            color: ci.on ? "white" : "#dfe5e6"
+                            font.pixelSize: (ci.on ? 20 : 16) * hh.s; font.weight: ci.on ? Font.DemiBold : Font.Normal
+                            elide: Text.ElideRight; maximumLineCount: 1
+                        }
+                        Rectangle {   // focus underline when the row itself has the focus
+                            visible: ci.on && hh.zone === "cats"
+                            anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom
+                            width: Math.min(parent.width - 8 * hh.s, 54 * hh.s); height: 3 * hh.s; radius: height / 2; color: hh.glow
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: { hh.cat = ci.index; hh.zone = "tiles" } }
                     }
                 }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.top: ciIcon.bottom; anchors.topMargin: 8 * hh.s
-                    text: ci.modelData.title
-                    color: ci.on ? "white" : "#dfe5e6"
-                    font.pixelSize: (ci.on ? 24 : 21) * hh.s; font.weight: ci.on ? Font.DemiBold : Font.Normal
-                }
-                Rectangle {   // focus underline when the row itself has the focus
-                    visible: ci.on && hh.zone === "cats"
-                    anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom
-                    width: 54 * hh.s; height: 3 * hh.s; radius: height / 2; color: hh.glow
-                }
-                MouseArea { anchors.fill: parent; onClicked: { hh.cat = ci.index; hh.zone = "tiles" } }
             }
         }
+        Component.onCompleted: Qt.callLater(catRow.ensureVisible)
     }
 
     // ------------------------------------------------------------ the centre piece: the CodeAque logo and tagline
@@ -380,6 +428,21 @@ FocusScope {
                                                     : "no games yet: add your own with Settings > Add games")) : ""
             color: "#dfe9ec"; font.pixelSize: 16 * hh.s
         }
+    }
+
+    // 0.10.31: small note under the selected Trilogies tile (e.g. "Needs a strong PC, try cloud gaming.")
+    Text {
+        id: tileNote
+        objectName: "hhTileNote"
+        readonly property string noteText: (hh.tile && hh.tile.note) ? ("" + hh.tile.note) : ""
+        visible: noteText !== "" && hh.zone !== "list"
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: tileRow.y - 28 * hh.s
+        width: parent.width - 80 * hh.s
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        text: noteText
+        color: "#c8d6da"; font.pixelSize: 16 * hh.s
     }
 
     // ------------------------------------------------------------ the tile row
