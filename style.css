@@ -7,6 +7,8 @@ a{color:var(--gold)}
 .hero-video{display:block;width:100%;height:auto;background:#000;aspect-ratio:16/9;object-fit:cover}
 .nav{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:#0c0e12eb;border-bottom:1px solid var(--line)}
 .brand img{height:32px;display:block}
+
+.brand{-webkit-user-select:none;user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .nav nav{display:flex;flex-wrap:wrap;gap:12px}
 .nav nav a{color:var(--text);text-decoration:none;font-weight:700;font-size:15px}
 .nav nav a:hover{color:var(--gold)}
@@ -45,3 +47,11 @@ footer{text-align:center;color:var(--dim);padding:28px 16px 48px;border-top:1px 
   main{padding:8px 24px 40px}
 }
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+.egg-overlay{position:fixed;inset:0;z-index:20;background:#0009;display:flex;align-items:center;justify-content:center;padding:16px}
+.egg-overlay[hidden]{display:none}
+.egg-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px 16px;max-width:360px;width:100%;text-align:center}
+.egg-card p{margin:0 0 16px;font-weight:700}
+.egg-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.egg-actions a,.egg-actions button{display:inline-block;border-radius:12px;padding:10px 16px;font-weight:800;font-size:15px;cursor:pointer;text-decoration:none;font-family:inherit;border:1px solid var(--line)}
+.egg-dl{background:var(--gold);color:#0c0e12;border-color:var(--gold)}
+.egg-close{background:#0e1218;color:var(--text)}

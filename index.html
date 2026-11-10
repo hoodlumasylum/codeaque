@@ -106,12 +106,58 @@
   <img src="img/logo.png" alt="" class="flogo">
   <p>Not on sale yet. Follow us on <a href="https://www.tiktok.com/">TikTok</a></p>
 </footer>
+
+<div class="egg-overlay" id="egg" hidden>
+  <div class="egg-card" role="dialog" aria-modal="true" aria-labelledby="egg-title">
+    <p id="egg-title">Secret unlocked 🎮 Download CodeAque for Android</p>
+    <div class="egg-actions">
+      <a class="egg-dl" href="https://github.com/hoodlumasylum/codeaque/releases/latest/download/codeaque-launcher.apk">Download</a>
+      <button type="button" class="egg-close">Close</button>
+    </div>
+  </div>
+</div>
 <script>
 (function () {
   var v = document.querySelector("video");
   if (v && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     v.removeAttribute("autoplay");
     v.pause();
+  }
+
+  var brand = document.querySelector("header .brand");
+  var egg = document.getElementById("egg");
+  var taps = [];
+  var hop;
+  if (brand && egg) {
+    brand.addEventListener("click", function (e) {
+      e.preventDefault();
+      var now = Date.now();
+      taps = taps.filter(function (t) { return now - t < 3000; });
+      taps.push(now);
+      clearTimeout(hop);
+      if (taps.length >= 7) {
+        taps = [];
+        egg.hidden = false;
+      } else if (taps.length === 1) {
+        hop = setTimeout(function () {
+          if (taps.length === 1) {
+            taps = [];
+            if (location.hash === "#top") {
+              var top = document.getElementById("top");
+              if (top) top.scrollIntoView();
+            } else {
+              location.hash = "top";
+            }
+          }
+        }, 450);
+      }
+    });
+    function closeEgg() { egg.hidden = true; }
+    egg.querySelector(".egg-close").addEventListener("click", closeEgg);
+    egg.addEventListener("click", function (e) { if (e.target === egg) closeEgg(); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !egg.hidden) closeEgg();
+    });
   }
   document.querySelectorAll("img").forEach(function (img) {
     img.addEventListener("error", function () {
