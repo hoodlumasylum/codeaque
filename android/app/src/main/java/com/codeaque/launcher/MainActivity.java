@@ -35,6 +35,11 @@ public class MainActivity extends Activity implements HomeView.Host {
     private final Map<String, Integer> sounds = new HashMap<>();
     private final Map<String, Boolean> installedCache = new HashMap<>();
     private SharedPreferences prefs;
+    // 0.10.34: Roblox Mode public explore list (adult home). Kids mode keeps the official short list.
+    private List<Catalog.Item> robloxItems;
+    private String robloxSession = "", robloxToken = "";
+    private boolean robloxOn, robloxLoading;
+    private long robloxMoreAt;
 
     @Override protected void onCreate(Bundle b) {
         Catalog.VERSION = myVersion();   // 0.10.28
@@ -220,6 +225,8 @@ public class MainActivity extends Activity implements HomeView.Host {
                         Catalog.placements(prefs.getStringSet("placed", null)), apps));
         if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.29: Phone / Messages in Kids mode and adult mode
         if (locked()) cs = Catalog.applyLockMode(cs);   // Lock mode, Android settings and Home tiles disappear
+        if (!kidsOn && robloxItems != null && !robloxItems.isEmpty())
+            cs = Catalog.replaceItems(cs, "roblox", robloxItems);  // 0.10.34: keep the discovered list across a rescan
         syncAliases();                                  // 0.10.30: Adult / Settings home-screen icons off while locked
         view.setCategories(cs);
         if (view.boxSet() && !kidsOn) view.setBoxSet(true, java.util.Arrays.asList(Catalog.boxSetItems()));
@@ -1357,6 +1364,87 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (prefs.getBoolean("kidsMode", false)) { toast("Box Set Mode is not available in Kids mode."); return; }
         view.setBoxSet(true, java.util.Arrays.asList(Catalog.boxSetItems()));
         toast("Box Set Mode. Press Exit or hold Start / Select to leave (no PIN).");
+    }
+
+        @Override public void robloxRow(boolean on, boolean nearEnd) {
+        if (prefs.getBoolean("kidsMode", false)) {   // official short list only (explore includes mild/moderate titles)
+            robloxOn = false;
+            return;
+        }
+        if (!on) { robloxOn = false; return; }
+        if (!robloxOn) {
+            robloxOn = true;
+            refreshRoblox();
+        } else if (nearEnd) {
+            loadMoreRoblox();
+        }
+    }
+
+    private File robloxCacheFile() { return new File(getFilesDir(), RobloxDiscover.CACHE_NAME); }
+
+    private void showRoblox(List<Catalog.Item> items) {
+        if (items == null || items.isEmpty()) return;
+        robloxItems = items;
+        if (!prefs.getBoolean("kidsMode", false)) view.replaceRow("roblox", items);
+    }
+
+    private void refreshRoblox() {
+        if (robloxLoading) return;
+        if (robloxItems == null || robloxItems.isEmpty()) {
+            List<Catalog.Item> cached = RobloxDiscover.loadCache(robloxCacheFile());
+            if (!cached.isEmpty()) showRoblox(cached);
+        }
+        if (!online()) {
+            if (robloxItems == null || robloxItems.isEmpty()) showRoblox(RobloxDiscover.fallback());
+            return;
+        }
+        robloxSession = RobloxDiscover.newSession();
+        robloxToken = "";
+        robloxLoading = true;
+        final String session = robloxSession;
+        new Thread(() -> {
+            RobloxDiscover.Page page;
+            try { page = RobloxDiscover.fetchPage(session, ""); }
+            catch (Exception e) { page = new RobloxDiscover.Page(new java.util.ArrayList<>(), ""); }
+            final RobloxDiscover.Page got = page;
+            runOnUiThread(() -> {
+                robloxLoading = false;
+                if (!got.items.isEmpty()) {
+                    robloxToken = got.nextToken;
+                    showRoblox(got.items);
+                    RobloxDiscover.saveCache(robloxCacheFile(), got.items);
+                } else if (robloxItems == null || robloxItems.isEmpty()) {
+                    List<Catalog.Item> cached = RobloxDiscover.loadCache(robloxCacheFile());
+                    showRoblox(cached.isEmpty() ? RobloxDiscover.fallback() : cached);
+                }
+            });
+        }, "codeaque-roblox").start();
+    }
+
+    private void loadMoreRoblox() {
+        if (robloxLoading || robloxToken == null || robloxToken.isEmpty() || !online()) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - robloxMoreAt < 2500) return;   // onDraw can be near the end every frame
+        robloxMoreAt = now;
+        robloxLoading = true;
+        final String session = robloxSession, token = robloxToken;
+        new Thread(() -> {
+            RobloxDiscover.Page page;
+            try { page = RobloxDiscover.fetchPage(session, token); }
+            catch (Exception e) { page = new RobloxDiscover.Page(new java.util.ArrayList<>(), ""); }
+            final RobloxDiscover.Page got = page;
+            runOnUiThread(() -> {
+                robloxLoading = false;
+                if (!got.items.isEmpty()) {
+                    robloxToken = got.nextToken;
+                    List<Catalog.Item> merged = RobloxDiscover.merge(robloxItems, got.items);
+                    showRoblox(merged);
+                    RobloxDiscover.saveCache(robloxCacheFile(), merged);
+                } else if (!got.nextToken.isEmpty()) {
+                    robloxToken = got.nextToken;
+                }
+            });
+        }, "codeaque-roblox-more").start();
     }
 
     @Override public void leaveBoxSet() {

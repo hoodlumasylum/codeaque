@@ -29,7 +29,12 @@ public final class Catalog {
         public String boxart() { return isRom() && cls != null ? boxartUrl(cls) : null; }
         public String storePackage() { return packages.isEmpty() ? null : packages.get(0); }
         public boolean isAction() { return action != null; }
-        public String key() { return isDeviceApp() ? pkg + "/" + cls : isRom() ? uri : label; }
+        public String key() {
+            if (isDeviceApp()) return pkg + "/" + cls;
+            if (isRom()) return uri;
+            if (action != null && action.startsWith("roblox:")) return action;  // 0.10.34: unique even when two games share a name
+            return label;
+        }
     }
 
     public static final class Category {
@@ -650,6 +655,18 @@ public final class Catalog {
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
                 act("Home app", "home", "home"), act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
         return c;
+    }
+
+    /** 0.10.34: swap the tiles in one row (Roblox explore results) and keep the rest of the home as it is. */
+    public static List<Category> replaceItems(List<Category> cats, String id, List<Item> items) {
+        if (cats == null || id == null) return cats;
+        Item[] arr = (items == null ? new Item[0] : items.toArray(new Item[0]));
+        List<Category> out = new ArrayList<>(cats.size());
+        for (Category c : cats) {
+            if (id.equals(c.id)) out.add(new Category(c.id, c.label, c.icon, arr));
+            else out.add(c);
+        }
+        return out;
     }
 
     public static int indexOf(List<Category> cats, String id) {

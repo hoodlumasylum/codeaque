@@ -439,5 +439,54 @@ public class CatalogTest {
         String thumb = StoreArt.parseThumb("{\"data\":[{\"imageUrl\":\"https://tr.rbxcdn.com/abc.png\"}]}");
         check("https://tr.rbxcdn.com/abc.png".equals(thumb), "Roblox thumb parse");
         check(StoreArt.parseThumb("{\"data\":[{\"imageUrl\":\"https://evil.example/x.png\"}]}") == null, "reject unknown thumb host");
+        robloxDiscoverChecks();
+    }
+
+    /** 0.10.34: public explore JSON, official fallback, cache, merge. No network. */
+    static void robloxDiscoverChecks() {
+        check(RobloxDiscover.EXPLORE_SORTS.startsWith("https://apis.roblox.com/explore-api/"), "explore host");
+        String json = "{"
+                + "\"nextSortsPageToken\":\"tok-2\","
+                + "\"sorts\":["
+                + "{\"contentType\":\"Filters\",\"games\":[]},"
+                + "{\"contentType\":\"Games\",\"sortId\":\"top-trending\",\"games\":["
+                + "{\"rootPlaceId\":4924922222,\"name\":\"Brookhaven\",\"isSponsored\":false},"
+                + "{\"rootPlaceId\":1,\"name\":\"Ad Game\",\"isSponsored\":true},"
+                + "{\"rootPlaceId\":920587237,\"name\":\"Adopt Me!\"}"
+                + "]},"
+                + "{\"contentType\":\"Games\",\"sortId\":\"top-paid-access\",\"games\":["
+                + "{\"rootPlaceId\":99,\"name\":\"Paid Place\"}"
+                + "]},"
+                + "{\"contentType\":\"Songs\",\"games\":[{\"rootPlaceId\":77,\"name\":\"A Song\"}]}"
+                + "]}";
+        RobloxDiscover.Page page = RobloxDiscover.parsePage(json);
+        check("tok-2".equals(page.nextToken) && page.items.size() == 2, "parse size " + page.items.size());
+        check("4924922222".equals(Catalog.robloxPlaceId(page.items.get(0))) && "Brookhaven".equals(page.items.get(0).label), "first game");
+        check("920587237".equals(Catalog.robloxPlaceId(page.items.get(1))), "second game, sponsored skipped");
+        check(page.items.get(0).webUrl.startsWith("https://www.roblox.com/games/4924922222/")
+                && "roblox:4924922222".equals(page.items.get(0).action), "official deep-link action");
+        check(RobloxDiscover.parsePage("not-json").items.isEmpty() && RobloxDiscover.parsePage(null).items.isEmpty(), "bad json");
+        check(RobloxDiscover.fallback().size() == Catalog.ROBLOX_ITEMS.length
+                && "4924922222".equals(Catalog.robloxPlaceId(RobloxDiscover.fallback().get(0))), "official fallback");
+        String url = RobloxDiscover.exploreUrl("sess 1", "tok/2");
+        check(url.startsWith(RobloxDiscover.EXPLORE_SORTS + "?sessionId=") && url.contains("sortsPageToken=") && !url.contains(" "), "url encodes");
+        List<Catalog.Item> merged = RobloxDiscover.merge(page.items, java.util.List.of(
+                Catalog.robloxPlace("Adopt Me!", "920587237"),
+                Catalog.robloxPlace("Doors", "6516141723")));
+        check(merged.size() == 3 && "6516141723".equals(Catalog.robloxPlaceId(merged.get(2))), "merge dedupes");
+        java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "codeaque-rbx-test");
+        dir.mkdirs();
+        java.io.File cache = new java.io.File(dir, "roblox-discover.json");
+        check(RobloxDiscover.saveCache(cache, page.items), "cache save");
+        List<Catalog.Item> loaded = RobloxDiscover.loadCache(cache);
+        check(loaded.size() == 2 && "4924922222".equals(Catalog.robloxPlaceId(loaded.get(0))) && "Adopt Me!".equals(loaded.get(1).label), "cache load");
+        check(RobloxDiscover.loadCache(new java.io.File(dir, "missing.json")).isEmpty(), "missing cache");
+        cache.delete();
+        List<Catalog.Category> cats = Catalog.categories();
+        List<Catalog.Category> swapped = Catalog.replaceItems(cats, "roblox", page.items);
+        check(swapped.get(Catalog.indexOf(swapped, "roblox")).items.size() == 2
+                && swapped.get(Catalog.indexOf(cats, "steam")).items.size() == cats.get(Catalog.indexOf(cats, "steam")).items.size(), "replace only roblox row");
+        List<Catalog.Category> kids = Catalog.kidsMode();
+        check(kids.get(Catalog.indexOf(kids, "kroblox")).items.size() == Catalog.ROBLOX_ITEMS.length, "kids keeps official list");
     }
 }

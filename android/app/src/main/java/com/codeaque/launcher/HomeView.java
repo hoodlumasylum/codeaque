@@ -35,6 +35,8 @@ public class HomeView extends View {
         void logoSecret();
         /** 0.10.32 Box Set Mode: leave with Exit or a held Start/Select — no PIN. */
         void leaveBoxSet();
+        /** 0.10.34: Roblox row is showing (or was just left). nearEnd means load the next public page. */
+        void robloxRow(boolean on, boolean nearEnd);
     }
 
     private Palette T = Palette.NEON;
@@ -46,6 +48,13 @@ public class HomeView extends View {
     private final Host host;
     private List<Catalog.Category> cats = Catalog.categories();
 
+    /** 0.10.34: swap one row's tiles (Roblox pages) without rebuilding the rest of the home or resetting the scroll. */
+    public void replaceRow(String id, List<Catalog.Item> items) {
+        cats = Catalog.replaceItems(cats, id, items);
+        tile = Math.max(0, Math.min(tile, Math.max(0, items().size() - 1)));
+        invalidate();
+    }
+
     /** 0.9.4: new rows after the installed apps / game folders were scanned; keeps the chosen category and tile. */
     public void setCategories(List<Catalog.Category> n) {
         String id = cats.get(cat).id;
@@ -54,6 +63,7 @@ public class HomeView extends View {
         cat = i < 0 ? 0 : i; catAnim = cat;
         tile = Math.max(0, Math.min(tile, items().size() - 1));
         invalidate();
+        notifyRoblox(false);
     }
     private int cat = 0, tile = 0;       // 0.10.1: start on the Featured row, Roblox first
     private boolean inCats = false;
@@ -111,17 +121,24 @@ public class HomeView extends View {
         c = (c + cats.size()) % cats.size();
         if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; host.sound("hhcat"); }
         invalidate();
+        notifyRoblox(false);
     }
     private void setTile(int i) {
         userScroll = false; flingV = 0;   // the controller takes the scroll back; focus-follow eases to this tile
         i = Math.max(0, Math.min(items().size() - 1, i));
         if (i != tile) { tile = i; host.sound("hhmove"); }
         invalidate();
+        notifyRoblox(true);
     }
     private void activate() {
         Catalog.Item it = items().get(tile);
         host.sound("hhselect");
-        if (it.action != null && it.action.startsWith("goto:")) { setCat(Catalog.indexOf(cats, it.action.substring(5))); return; }
+        if (it.action != null && it.action.startsWith("goto:")) {
+            String id = it.action.substring(5);
+            int i = Catalog.indexOf(cats, id);
+            if (i < 0 && "roblox".equals(id)) i = Catalog.indexOf(cats, "kroblox");  // 0.10.34: Kids row id
+            setCat(i); return;
+        }
         if (!it.isAction() && it.webUrl == null && !host.installed(it)) { prompt = it; invalidate(); return; }
         host.open(it);
     }
@@ -199,6 +216,31 @@ public class HomeView extends View {
         return Math.max(0, items().size() - vis);
     }
     private float clampScroll(float v) { float m = maxScroll(); return v < 0 ? 0 : v > m ? m : v; }
+
+    private boolean onRobloxRow() {
+        if (boxset || cats.isEmpty()) return false;
+        String id = cats.get(Math.max(0, Math.min(cat, cats.size() - 1))).id;
+        return "roblox".equals(id) || "kroblox".equals(id);
+    }
+    private boolean robloxNearEnd() {
+        if (!onRobloxRow()) return false;
+        int n = items().size();
+        if (n == 0) return false;
+        int pos = Math.max(tile, (int) Math.ceil(scrollAnim));
+        return n - pos <= 4;
+    }
+    private Boolean lastRobloxOn;
+    /** Tell MainActivity when Roblox mode is opened or the row is near its end (so it can fetch the next public page). */
+    private void notifyRoblox(boolean considerEnd) {
+        boolean on = onRobloxRow();
+        boolean near = considerEnd && robloxNearEnd();
+        if (lastRobloxOn == null || lastRobloxOn.booleanValue() != on) {
+            lastRobloxOn = on;
+            host.robloxRow(on, near);
+            return;
+        }
+        if (on && near) host.robloxRow(true, true);
+    }
 
     /** Seven taps, each within 0.9 s of the last, open the hidden parent menu (only useful while Lock mode is on). */
     private void logoHit() {
@@ -285,7 +327,7 @@ public class HomeView extends View {
     }
 
     public void showCloud() { setCat(Catalog.indexOf(cats, "cloud")); tile = 0; inCats = false; invalidate(); }
-    public void focus(String catId, int i) { cat = Math.max(0, Catalog.indexOf(cats, catId)); tile = i; catAnim = cat; inCats = false; invalidate(); }
+    public void focus(String catId, int i) { cat = Math.max(0, Catalog.indexOf(cats, catId)); tile = i; catAnim = cat; inCats = false; invalidate(); notifyRoblox(false); }
 
     // ---------- geometry (scaled from the 1280x720 design) ----------
     private float catsBottom() { return getHeight() * 0.26f; }
@@ -364,6 +406,7 @@ public class HomeView extends View {
 
         background(c, W, H, anim);
         topBar(c, W, H);
+        notifyRoblox(true);
         if (!boxset) categories(c, W, H);
         if (!boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
         tiles(c, W, H);

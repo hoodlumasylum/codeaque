@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.34
+
+**Roblox Mode** on Android now refreshes from Roblox's public, unauthenticated explore API each time you open it, then loads the next page as you scroll near the end. Covers still come from Roblox's public thumbnails API and are cached on the device. If you are offline, the last cached list is shown, then the official short list of popular places. Tiles still open with the official `roblox://placeId=` link (or the official games page). Kids mode keeps the official short list only, because the public explore feed includes titles Roblox rates above minimal. No login and no API keys are used. Not tried yet on a real phone.
+
 ## What's new in 0.10.33
 
 **Fix Steam** in Settings (and offered when a Steam launch fails). On the Win600 / Linux Mint, Steam can say "Couldn't start Steam. Are you running low on disk space?" even when there is plenty of space. One press checks free space at the Steam folder and in /tmp, updates Flatpak Steam and installs the 32-bit GL32 runtime for the same Platform version, moves a broken first-run bootstrap (`ubuntu12_32` and `package`) aside so Steam can rebuild it (games in steamapps are never deleted), and for the native .deb installer enables i386 and installs `steam-installer` / `steam-libs-i386` if they are missing (password box via pkexec, no terminal). Progress is shown on screen, then Steam is started in Big Picture (`steam -bigpicture` or `flatpak run com.valvesoftware.Steam -bigpicture`). Not tried yet on a real Win600.
