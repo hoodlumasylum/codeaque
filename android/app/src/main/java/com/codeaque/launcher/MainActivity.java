@@ -21,6 +21,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -221,7 +222,13 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (locked()) cs = Catalog.applyLockMode(cs);   // Lock mode, Android settings and Home tiles disappear
         syncAliases();                                  // 0.10.30: Adult / Settings home-screen icons off while locked
         view.setCategories(cs);
+        if (view.boxSet() && !kidsOn) view.setBoxSet(true, java.util.Arrays.asList(Catalog.boxSetItems()));
+        else if (kidsOn) view.setBoxSet(false, java.util.Collections.emptyList());
         if (!romsScanned) { romsScanned = true; scanRoms(); }
+        if (!boxsetBootApplied) {
+            boxsetBootApplied = true;
+            if (prefs.getBoolean("boxsetBoot", false) && !kidsOn && !locked()) enterBoxSet();
+        }
     }
 
     @Override public android.graphics.Bitmap appIcon(Catalog.Item it) {
@@ -324,6 +331,9 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public android.graphics.Bitmap cover(Catalog.Item it) {
         String k = it.key();
         if (coverCache.containsKey(k)) return coverCache.get(k);
+        android.graphics.Bitmap store = storeArt(it);
+        if (store != null || Catalog.steamAppId(it) != null || Catalog.robloxPlaceId(it) != null || Catalog.modeAsset(it) != null)
+            return store;   // 0.10.32: runtime Steam / Roblox art, original mode fallback
         if (Catalog.isDreamcastRom(it) || Catalog.isPspRom(it)) return gameCover(it);   // 0.10.12: the player's own cover, else a title card
         if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it); if (w != null) return w; }   // 0.10.6 wide covers
         int own = it == Catalog.MARVEL_RIVALS ? R.drawable.duat_realm_s1 : it == Catalog.MINECRAFT ? R.drawable.duat_realm_blocks
@@ -590,6 +600,7 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     // ---------- 0.10.21 Lock mode (parent PIN). Soft lock inside CodeAque; full kiosk only if CodeAque is device owner. ----------
     private long pinOkUntil;
+    private boolean boxsetBootApplied;
     /** 0.10.23: a parent PIN exists (set from Kids mode or Lock mode). */
     private boolean pinSet() { return prefs.getString("lockPin", null) != null; }
     /** 0.10.23: whenever a PIN is set, leaving Kids mode and any Play Store launch from Kids mode need it. */
@@ -1045,6 +1056,8 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void action(String a) {
+        if (a != null && a.startsWith("steamstore:")) { openSteamStore(a.substring(11)); return; }
+        if (a != null && a.startsWith("roblox:")) { openRobloxPlace(a.substring(7)); return; }
         switch (a) {
             case "wifi": openWifi(); break;
             case "scandetails": if (!prefs.getBoolean("kidsMode", false)) showScanDetails(); break;
@@ -1085,7 +1098,10 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "settingspin": parentGo(true, false); break;    // 0.10.30
             case "sortapps": sortApps(); break;            // 0.10.27
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
+                leaveBoxSet();
                 prefs.edit().putBoolean("kidsMode", true).apply(); rescan(); toast("Kids mode is on. Leaving it needs the parent PIN."); break;
+            case "boxset": enterBoxSet(); break;             // 0.10.32: no PIN to leave
+            case "boxsetboot": toggleBoxSetBoot(); break;
             case "lock": lockToggle(); break;              // 0.10.21
             case "downloads": openDownloads(); break;      // 0.10.29 adult only, PIN already asked
             case "changepin": changePin(); break;          // 0.10.23
@@ -1284,6 +1300,78 @@ public class MainActivity extends Activity implements HomeView.Host {
     private boolean handheld() { return Rotation.suggest(android.os.Build.MANUFACTURER, android.os.Build.MODEL, android.os.Build.HARDWARE, android.os.Build.BOARD); }
 
     /** Chrome when installed (GeForce NOW's web client supports it), otherwise the default browser. */
+
+    private File storeArtDir() { return new File(getCacheDir(), "storeart"); }
+
+    private android.graphics.Bitmap storeArt(Catalog.Item it) {
+        String asset = Catalog.modeAsset(it);
+        String appid = Catalog.steamAppId(it);
+        String place = Catalog.robloxPlaceId(it);
+        File dir = storeArtDir();
+        if (appid != null) {
+            File f = StoreArt.steamFile(dir, appid);
+            if (f.isFile()) return decodeLater(coverCache, it.key(), () -> android.graphics.BitmapFactory.decodeFile(f.getPath()));
+            if (online() && fetching.add("steam:" + appid))
+                new Thread(() -> { boolean ok = StoreArt.fetchSteam(appid, dir); fetching.remove("steam:" + appid); if (ok) runOnUiThread(() -> { coverCache.remove(it.key()); view.invalidate(); }); }).start();
+            return modeBitmap(asset);
+        }
+        if (place != null) {
+            File f = StoreArt.robloxFile(dir, place);
+            if (f.isFile()) return decodeLater(coverCache, it.key(), () -> android.graphics.BitmapFactory.decodeFile(f.getPath()));
+            if (online() && fetching.add("roblox:" + place))
+                new Thread(() -> { boolean ok = StoreArt.fetchRoblox(place, dir); fetching.remove("roblox:" + place); if (ok) runOnUiThread(() -> { coverCache.remove(it.key()); view.invalidate(); }); }).start();
+            return modeBitmap(asset);
+        }
+        return modeBitmap(asset);
+    }
+
+    private android.graphics.Bitmap modeBitmap(String asset) {
+        if (asset == null) return null;
+        if (coverCache.containsKey("asset:" + asset)) return coverCache.get("asset:" + asset);
+        return decodeLater(coverCache, "asset:" + asset, () -> {
+            try (java.io.InputStream in = getAssets().open(asset)) {
+                return android.graphics.BitmapFactory.decodeStream(in);
+            } catch (Exception e) { return null; }
+        });
+    }
+
+    private void openSteamStore(String appid) {
+        if (appid == null || !appid.matches("\\d+")) return;
+        try {
+            start(new Intent(Intent.ACTION_VIEW, Uri.parse("steam://store/" + appid)));
+        } catch (Exception e) {
+            openWeb("https://store.steampowered.com/app/" + appid + "/");
+        }
+    }
+
+    private void openRobloxPlace(String placeId) {
+        if (placeId == null || !placeId.matches("\\d+")) return;
+        try {
+            start(new Intent(Intent.ACTION_VIEW, Uri.parse("roblox://placeId=" + placeId)).setPackage("com.roblox.client"));
+        } catch (Exception e) {
+            openWeb("https://www.roblox.com/games/" + placeId + "/");
+        }
+    }
+
+    private void enterBoxSet() {
+        if (prefs.getBoolean("kidsMode", false)) { toast("Box Set Mode is not available in Kids mode."); return; }
+        view.setBoxSet(true, java.util.Arrays.asList(Catalog.boxSetItems()));
+        toast("Box Set Mode. Press Exit or hold Start / Select to leave (no PIN).");
+    }
+
+    @Override public void leaveBoxSet() {
+        view.setBoxSet(false, java.util.Collections.emptyList());
+        toast("Back to CodeAque.");
+    }
+
+    private void toggleBoxSetBoot() {
+        boolean on = !prefs.getBoolean("boxsetBoot", false);
+        prefs.edit().putBoolean("boxsetBoot", on).apply();
+        toast(on
+                ? "Lock on: after a reboot, CodeAque opens straight in Box Set Mode. Leaving it does not turn this off."
+                : "Lock off: CodeAque will not start in Box Set Mode after a reboot.");
+    }
+
     private void openWeb(String url) {
         Intent v = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         try { getPackageManager().getPackageInfo("com.android.chrome", 0); start(new Intent(v).setPackage("com.android.chrome")); return; }

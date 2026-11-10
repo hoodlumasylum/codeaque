@@ -628,6 +628,12 @@ Window {
         else if (r.kind === "anim") { backend.toggleAnimations(); refreshSetup(true) }
         else if (r.kind === "effects") { backend.cycleEffects(); refreshSetup(true) }
         else if (r.kind === "rotate") { backend.cycleScreenRotate(); refreshSetup(true) }
+        else if (r.kind === "boxset") {
+            if (backend.boxSetActive) backend.leaveBoxSet()
+            else { backend.enterBoxSet(); leaveSetup() }
+            refreshSetup(true)
+        }
+        else if (r.kind === "boxsetboot") { backend.toggleBoxSetBoot(); refreshSetup(true) }
         else if (r.kind === "handheld") { backend.setHandheld(!backend.handheld); refreshSetup(true) }
         else if (r.kind === "padreminder") { backend.togglePadReminder(); refreshSetup(true) }
         else if (r.kind === "covers") { backend.downloadCoversNow(); refreshSetup(true) }
@@ -734,6 +740,7 @@ Window {
             }
             if (padWaitBanner.visible && !backend.keyFromPad()) root.padToastHidden = root.padToastKey   // keyboard in use: hide the pad note
             var snd = win.keySound(e)
+            if (backend.boxSetActive) { boxSetScreen.handleKey(e); snd = ""; if (snd !== "" && !backend.running) backend.playSound(snd); return }
             if (win.mode === "library" && backend.handheld) { handheldScreen.handleKey(e); snd = "" }
             else if (win.mode === "library") libraryKey(e)
             else if (win.mode === "search") searchKey(e)
@@ -750,6 +757,9 @@ Window {
             else if (win.mode === "ask") askScreen.handleKey(e)
         else if (win.mode === "wifi") wifiScreen.handleKey(e)
             if (snd !== "" && !backend.running) backend.playSound(snd)
+        }
+        Keys.onReleased: function (e) {
+            if (backend.boxSetActive) boxSetScreen.handleRelease(e)
         }
 
         Rectangle {        // the theme's background gradient (the standard theme: plain, as before)
@@ -791,7 +801,7 @@ Window {
             objectName: "handheldScreen"
             anchors.fill: parent
             z: 15
-            visible: backend.handheld && win.mode === "library" && !backend.running
+            visible: backend.handheld && win.mode === "library" && !backend.running && !backend.boxSetActive
             onMenuAction: function (id) {
                 if (id === "wifi") win.openWifi("library")
                 else if (id === "ask") win.openAsk()
@@ -805,8 +815,18 @@ Window {
                 else if (id.indexOf("emu:") === 0) backend.launchEmulator(id.substring(4))
                 else if (id === "getgames") backend.getGames()
                 else if (id.indexOf("steamstore:") === 0) backend.openSteamStore(id.substring(11))
+                else if (id.indexOf("roblox:") === 0) backend.openRobloxPlace(id.substring(7))
+                else if (id === "boxset") backend.enterBoxSet()
+                else if (id.indexOf("goto:") === 0) handheldScreen.goToKey(id.substring(5))
                 else if (id.indexOf("store:") === 0) backend.openStorePage(id.substring(6))     // Games Store / World Games / Trilogies HTTPS fallback
             }
+        }
+
+        BoxSetScreen {
+            id: boxSetScreen
+            objectName: "boxSetScreen"
+            anchors.fill: parent
+            z: 40
         }
 
         // ------------------------------------------------------------ banner + tabs

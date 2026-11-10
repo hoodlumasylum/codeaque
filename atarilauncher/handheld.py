@@ -19,11 +19,12 @@ VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
 CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("store", "Games Store", "cart"), ("world", "World Games", "pad"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
               ("streams", "Streams", "stream"), ("media", "Media", "film"), ("music", "Music", "music"),
-              ("trilogies", "Trilogies", "pad"), ("coop", "Co-op", "pad"), ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("accounts", "Accounts", "app"), ("settings", "Settings", "gear"))
+              ("trilogies", "Trilogies", "pad"), ("coop", "Co-op", "pad"), ("roblox", "Roblox", "pad"), ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("accounts", "Accounts", "app"), ("settings", "Settings", "gear"))
 # 0.9.4: PC games already installed on this machine (shown in My Games); retro ROMs, web pages and apps are elsewhere
 PC_GAME_PLATFORMS = ("steam", "heroic", "lutris", "windows", "epic", "gog", "amazon")
 SETTINGS_TILES = (("wifi", "Wi-Fi", "wifi"), ("controllers", "Controllers", "pad"), ("addgames", "Add games", "usb"),
                   ("effects", "Reduce effects", "sparkle"), ("rotate", "Rotate screen", "monitor"),
+                  ("boxset", "Box Set Mode", "c_pc"),
                   ("settings", "All settings", "gear"),
                   ("leave", "Classic home", "exit"), ("power", "Power", "power"), ("ask", "Ask CodeAque", "app"),
                   ("update", "Update CodeAque", "download"))
@@ -207,28 +208,82 @@ def all_apps(games) -> list:
 
 
 
+
+def _asset_art(name: str) -> str:
+    p = Path(__file__).resolve().parent / "assets" / name
+    return QUrl.fromLocalFile(str(p)).toString() if p.is_file() else ""
+
+
+def _steam_art(appid, gid: str = "") -> tuple[str, bool]:
+    """Cached official Steam art (downloaded at runtime), else ('', False) so the tile uses CodeAque art."""
+    from . import covers, icons
+    if gid:
+        art, fit = picture(gid)
+        if art:
+            return art, fit
+    for kind, fit in (("cover", False), ("header", True)):
+        path = covers.find_downloaded_steam_art(str(appid), kind)
+        if path:
+            return QUrl.fromLocalFile(path).toString(), fit
+    return "", False
+
+
+def mode_tiles() -> list:
+    """Big home tiles: Trilogy, Co-op, Roblox and Box Set. Original CodeAque art (no official covers bundled)."""
+    return [
+        {"key": "mode:trilogy", "title": "Trilogy Mode", "icon": "c_pc", "kind": "action",
+         "action": "goto:trilogies", "items": [], "art": _asset_art("mode-trilogy.png"), "fit": False, "hue": 0.08},
+        {"key": "mode:coop", "title": "Co-op Mode", "icon": "pad", "kind": "action",
+         "action": "goto:coop", "items": [], "art": _asset_art("mode-coop.png"), "fit": False, "hue": 0.55},
+        {"key": "mode:roblox", "title": "Roblox Mode", "icon": "pad", "kind": "action",
+         "action": "goto:roblox", "items": [], "art": _asset_art("mode-experiences.png"), "fit": False, "hue": 0.78,
+         "note": "Needs a Roblox account and parental controls. On Linux, Roblox runs via Sober or cloud only."},
+        {"key": "mode:boxset", "title": "Box Set Mode", "icon": "c_pc", "kind": "action",
+         "action": "boxset", "items": [], "art": _asset_art("mode-boxset.png"), "fit": False, "hue": 0.12},
+    ]
+
+
+def _store_shortcut_tiles(pages, appids, hue0: float) -> list:
+    out = []
+    for i, p in enumerate(pages):
+        appid = str(appids[p.id])
+        art, fit = _steam_art(appid, "store:" + p.id)
+        if not art:
+            art, fit = _steam_art(appid, f"steamstore:{appid}")
+        out.append({"key": f"steamstore:{appid}", "title": p.title, "icon": "c_pc", "kind": "action",
+                    "action": f"steamstore:{appid}", "items": [], "hue": hue0 + (i % 12) * 0.05,
+                    "note": p.note or "", "steam_appid": appid, "art": art, "fit": fit})
+    return out
+
+
 def trilogy_tiles() -> list:
     """Trilogies tab: Get-on-Steam store shortcuts only (official Steam pages; no game files, no third-party logos)."""
     from . import webapps
-    out = []
-    for i, p in enumerate(webapps.TRILOGY_PAGES):
-        appid = webapps.TRILOGY_APPIDS[p.id]
-        out.append({"key": f"steamstore:{appid}", "title": p.title, "icon": "c_pc", "kind": "action",
-                    "action": f"steamstore:{appid}", "items": [], "hue": 0.08 + (i % 12) * 0.07,
-                    "note": p.note or "", "steam_appid": appid})
-    return out
+    return _store_shortcut_tiles(webapps.TRILOGY_PAGES, webapps.TRILOGY_APPIDS, 0.08)
 
 
 def coop_tiles() -> list:
     """Co-op tab: Hazelight / EA co-op and popular online co-op RPGs (Steam store links only)."""
     from . import webapps
+    return _store_shortcut_tiles(webapps.COOP_PAGES, webapps.COOP_APPIDS, 0.55)
+
+
+def roblox_tiles() -> list:
+    """Roblox Mode: official experience links only (deep link / official web page). Covers fetched at runtime."""
+    from . import robloxex
     out = []
-    for i, p in enumerate(webapps.COOP_PAGES):
-        appid = webapps.COOP_APPIDS[p.id]
-        out.append({"key": f"steamstore:{appid}", "title": p.title, "icon": "c_pc", "kind": "action",
-                    "action": f"steamstore:{appid}", "items": [], "hue": 0.55 + (i % 12) * 0.05,
-                    "note": p.note or "", "steam_appid": appid})
+    for i, e in enumerate(robloxex.EXPERIENCES):
+        cached = robloxex.find_cached(e.place_id)
+        art = QUrl.fromLocalFile(cached).toString() if cached else ""
+        out.append({"key": f"roblox:{e.place_id}", "title": e.title, "icon": "pad", "kind": "action",
+                    "action": f"roblox:{e.place_id}", "items": [], "hue": 0.78 + (i % 8) * 0.03,
+                    "note": robloxex.NOTE, "art": art, "fit": bool(art), "place_id": e.place_id})
     return out
+
+
+def boxset_tiles() -> list:
+    """Box Set Mode: Trilogy + Co-op games only, as big covers."""
+    return trilogy_tiles() + coop_tiles()
 
 
 def categories(games, store=None, cfg=None, home=None) -> list:
@@ -245,7 +300,7 @@ def categories(games, store=None, cfg=None, home=None) -> list:
     for key, title, icon in CATEGORIES:
         if key == "steam":      # 0.9.5: Steam at the top: Big Picture, then the Steam games installed here (with their pictures)
             st = sorted((g for g in games if is_pc_game(g) and g.platform == "steam"), key=lambda g: g.title.lower())
-            tiles = [{"key": "app:steam", "title": "Steam Big Picture", "icon": "monitor", "kind": "launch", "gid": "app:steam",
+            tiles = mode_tiles() + [{"key": "app:steam", "title": "Steam Big Picture", "icon": "monitor", "kind": "launch", "gid": "app:steam",
                       "items": [], "hue": 0.6}] + [_launch_tile(g, "monitor") for g in st] + [GET_GAMES]
         elif key == "pcgames":   # Lutris, Heroic (Epic / GOG / Amazon) and Windows games installed here
             tiles = [_launch_tile(g, "c_pc") for g in sorted((g for g in games if is_pc_game(g) and g.platform != "steam"),
@@ -281,6 +336,8 @@ def categories(games, store=None, cfg=None, home=None) -> list:
             tiles = trilogy_tiles()
         elif key == "coop":
             tiles = coop_tiles()
+        elif key == "roblox":
+            tiles = roblox_tiles()
         elif key == "downloads":
             tiles = [{"key": "downloads", "title": "Downloads", "icon": "download", "kind": "action", "action": "downloads", "items": []}]
         else:

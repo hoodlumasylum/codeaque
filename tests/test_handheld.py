@@ -16,7 +16,7 @@ def _cats():
 
 def test_categories_match_the_layout_and_games_starts_with_cloud_gaming():
     cats = handheld.categories(demo_library().games)
-    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "World Games", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Trilogies", "Co-op", "Downloads",
+    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "World Games", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Trilogies", "Co-op", "Roblox", "Downloads",
                                           "All Apps", "Accounts", "Settings"]
     games = cats[5]["tiles"]
     assert games[0]["title"] == "Cloud Gaming" and games[0]["kind"] == "list" and games[0]["items"]
@@ -32,7 +32,9 @@ def test_my_games_has_installed_pc_games_and_all_apps_has_apps():
     assert mine[0].startswith("steam:")                                  # Steam games already installed, first
     assert all(not t.get("gid", "").startswith("steam:") for t in cats["pcgames"]["tiles"])
     st = cats["steam"]["tiles"]
-    assert st[0]["gid"] == "app:steam" and all(t["gid"].startswith("steam:") for t in st[1:-1]) and len(st) > 1
+    modes = [t for t in st if str(t.get("key", "")).startswith("mode:")]
+    rest = st[len(modes):]
+    assert rest[0]["gid"] == "app:steam" and all(t["gid"].startswith("steam:") for t in rest[1:-1]) and len(rest) > 1
     assert all(t.get("gid", "").startswith(("app:", "tool:", "studio:")) for t in cats["apps"]["tiles"])
 
 
@@ -107,10 +109,10 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         assert hs.property("cat") == 6
         ui.key(Qt.Key_Up, 100); assert hs.property("zone") == "cats"
         ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 7
-        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 16  # Y: Settings (0.10.31: Trilogies + Co-op)
+        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 17  # Y: Settings (0.10.32: Trilogies + Co-op + Roblox)
         ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100)   # tiles: back to Wi-Fi
-        for _ in range(6):
-            ui.key(Qt.Key_Right, 60)                     # ... Leave Handheld (0.10.31: Rotate screen tile)
+        for _ in range(7):
+            ui.key(Qt.Key_Right, 60)                     # ... Leave Handheld (0.10.32: Box Set Mode tile)
         ui.key(Qt.Key_Return, 150)
         assert ui.backend.handheld is False and not hs.property("visible")
         assert not ui.warnings, ui.warnings
@@ -132,7 +134,7 @@ def test_settings_row(app, tmp_path, monkeypatch):
 def test_handheld_settings_offer_the_in_app_updater():
     from atarilauncher import handheld
     keys = [k for k, _, _ in handheld.SETTINGS_TILES]
-    assert keys[-1] == "update" and keys.index("leave") == 6 and "rotate" in keys  # 0.10.31: Rotate screen before All settings
+    assert keys[-1] == "update" and keys.index("leave") == 7 and "rotate" in keys and "boxset" in keys  # 0.10.32: Box Set before All settings
     main = (Path(handheld.__file__).with_name("qml") / "Main.qml").read_text()
     assert 'id === "update") win.openUpdate("library")' in main
     hh = (Path(handheld.__file__).with_name("qml") / "HandheldScreen.qml").read_text()
@@ -226,7 +228,7 @@ def test_trilogies_are_steam_store_shortcuts_only():
         assert t["kind"] == "action" and t["items"] == []
         assert t["icon"] == "c_pc"
         appid = t["action"].removeprefix("steamstore:")
-        assert appid.isdigit() and int(appid) == t["steam_appid"]
+        assert appid.isdigit() and str(t["steam_appid"]) == appid
         page = next(p for p in webapps.TRILOGY_PAGES if webapps.TRILOGY_APPIDS[p.id] == int(appid))
         assert page.url.startswith(f"https://store.steampowered.com/app/{appid}/")
         assert urlsplit(page.url).hostname == "store.steampowered.com"
@@ -270,3 +272,48 @@ def test_handheld_category_row_scrolls_and_never_packs_equal_widths():
     assert "hhCatsFlick" in q and "Flickable" in q
     assert "width / Math.max(1, hh.cats.length)" not in q
     assert "cramped" in q and "ensureVisible" in q
+
+
+def test_mode_tiles_and_boxset_and_roblox():
+    """0.10.32: big mode tiles on Steam, Roblox official place ids, Box Set = Trilogy + Co-op only."""
+    from atarilauncher import robloxex, webapps
+    cats = _cats()
+    steam = cats["steam"]["tiles"]
+    modes = [t for t in steam if str(t.get("key", "")).startswith("mode:")]
+    assert [t["title"] for t in modes] == ["Trilogy Mode", "Co-op Mode", "Roblox Mode", "Box Set Mode"]
+    assert modes[0]["action"] == "goto:trilogies" and modes[1]["action"] == "goto:coop"
+    assert modes[2]["action"] == "goto:roblox" and modes[3]["action"] == "boxset"
+    assert "roblox" in (modes[2].get("note") or "").lower()
+    # original fallback art may be bundled; official covers are never committed
+    for name in ("mode-trilogy.png", "mode-coop.png", "mode-experiences.png", "mode-boxset.png"):
+        assert (Path(handheld.__file__).parent / "assets" / name).is_file()
+    rbx = cats["roblox"]["tiles"]
+    ids = {t["key"].split(":")[1] for t in rbx}
+    expected = {str(e.place_id) for e in robloxex.EXPERIENCES}
+    assert ids == expected
+    assert "4623386862" in ids and "4623386861" not in ids  # Piggy, not Strucid
+    assert all(t["action"].startswith("roblox:") for t in rbx)
+    box = handheld.boxset_tiles()
+    tri = {t["key"] for t in cats["trilogies"]["tiles"]}
+    coop = {t["key"] for t in cats["coop"]["tiles"]}
+    assert {t["key"] for t in box} == tri | coop
+    assert all(t["action"].startswith("steamstore:") for t in box)
+    # every shortcut is a verified Steam app id
+    for t in cats["trilogies"]["tiles"] + cats["coop"]["tiles"]:
+        assert t["steam_appid"] and str(t["steam_appid"]).isdigit()
+
+
+def test_boxset_boot_setting_survives_leave_and_has_no_pin():
+    """Leaving Box Set Mode must not clear the reboot lock; neither path asks for a PIN."""
+    from atarilauncher import boxsetboot
+    hh = (Path(handheld.__file__).with_name("qml") / "HandheldScreen.qml").read_text()
+    main = (Path(handheld.__file__).with_name("qml") / "Main.qml").read_text()
+    boxqml = (Path(handheld.__file__).with_name("qml") / "BoxSetScreen.qml").read_text()
+    be = Path(handheld.__file__).with_name("backend.py").read_text()
+    assert "Lock into Box Set Mode on reboot" in be
+    leave = be[be.find("def leaveBoxSet"):be.find("def toggleBoxSetBoot")]
+    assert "boxset_boot" not in leave and "leaveBoxSet" in leave
+    assert "backend.leaveBoxSet()" in boxqml and "boxSetExit" in boxqml
+    assert "holdTimer" in boxqml and "Qt.Key_F10" in boxqml and "Qt.Key_Tab" in boxqml
+    assert "r.kind === \"boxsetboot\"" in main
+    assert "X-CodeAque-BoxSet" in Path(handheld.__file__).with_name("boxsetboot.py").read_text()

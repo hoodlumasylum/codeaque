@@ -69,3 +69,37 @@ def test_win600_main_applies_rotation(tmp_path, monkeypatch):
     monkeypatch.setattr(win600.rotate, "apply", lambda *a, **k: calls.append(a or ("auto",)) or "ok")
     assert win600.main(["--emulators-only"]) == 0
     assert calls and calls[0][0] == "auto"
+
+
+def test_boxset_reboot_lock_writes_login_autostart(tmp_path):
+    """Toggle on writes autostart --fullscreen; toggle off leaves the login entry (does not unlock next reboot by deleting it — config does)."""
+    from atarilauncher import boxsetboot
+    run = tmp_path / "run.sh"
+    run.write_text("#!/bin/sh\n")
+    msg = boxsetboot.persist(True, home=tmp_path, run=run)
+    desk = tmp_path / ".config/autostart/atari.desktop"
+    text = desk.read_text()
+    assert desk.is_file() and "--fullscreen" in text and str(run) in text
+    assert "X-CodeAque-BoxSet=true" in text
+    assert "login" in msg.lower() or "autostart" in msg.lower() or "lock on" in msg.lower()
+    boxsetboot.persist(False, home=tmp_path, run=run)
+    assert desk.is_file()  # Win600 login autostart is left in place
+
+
+def test_emulators_only_reapplies_boxset_reboot_lock(tmp_path, monkeypatch):
+    """0.10.32: in-app updates (--emulators-only) keep the Box Set login autostart when the lock is on."""
+    from atarilauncher import boxsetboot
+    monkeypatch.setattr(win600, "MARKER", tmp_path / "win600-setup")
+    monkeypatch.setattr(win600, "SETTINGS", {})
+    monkeypatch.setattr(win600, "turn_on_handheld", lambda *a: (_ for _ in ()).throw(AssertionError("must not change Handheld mode")))
+    monkeypatch.setattr(win600.rotate, "apply", lambda *a, **k: "ok")
+    cfg = config.Config()
+    cfg.boxset_boot = True
+    run = tmp_path / "run.sh"
+    run.write_text("#!/bin/sh\n")
+    def fake(cfg=None, home=None, run_path=None):
+        return boxsetboot.persist(True, home=tmp_path, run=run)
+    monkeypatch.setattr(win600, "reapply_boxset_boot", fake)
+    assert win600.main(["--emulators-only"]) == 0
+    desk = tmp_path / ".config/autostart/atari.desktop"
+    assert desk.is_file() and "--fullscreen" in desk.read_text()

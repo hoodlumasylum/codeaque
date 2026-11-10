@@ -108,7 +108,7 @@ def test_geforce_now_on_featured():
 def test_kids_mode_big_and_locked_down():
     c = (SRC / "Catalog.java").read_text()
     km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
-    assert '"Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS)' in km and "GEFORCE_NOW" not in km.split("KIDS_WIFI", 1)[0] and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" in km
+    assert '"Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS, ROBLOX_MODE)' in km and "GEFORCE_NOW" not in km.split("KIDS_WIFI", 1)[0] and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" in km
     for bad in ("RETROARCH", "romfolder", "settings", "ask", "projector", "k56", "bios"):
         assert bad not in km.lower().replace("kids games", "")
     h = (SRC / "HomeView.java").read_text()

@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.32
+
+Big cover tiles for **Trilogy Mode**, **Co-op Mode**, **Roblox Mode** and **Box Set Mode** on the handheld home (and on Android). Official Steam and Roblox covers are fetched at runtime and cached on the device; CodeAque's own art is only the fallback. Roblox tiles are official place links (`roblox://` on Android, Sober or the official page on Linux). **Box Set Mode** is a simple full-screen view of the Trilogy and Co-op box-set for an adult (Code's sister): enter it from a big tile or Settings. Leave with the visible **Exit** button or by holding Start/Select — no PIN (Kids/lock mode is unchanged). A Settings toggle, **Lock into Box Set Mode on reboot**, starts CodeAque at login straight into Box Set Mode after every reboot (the existing autostart, also refreshed by Win600 `--emulators-only` updates). Turning the toggle off stops the reboot lock; leaving Box Set Mode does not.
+
 ## What's new in 0.10.31
 
 - **Rotate screen (Win600).** On launch, CodeAque detects the Win600's portrait panel (720x1280) and rotates it (and the touchscreen) to landscape. Settings > Rotate screen steps Auto / Normal / Left / Right / Inverted. Auto is the default. The Win600 installer and in-app updates also set this. Untested on a real device yet.

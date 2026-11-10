@@ -59,9 +59,17 @@ public class CatalogTest {
                 && Rotation.cmd("1").equals("settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm fixed-to-user-rotation enabled; wm user-rotation lock 1; wm set-ignore-orientation-request true || cmd window set-ignore-orientation-request true"), "rotation cmd");
         check(Rotation.suggest("Anbernic", "RG353M", "rk30board", "rk3566_r") && !Rotation.suggest("Google", "Pixel 7", "panther", "panther"), "rotation suggest");
         List<Catalog.Category> km = Catalog.kidsMode();
-        check(km.size() == 8 && km.get(7).id.equals("kparent") && km.get(5).id.equals("kthemes") && km.get(3).id.equals("kdc") && km.get(3).items.get(0) == Catalog.DREAMCAST && km.get(4).id.equals("kpsp") && km.get(4).items.get(0) == Catalog.PSP && km.get(6).items.size() == 2 && km.get(6).items.get(0) == Catalog.KIDS_WIFI && km.get(6).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action) && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS) && km.get(2).items.get(0) == Catalog.PLAY_STORE, "kids mode rows");
-        check(km.get(1).items.size() == Catalog.KIDS.length, "kids mode games");
-        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
+        int kdc = Catalog.indexOf(km, "kdc"), kpsp = Catalog.indexOf(km, "kpsp"), kth = Catalog.indexOf(km, "kthemes"),
+            kw = Catalog.indexOf(km, "kwifi"), kp = Catalog.indexOf(km, "kparent"), kst = Catalog.indexOf(km, "kstore"),
+            kg = Catalog.indexOf(km, "kgames"), kr = Catalog.indexOf(km, "kroblox");
+        check(km.size() == 9 && kp == km.size() - 1 && kth > 0 && kdc > 0 && km.get(kdc).items.get(0) == Catalog.DREAMCAST
+                && km.get(kpsp).items.get(0) == Catalog.PSP && km.get(kw).items.size() == 2 && km.get(kw).items.get(0) == Catalog.KIDS_WIFI
+                && km.get(kw).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action)
+                && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX
+                && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS)
+                && km.get(kst).items.get(0) == Catalog.PLAY_STORE && kr == 1, "kids mode rows");
+        check(km.get(kg).items.size() == Catalog.KIDS.length, "kids mode games");
+        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
         check(c.get(0).items.get(6) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
@@ -73,7 +81,7 @@ public class CatalogTest {
         check(UpdateInfo.whatsNew("").isEmpty() && UpdateInfo.whatsNew(null).isEmpty(), "no notes");
         Catalog.Item newGame = Catalog.deviceApp("New Game", "com.example.newgame", "com.example.newgame.Main");
         List<Catalog.Category> ka = Catalog.kidsMode(List.of(), List.of(newGame));
-        check(ka.get(1).id.equals("kadded") && ka.get(1).items.get(0) == newGame && Catalog.indexOf(km, "kadded") < 0, "My New Games row only when there are some");
+        check(ka.get(Catalog.indexOf(ka, "kadded")).id.equals("kadded") && ka.get(Catalog.indexOf(ka, "kadded")).items.get(0) == newGame && Catalog.indexOf(km, "kadded") < 0, "My New Games row only when there are some");
         check(Catalog.newPackages(new java.util.HashSet<>(List.of("a", "b")), new java.util.HashSet<>(List.of("a", "b", "d", "c"))).equals(List.of("c", "d")), "installed-since diff");
         // 0.10.1 boot animation
         List<String> sa = new java.util.ArrayList<>(); for (Catalog.Item i : c.get(Catalog.indexOf(c, "settings")).items) sa.add(i.action);
@@ -318,7 +326,7 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kadded", "kgames", "kstore", "kdc", "kpsp", "kthemes", "kwifi", "kparent"))), "kids rows exact " + ids);
+                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kroblox", "kadded", "kgames", "kstore", "kdc", "kpsp", "kthemes", "kwifi", "kparent"))), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
                     check(Catalog.kidsBlocked(Catalog.act("All apps", "grid", "allapps")) && Catalog.streamingPkg("tv.twitch.android.app") && Catalog.streamingPkg("com.zhiliaoapp.musically") && Catalog.streamingPkg("tv.pluto.android"), "blocked");
@@ -407,5 +415,29 @@ public class CatalogTest {
             check(cmd != null && cmd.contains("cp '/storage/1A2B-3C4D/BIOS/dc/dc_boot.bin' '/storage/emulated/0/Android/data/com.flycast.emulator/files/data/dc_boot.bin'"), "root copy cmd");
             check(DcScan.rootCopyCmd("/x/a'b.bin", "/d") == null && DcScan.rootCopyCmd("/x/a b.bin", "/d") == null, "unsafe paths refused");
         } catch (java.io.IOException e) { throw new AssertionError(e); }
+
+        // 0.10.32 mode tiles, Roblox places, Box Set (adult; hidden in Kids)
+        check(c.get(0).items.contains(Catalog.TRILOGY_MODE) && c.get(0).items.contains(Catalog.BOXSET_MODE)
+                && c.get(0).items.contains(Catalog.ROBLOX_MODE), "mode tiles on Featured (after existing tiles)");
+        check(Catalog.indexOf(c, "trilogies") > 0 && Catalog.indexOf(c, "coop") > 0 && Catalog.indexOf(c, "roblox") > 0, "Trilogies, Co-op, Roblox tabs");
+        check(Catalog.TRILOGY_ITEMS.length >= 40 && Catalog.COOP_ITEMS.length >= 20 && Catalog.ROBLOX_ITEMS.length == 12, "verified lists");
+        boolean piggy = false, strucid = false;
+        for (Catalog.Item i : Catalog.ROBLOX_ITEMS) {
+            if ("4623386862".equals(Catalog.robloxPlaceId(i))) piggy = true;
+            if ("4623386861".equals(Catalog.robloxPlaceId(i))) strucid = true;
+            check(i.webUrl.startsWith("https://www.roblox.com/games/"), "official Roblox page");
+        }
+        check(piggy && !strucid, "Piggy place id, not Strucid");
+        check(Catalog.boxSetItems().length == Catalog.TRILOGY_ITEMS.length + Catalog.COOP_ITEMS.length, "Box Set is Trilogy + Co-op");
+        check(Catalog.kidsBlocked(Catalog.BOXSET_MODE) && Catalog.kidsBlocked(Catalog.TRILOGY_MODE) && Catalog.kidsBlocked(Catalog.COOP_MODE)
+                && !Catalog.kidsBlocked(Catalog.ROBLOX_MODE), "Box Set / Trilogy / Co-op hidden in Kids; Roblox Mode allowed");
+        for (Catalog.Item i : Catalog.TRILOGY_ITEMS) check(Catalog.kidsBlocked(i), "Steam box-set hidden in Kids");
+        List<Catalog.Category> k32 = Catalog.kidsMode();
+        check(Catalog.indexOf(k32, "kroblox") >= 0 && k32.get(0).items.contains(Catalog.ROBLOX_MODE), "Kids has Roblox Mode");
+        check(!k32.get(0).items.contains(Catalog.BOXSET_MODE) && Catalog.indexOf(k32, "trilogies") < 0, "Kids has no Box Set / Trilogies");
+        check(Catalog.steamAppId(Catalog.TRILOGY_ITEMS[0]).equals("1659420"), "Uncharted Steam id");
+        String thumb = StoreArt.parseThumb("{\"data\":[{\"imageUrl\":\"https://tr.rbxcdn.com/abc.png\"}]}");
+        check("https://tr.rbxcdn.com/abc.png".equals(thumb), "Roblox thumb parse");
+        check(StoreArt.parseThumb("{\"data\":[{\"imageUrl\":\"https://evil.example/x.png\"}]}") == null, "reject unknown thumb host");
     }
 }

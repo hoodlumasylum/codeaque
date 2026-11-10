@@ -352,8 +352,18 @@ class Backend(QObject):
         self._hide_timer.timeout.connect(self._hide_for_game)
         if self._first_run:
             self._prefill_first_run()
+        self._boxset_active = False
         self.rescan(initial=True)
         self.apply_screen_rotate()          # 0.10.31: Win600 portrait panel → landscape (no-op elsewhere)
+        if getattr(self.cfg, "boxset_boot", False) and not self._demo and not os.environ.get("ATARI_NO_BOXSET"):
+            self._boxset_active = True
+            self._intro_mode = ""
+            self._intro_active = False          # go straight into Box Set Mode (no intro / home first)
+            try:
+                from . import boxsetboot
+                boxsetboot.persist(True)
+            except Exception as exc:
+                print(f"[atari] Box Set autostart: {exc}")
         # Bluetooth pairing, controller batteries, Screen to TV
         self._win_busy = False
         self._win_msg = ""
@@ -5502,6 +5512,71 @@ class Backend(QObject):
             self.show_toast(msg, 5000)
         self.uiPrefsChanged.emit()
 
+
+    @Property(bool, notify=uiPrefsChanged)
+    def boxSetActive(self):
+        """0.10.32 Box Set Mode: full-screen Trilogy + Co-op covers. No PIN to leave."""
+        return bool(getattr(self, "_boxset_active", False))
+
+    @Property("QVariantList", notify=statsChanged)
+    def boxSetTiles(self):
+        from . import handheld as _hh
+        return _hh.boxset_tiles()
+
+    @Slot()
+    def enterBoxSet(self) -> None:
+        self._boxset_active = True
+        self.uiPrefsChanged.emit()
+        self.statsChanged.emit()
+
+    @Slot()
+    def leaveBoxSet(self) -> None:
+        self._boxset_active = False
+        self.uiPrefsChanged.emit()
+
+    @Slot()
+    def toggleBoxSetBoot(self) -> None:
+        self.cfg.boxset_boot = not bool(getattr(self.cfg, "boxset_boot", False))
+        self._save_prefs()
+        try:
+            from . import boxsetboot
+            msg = boxsetboot.persist(self.cfg.boxset_boot)
+            if msg:
+                self.show_toast(msg, 5000)
+        except Exception as exc:
+            print(f"[atari] Box Set autostart: {exc}")
+        self.uiPrefsChanged.emit()
+
+    @Slot(str)
+    def openRobloxPlace(self, place_id: str) -> None:
+        """Open an official Roblox experience. Sober if installed, otherwise the official games page in the browser."""
+        from . import robloxex, apps as _apps
+        from . import webapps as _wa
+        pid = "".join(c for c in str(place_id) if c.isdigit())
+        if not pid:
+            return
+        url = robloxex.game_url(pid)
+        title = robloxex.BY_PLACE[int(pid)].title if int(pid) in robloxex.BY_PLACE else "Roblox"
+        cmd, how = [], ""
+        try:
+            app = _apps.BY_ID.get("roblox")
+            if app is not None:
+                cmd, how = _apps.app_command(self.cfg, app)
+        except Exception:
+            cmd, how = [], ""
+        if how and cmd:
+            try:
+                subprocess.Popen(list(cmd) + [url], env=launcher.clean_env(),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return
+            except OSError as exc:
+                print(f"[atari] Sober failed ({exc}); opening the official Roblox page")
+        if self._running:
+            return
+        wa = _wa.WebApp(f"rbx_{pid}", title, url, browse=True, note=robloxex.NOTE)
+        _wa.BY_ID[wa.id] = wa
+        self._launch_game(Game(gid=wa.gid, title=title, platform=_wa.STREAMING, platform_name="Roblox"))
+
     @Property(bool, notify=uiPrefsChanged)
     def handheld(self):
         """Handheld mode: the small-screen home (Cloud Gaming + Retro only). Settings toggle, or --handheld for one start."""
@@ -5967,7 +6042,10 @@ class Backend(QObject):
         specs = [s for s in (icons.spec_for(g.gid) for g in self._all
                              if g.gid.partition(":")[0] == "free" and not g.rom_path) if s is not None]
         from . import webapps as _wa              # 0.10.0: World Games picks etc. - the game's own Steam store art, by appid
-        specs += [sp for sp in (icons.spec_for("store:" + w.id) for w in _wa.STORE_PAGES + _wa.WORLD_PAGES + _wa.SELECTED_WORLD_GAMES)
+        specs += [sp for sp in (icons.spec_for("store:" + w.id) for w in _wa.STORE_PAGES + _wa.WORLD_PAGES + _wa.SELECTED_WORLD_GAMES + _wa.TRILOGY_PAGES + _wa.COOP_PAGES)
+                  if sp is not None and icons.downloadable(sp)]
+        from . import robloxex as _rbx
+        specs += [sp for sp in (icons.spec_for(f"roblox:{e.place_id}") for e in _rbx.EXPERIENCES)
                   if sp is not None and icons.downloadable(sp)]
         self._icon_busy = True
         fast = bool(os.environ.get("ATARI_COVERS_FAST"))
@@ -6001,7 +6079,7 @@ class Backend(QObject):
 
     @Slot(str, str, bool)
     def _on_icon_arrived(self, gid: str, path: str, fit: bool) -> None:
-        if gid.partition(":")[0] in ("web", "store"):
+        if gid.partition(":")[0] in ("web", "store", "steamstore", "roblox"):
             self.statsChanged.emit()             # console tiles pick the new picture up when they are rebuilt
             return
         if gid.partition(":")[0] == "app":       # 0.10.0: the app's own installed icon (never downloaded)
@@ -6167,6 +6245,12 @@ class Backend(QObject):
                      "detail": "For the Anbernic Win600 (portrait 720x1280 panel). AUTO = landscape when that panel is found "
                                "(usually RIGHT; set CODEAQUE_ROTATE=left if it goes the wrong way). NORMAL / LEFT / RIGHT / "
                                "INVERTED apply now. Does nothing on a normal landscape screen. Press to step."})
+        rows.append({"kind": "boxset", "title": "Box Set Mode", "value": "ON" if self.boxSetActive else "Enter",
+                     "detail": "Full-screen Trilogy and Co-op covers for an adult box-set. No PIN: press Exit or hold Start / Select to leave."})
+        rows.append({"kind": "boxsetboot", "title": "Lock into Box Set Mode on reboot",
+                     "value": "ON" if getattr(self.cfg, "boxset_boot", False) else "OFF",
+                     "detail": "After every reboot, CodeAque starts at login, full screen, straight into Box Set Mode — no home screen first. "
+                               "Leaving with Exit or hold Start / Select (no PIN) returns to normal CodeAque; this lock stays on until you turn it off here."})
         rows.append({"kind": "handheld", "title": "Console home (same as Android)", "value": "ON" if self.handheld else "OFF",
                      "detail": "A home made for small handheld screens: only Cloud Gaming and Retro, big text, all by controller. "
                                "CodeAque then starts in it every time. Turn it off here, or with Y > Leave handheld mode."})

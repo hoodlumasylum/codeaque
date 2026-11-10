@@ -11,7 +11,7 @@ FocusScope {
     id: hh
     property var cats: backend.handheldCategories
     property int cat: 0
-    property var tileIdx: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    property var tileIdx: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     property string zone: "tiles"            // "cats" | "tiles" | "list"
     property int listIdx: 0
     property real slide: 0
@@ -25,7 +25,7 @@ FocusScope {
     readonly property bool fx: Theme.fx
     readonly property bool anim: Theme.anim
     readonly property color glow: "#46cef0"
-    readonly property bool covers: cats.length > cat && (cats[cat].key === "mygames" || cats[cat].key === "steam" || cats[cat].key === "pcgames")     // 0.9.5: portrait box-art tiles
+    readonly property bool covers: cats.length > cat && (cats[cat].key === "mygames" || cats[cat].key === "steam" || cats[cat].key === "pcgames" || cats[cat].key === "trilogies" || cats[cat].key === "coop" || cats[cat].key === "roblox")     // 0.9.5 / 0.10.32: portrait box-art tiles
     readonly property bool hubOn: cats.length > cat && cats[cat].key === "emulators"
     signal menuAction(string id)
 
@@ -52,6 +52,11 @@ FocusScope {
         listIdx = n; snd("hhmove")
         if (anim) { slideAnim.stop(); slide = d; slideAnim.start() }
     }
+    function goToKey(key) {
+        for (var i = 0; i < cats.length; i++)
+            if (cats[i].key === key) { cat = i; zone = "tiles"; snd("hhcat"); return true }
+        return false
+    }
     function activateTile() {
         if (!tile) return
         snd("hhselect")
@@ -59,6 +64,8 @@ FocusScope {
         else if (tile.kind === "launch") backend.launchGid(tile.gid)
         else if (tile.action === "effects") backend.cycleEffects()
         else if (tile.action === "rotate") backend.cycleScreenRotate()
+        else if (tile.action && tile.action.indexOf("goto:") === 0) goToKey(tile.action.substring(5))
+        else if (tile.action === "boxset") backend.enterBoxSet()
         else hh.menuAction(tile.action)
     }
     function handleKey(e) {
@@ -475,7 +482,7 @@ FocusScope {
                     readonly property string art: tl.modelData.art || ""
                     readonly property bool fit: tl.modelData.fit === true || !hh.covers   // an app icon / small picture: shown whole above the name
                     readonly property bool pic: art !== "" && artImg.status !== Image.Error
-                    width: hh.covers ? tileRow.tw : ((index === 0 && hh.cat === 0) || hh.tiles.length <= 7 ? 1.4 : 1) * tileRow.tw; height: tileRow.height
+                    width: (hh.covers && index < 4 && hh.cats.length && hh.cats[hh.cat] && hh.cats[hh.cat].key === "steam") ? tileRow.tw * 1.45 : (hh.covers ? tileRow.tw : ((index === 0 && hh.cat === 0) || hh.tiles.length <= 7 ? 1.4 : 1) * tileRow.tw); height: tileRow.height
                     scale: hot ? 1.06 : 1.0
                     z: on ? 2 : 0
                     Behavior on scale { enabled: hh.anim; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }

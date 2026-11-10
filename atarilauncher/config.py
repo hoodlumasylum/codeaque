@@ -74,6 +74,7 @@ class Config:
     reduce_effects: str = "auto"   # Settings > Reduce effects: "auto" (on for weak graphics chips), "on" or "off" - blur, shadows, big backdrop
     home_style: str = field(default_factory=lambda: _default_home_style())   # 0.9.4: "console" = the same home as the Android app (My Games / All Apps rows), "classic" = the old grid
     handheld: bool = False         # Settings > Handheld mode: the small-screen home with only Cloud Gaming and Retro (also --handheld)
+    boxset_boot: bool = False      # 0.10.32: lock into Box Set Mode on reboot (autostart; no PIN to leave)
     screen_rotate: str = "auto"    # Settings > Rotate screen: auto | normal | left | right | inverted (Win600 portrait panel)
     pad_reminder: bool = True      # Settings > Show pad reminder: the small "pad not connected" note on the home screen
     first_run: bool = False
@@ -136,6 +137,7 @@ def load_config(path: Path | None = None) -> Config:
         cfg.reduce_effects = re_ if re_ in ("auto", "on", "off") else "auto"
         cfg.pad_reminder = bool(ui.get("pad_reminder", True))
         cfg.handheld = bool(ui.get("handheld", False))
+        cfg.boxset_boot = bool(ui.get("boxset_boot", False))
         sr = str(ui.get("screen_rotate", "auto")).lower()
         cfg.screen_rotate = sr if sr in ("auto", "normal", "left", "right", "inverted") else "auto"
         hs = ui.get("home_style", _default_home_style())
@@ -237,6 +239,8 @@ def dump_config(cfg: Config) -> str:
         "pad_reminder = " + ("true" if cfg.pad_reminder else "false"),
         "# Handheld mode: CodeAque starts in the small-screen home with only Cloud Gaming and Retro.",
         "handheld = " + ("true" if cfg.handheld else "false"),
+        "# Lock into Box Set Mode on reboot (autostart at login, full screen). Leave with Exit or hold Start/Select; this stays on.",
+        "boxset_boot = " + ("true" if getattr(cfg, "boxset_boot", False) else "false"),
         "# Rotate screen (Win600 portrait panel): auto | normal | left | right | inverted. Auto = landscape when a 720x1280 panel is found.",
         "screen_rotate = \"" + (cfg.screen_rotate if cfg.screen_rotate in ("auto", "normal", "left", "right", "inverted") else "auto") + "\"",
         'home_style = "' + cfg.home_style + '"',

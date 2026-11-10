@@ -58,6 +58,13 @@ def spec_for(gid: str) -> Spec | None:
     app icons only from what is installed on this computer; websites and catalogue / search pages get CodeAque's own icon."""
     from . import apps, freegames, webapps
     kind, _, ident = gid.partition(":")
+    if kind == "steamstore" and ident.isdigit():
+        return Spec(gid, f"Steam app {ident}", steam_appid=ident, kind="store")
+    if kind == "roblox" and ident.isdigit():
+        from . import robloxex
+        e = robloxex.BY_PLACE.get(int(ident))
+        title = e.title if e else f"Roblox {ident}"
+        return Spec(gid, title, site=robloxex.game_url(ident), steam_appid="", kind="roblox")
     if kind in ("web", "store") and ident in webapps.BY_ID:
         w = webapps.BY_ID[ident]
         m = _STEAM_APP.match(w.url)
@@ -78,7 +85,7 @@ def spec_for(gid: str) -> Spec | None:
 
 def downloadable(spec: Spec) -> bool:
     """Only official store art is ever downloaded: Steam by appid, Flathub for a Flatpak game."""
-    return bool(spec.steam_appid) or (spec.kind == "free" and bool(spec.flatpak))
+    return bool(spec.steam_appid) or spec.kind == "roblox" or (spec.kind == "free" and bool(spec.flatpak))
 
 
 # ---------------------------------------------------------------------------------------------- already on this computer
@@ -177,6 +184,11 @@ def resolve(spec: Spec, home: Path | None = None, root: Path | None = None) -> t
     """(picture path or '', True when it is an icon that should be shown whole on a coloured tile)."""
     got = local_icon(spec, home)
     if got:
+        return got, True
+    if spec.kind == "roblox":
+        from . import robloxex
+        pid = spec.gid.partition(":")[2]
+        got = robloxex.find_cached(pid, root)
         return got, True
     got = cached(spec.gid, root)
     return got, not spec.steam_appid
@@ -291,6 +303,10 @@ class IconFetcher:
     def fetch_one(self, spec: Spec) -> str:
         """Path of the saved icon, or '' (nothing found). May raise covers.Offline / covers.Cancelled.
         A tiny first hit (a 16 px favicon) is replaced by a bigger one if one of the next few candidates is."""
+        if spec.kind == "roblox":
+            from . import robloxex
+            pid = (spec.gid.partition(":")[2] or "")
+            return robloxex.fetch_one(pid, http=self.http, root=self.root)
         best: tuple[bytes, str] | None = None
         tries = 0
         for url in self._urls(spec):

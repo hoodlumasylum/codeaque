@@ -269,6 +269,8 @@ public final class Catalog {
     public static boolean kidsBlocked(Item it) {
         if (it == null) return false;
         if ("allapps".equals(it.action) || "downloads".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
+        if ("boxset".equals(it.action) || "boxsetboot".equals(it.action) || "goto:trilogies".equals(it.action) || "goto:coop".equals(it.action)) return true;
+        if (it.action != null && it.action.startsWith("steamstore:")) return true;
         if (it.isDeviceApp() && streamingPkg(it.pkg)) return true;
         for (String p : it.packages) if (streamingPkg(p)) return true;
         return false;
@@ -396,7 +398,8 @@ public final class Catalog {
     /** approved = packages a parent added to Kids mode on purpose (0.10.27): shown even if they are video apps. */
     public static List<Category> kidsMode(List<Item> roms, List<Item> added, java.util.Set<String> approved) {
         List<Category> c = new ArrayList<>();
-        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS));
+        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS, ROBLOX_MODE));
+        c.add(new Category("kroblox", "Roblox", "cube", ROBLOX_ITEMS));
         List<Item> newGames = new ArrayList<>();   // 0.10.24: no streaming / TV / video apps in Kids mode
         for (Item a : added) if (!kidsBlocked(a) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
         if (!newGames.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", newGames.toArray(new Item[0])));
@@ -426,6 +429,129 @@ public final class Catalog {
             app("Dragon Ball Legends", "cube", "com.bandainamcoent.dblegends_ww"),
             app("Dragon Ball Gekishin Squadra", "cube", "com.bandainamcoent.dbgekishinsquadra"),
     };
+
+
+    // ---------- 0.10.32 Trilogies / Co-op / Roblox / Box Set (Steam store links and official Roblox places only) ----------
+    static Item steamStore(String label, String appid) {
+        return new Item(label, "pad", new String[0], "https://store.steampowered.com/app/" + appid + "/", "steamstore:" + appid);
+    }
+    static Item robloxPlace(String label, String placeId) {
+        return new Item(label, "cube", new String[0], "https://www.roblox.com/games/" + placeId + "/", "roblox:" + placeId);
+    }
+    public static String steamAppId(Item it) {
+        return it != null && it.action != null && it.action.startsWith("steamstore:") ? it.action.substring(11) : null;
+    }
+    public static String robloxPlaceId(Item it) {
+        return it != null && it.action != null && it.action.startsWith("roblox:") ? it.action.substring(7) : null;
+    }
+    public static String modeAsset(Item it) {
+        if (it == null) return null;
+        if (it == TRILOGY_MODE) return "mode-trilogy.png";
+        if (it == COOP_MODE) return "mode-coop.png";
+        if (it == ROBLOX_MODE) return "mode-experiences.png";
+        if (it == BOXSET_MODE) return "mode-boxset.png";
+        return null;
+    }
+    public static final Item TRILOGY_MODE = act("Trilogy Mode", "pad", "goto:trilogies");
+    public static final Item COOP_MODE = act("Co-op Mode", "pad", "goto:coop");
+    public static final Item ROBLOX_MODE = act("Roblox Mode", "cube", "goto:roblox");
+    public static final Item BOXSET_MODE = act("Box Set Mode", "pad", "boxset");
+    public static final Item BOXSET_BOOT = act("Lock into Box Set Mode on reboot", "gear", "boxsetboot");
+    public static final Item[] TRILOGY_ITEMS = {
+            steamStore("Uncharted: Legacy of Thieves", "1659420"),
+            steamStore("Tomb Raider I-III Remastered", "2478970"),
+            steamStore("Tomb Raider IV-VI Remastered", "2525380"),
+            steamStore("Tomb Raider: Legend", "7000"),
+            steamStore("Tomb Raider: Anniversary", "8000"),
+            steamStore("Tomb Raider: Underworld", "8140"),
+            steamStore("Tomb Raider (2013)", "203160"),
+            steamStore("Rise of the Tomb Raider", "391220"),
+            steamStore("Shadow of the Tomb Raider", "750920"),
+            steamStore("Lara Croft and the Guardian of Light", "35130"),
+            steamStore("Lara Croft and the Temple of Osiris", "289690"),
+            steamStore("Lara Croft GO", "540840"),
+            steamStore("Grand Theft Auto III", "12100"),
+            steamStore("Grand Theft Auto: Vice City", "12110"),
+            steamStore("Grand Theft Auto: San Andreas", "12120"),
+            steamStore("GTA III \u2013 The Definitive Edition", "1546970"),
+            steamStore("GTA Vice City \u2013 The Definitive Edition", "1546990"),
+            steamStore("GTA San Andreas \u2013 The Definitive Edition", "1547000"),
+            steamStore("Grand Theft Auto IV: Complete Edition", "12210"),
+            steamStore("GTA: Episodes from Liberty City", "12220"),
+            steamStore("Grand Theft Auto V Legacy", "271590"),
+            steamStore("Grand Theft Auto V Enhanced", "3240220"),
+            steamStore("Assassin's Creed", "15100"),
+            steamStore("Assassin's Creed II", "33230"),
+            steamStore("Assassin's Creed Brotherhood", "48190"),
+            steamStore("Assassin's Creed Revelations", "201870"),
+            steamStore("Assassin's Creed III", "208480"),
+            steamStore("Assassin's Creed III Remastered", "911400"),
+            steamStore("Assassin's Creed IV Black Flag", "242050"),
+            steamStore("Assassin's Creed Rogue", "311560"),
+            steamStore("Assassin's Creed Unity", "289650"),
+            steamStore("Assassin's Creed Syndicate", "368500"),
+            steamStore("Assassin's Creed Origins", "582160"),
+            steamStore("Assassin's Creed Odyssey", "812140"),
+            steamStore("Assassin's Creed Valhalla", "2208920"),
+            steamStore("Assassin's Creed Mirage", "3035570"),
+            steamStore("Assassin's Creed Shadows", "3159330"),
+            steamStore("The Talos Principle", "257510"),
+            steamStore("The Talos Principle 2", "835960"),
+            steamStore("The Talos Principle: Reawakened", "2806640"),
+            steamStore("Life is Strange (Episode 1)", "319630"),
+            steamStore("Life is Strange Remastered", "1265920"),
+            steamStore("Life is Strange: Before the Storm", "554620"),
+            steamStore("Life is Strange: Before the Storm Remastered", "1265930"),
+            steamStore("Life is Strange 2", "532210"),
+            steamStore("The Awesome Adventures of Captain Spirit", "845070"),
+            steamStore("Life is Strange: True Colors", "936790"),
+            steamStore("Life is Strange: Double Exposure", "1874000"),
+            steamStore("Life is Strange: Reunion", "2624870")
+    };
+    public static final Item[] COOP_ITEMS = {
+            steamStore("A Way Out", "1222700"),
+            steamStore("It Takes Two", "1426210"),
+            steamStore("Split Fiction", "2001120"),
+            steamStore("Divinity: Original Sin 2", "435150"),
+            steamStore("Baldur's Gate 3", "1086940"),
+            steamStore("Diablo IV", "2344520"),
+            steamStore("Diablo II: Resurrected", "2536520"),
+            steamStore("Borderlands 2", "49520"),
+            steamStore("Borderlands 3", "397540"),
+            steamStore("Grim Dawn", "219990"),
+            steamStore("Torchlight II", "200710"),
+            steamStore("Dark Souls III", "374320"),
+            steamStore("Elden Ring", "1245620"),
+            steamStore("Monster Hunter: World", "582010"),
+            steamStore("Path of Exile", "238960"),
+            steamStore("Path of Exile 2", "2694490"),
+            steamStore("Remnant II", "1282100"),
+            steamStore("Tiny Tina's Wonderlands", "1286680"),
+            steamStore("Dragon's Dogma 2", "2054970"),
+            steamStore("Stardew Valley", "413150"),
+            steamStore("Terraria", "105600"),
+            steamStore("Valheim", "892970")
+    };
+    public static final Item[] ROBLOX_ITEMS = {
+            robloxPlace("Brookhaven", "4924922222"),
+            robloxPlace("Adopt Me!", "920587237"),
+            robloxPlace("Blox Fruits", "2753915549"),
+            robloxPlace("Grow a Garden", "126884695634066"),
+            robloxPlace("Murder Mystery 2", "142823291"),
+            robloxPlace("Tower of Hell", "1962086868"),
+            robloxPlace("Natural Disaster Survival", "189707"),
+            robloxPlace("Piggy", "4623386862"),
+            robloxPlace("Doors", "6516141723"),
+            robloxPlace("Jailbreak", "606849621"),
+            robloxPlace("Arsenal", "286090429"),
+            robloxPlace("Bee Swarm Simulator", "1537690962")
+    };
+    public static Item[] boxSetItems() {
+        Item[] a = new Item[TRILOGY_ITEMS.length + COOP_ITEMS.length];
+        System.arraycopy(TRILOGY_ITEMS, 0, a, 0, TRILOGY_ITEMS.length);
+        System.arraycopy(COOP_ITEMS, 0, a, TRILOGY_ITEMS.length, COOP_ITEMS.length);
+        return a;
+    }
 
     public static List<Category> categories() {
         return categories(Collections.<Item>emptyList(), Collections.<Item>emptyList(), Collections.<Item>emptyList(), Collections.<Item>emptyList());
@@ -468,7 +594,8 @@ public final class Catalog {
         // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
         c.add(new Category("steam", "Featured", "display", KIDS_ON, SETTINGS_TILE, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
-                app("Steam", "display", "com.valvesoftware.android.steam.community")));
+                app("Steam", "display", "com.valvesoftware.android.steam.community"),
+                TRILOGY_MODE, COOP_MODE, ROBLOX_MODE, BOXSET_MODE));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.
         c.add(new Category("kids", "Kids", "pad", KIDS));
@@ -503,6 +630,9 @@ public final class Catalog {
                 web("ITVX", "film", "https://www.itv.com/", "air.ITVMobilePlayer"),
                 web("Channel 4", "film", "https://www.channel4.com/", "com.channel4.ondemand")));
         // 0.9.6: Games Store (Play Store pages; prices stay on Google Play) and Accounts (each service's own app)
+        c.add(new Category("trilogies", "Trilogies", "pad", TRILOGY_ITEMS));
+        c.add(new Category("coop", "Co-op", "pad", COOP_ITEMS));
+        c.add(new Category("roblox", "Roblox", "cube", ROBLOX_ITEMS));
         c.add(new Category("store", "Games Store", "grid",
                 web("Top Games", "cube", "https://play.google.com/store/games"),
                 web("Free Games", "cube", "https://play.google.com/store/search?q=free%20games&c=apps"),
@@ -518,7 +648,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
         return c;
     }
 

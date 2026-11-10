@@ -86,6 +86,16 @@ def turn_on_handheld(cfg_path: Path | None = None) -> None:
     config.save_config(cfg, cfg_path)
 
 
+
+def reapply_boxset_boot(cfg=None, home=None, run=None) -> str:
+    """If the reboot lock is on, refresh the login autostart (also used by --emulators-only)."""
+    from . import boxsetboot
+    cfg = cfg if cfg is not None else config.load_config()
+    if getattr(cfg, "boxset_boot", False):
+        return boxsetboot.persist(True, home=home, run=run)
+    return ""
+
+
 MARKER = Path.home() / ".config/atari/win600-setup"   # install.sh refreshes the emulator settings on every update when this exists
 
 
@@ -112,6 +122,13 @@ def main(argv: list[str] | None = None) -> int:
         print(rotate.apply("auto"))
     except Exception as exc:
         print("Rotation skipped:", exc)
+    # 0.10.32: keep "Lock into Box Set Mode on reboot" autostart (also on --emulators-only)
+    try:
+        msg = reapply_boxset_boot()
+        if msg:
+            print(msg)
+    except Exception as exc:
+        print("Box Set autostart skipped:", exc)
     return 0
 
 

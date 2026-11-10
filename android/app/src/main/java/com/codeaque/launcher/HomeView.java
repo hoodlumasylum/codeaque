@@ -33,6 +33,8 @@ public class HomeView extends View {
         String wifi();        // 0.10.5: "Connected to Home" / "Wi-Fi off" / "Not connected"     // 0.9.5: a game picture (the app's own banner, or cached libretro box art), null = none   // an installed app's own icon (null for CodeAque's line-drawn tiles)
         /** 0.10.29: seven quick taps on the CodeAque logo. MainActivity shows the parent PIN only while Lock mode is on. */
         void logoSecret();
+        /** 0.10.32 Box Set Mode: leave with Exit or a held Start/Select — no PIN. */
+        void leaveBoxSet();
     }
 
     private Palette T = Palette.NEON;
@@ -94,7 +96,16 @@ public class HomeView extends View {
     }
 
     // ---------- input ----------
-    private List<Catalog.Item> items() { return cats.get(cat).items; }
+    private boolean boxset;
+    private java.util.List<Catalog.Item> boxItems = java.util.Collections.emptyList();
+    public void setBoxSet(boolean on, java.util.List<Catalog.Item> items) {
+        boxset = on;
+        boxItems = items != null ? items : java.util.Collections.emptyList();
+        if (on) { inCats = false; tile = 0; }
+        invalidate();
+    }
+    public boolean boxSet() { return boxset; }
+    private List<Catalog.Item> items() { return boxset ? boxItems : cats.get(cat).items; }
 
     private void setCat(int c) {
         c = (c + cats.size()) % cats.size();
@@ -123,24 +134,35 @@ public class HomeView extends View {
             invalidate(); return true;
         }
         switch (code) {
-            case KeyEvent.KEYCODE_BUTTON_L1: case KeyEvent.KEYCODE_PAGE_UP: case KeyEvent.KEYCODE_Q: setCat(cat - 1); return true;
-            case KeyEvent.KEYCODE_BUTTON_R1: case KeyEvent.KEYCODE_PAGE_DOWN: case KeyEvent.KEYCODE_E: setCat(cat + 1); return true;
+            case KeyEvent.KEYCODE_BUTTON_L1: case KeyEvent.KEYCODE_PAGE_UP: case KeyEvent.KEYCODE_Q:
+                if (boxset) { setTile(tile - 1); return true; }
+                setCat(cat - 1); return true;
+            case KeyEvent.KEYCODE_BUTTON_R1: case KeyEvent.KEYCODE_PAGE_DOWN: case KeyEvent.KEYCODE_E:
+                if (boxset) { setTile(tile + 1); return true; }
+                setCat(cat + 1); return true;
             case KeyEvent.KEYCODE_DPAD_LEFT: if (inCats) setCat(cat - 1); else setTile(tile - 1); return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT: if (inCats) setCat(cat + 1); else setTile(tile + 1); return true;
             case KeyEvent.KEYCODE_DPAD_UP: if (!inCats) { inCats = true; host.sound("hhmove"); invalidate(); } return true;
             case KeyEvent.KEYCODE_DPAD_DOWN: if (inCats) { inCats = false; host.sound("hhmove"); invalidate(); } return true;
-            case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_BUTTON_START:
+            case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_DPAD_CENTER:
+                if (inCats) { inCats = false; host.sound("hhselect"); invalidate(); } else activate(); return true;
+            case KeyEvent.KEYCODE_BUTTON_START:
+                if (boxset) { if (e.getRepeatCount() == 0) e.startTracking(); return true; }
                 if (inCats) { inCats = false; host.sound("hhselect"); invalidate(); } else activate(); return true;
             case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_BACK: case KeyEvent.KEYCODE_ESCAPE:
                 goBack(); return true;    // a home screen never closes
             case KeyEvent.KEYCODE_BUTTON_Y: case KeyEvent.KEYCODE_MENU: case KeyEvent.KEYCODE_BUTTON_SELECT:
-                if (kids) { if (e.getRepeatCount() == 0) e.startTracking(); return true; }   // only a long hold, see onKeyLongPress
+                if (boxset || kids) { if (e.getRepeatCount() == 0) e.startTracking(); return true; }   // Box Set: hold to leave (no PIN). Kids: hold for grown-up switch.
                 setCat(Catalog.indexOf(cats, "settings")); inCats = false; return true;
         }
         return super.onKeyDown(code, e);
     }
 
     @Override public boolean onKeyLongPress(int code, KeyEvent e) {
+        if (boxset && (code == KeyEvent.KEYCODE_BUTTON_SELECT || code == KeyEvent.KEYCODE_BUTTON_START
+                || code == KeyEvent.KEYCODE_BUTTON_Y || code == KeyEvent.KEYCODE_MENU)) {
+            host.leaveBoxSet(); return true;
+        }
         if (kids && (code == KeyEvent.KEYCODE_BUTTON_SELECT || code == KeyEvent.KEYCODE_BUTTON_Y || code == KeyEvent.KEYCODE_MENU)) {
             host.open(Catalog.KIDS_OFF); return true;
         }
@@ -165,6 +187,7 @@ public class HomeView extends View {
     /** Same as controller B: leave a prompt, or step back to the category row, then to the first section. */
     private void goBack() {
         if (prompt != null) { prompt = null; host.sound("hhback"); invalidate(); return; }
+        if (boxset) { host.leaveBoxSet(); return; }
         if (!inCats) inCats = true; else setCat(0);
         host.sound("hhback"); invalidate();
     }
@@ -193,7 +216,7 @@ public class HomeView extends View {
         }
         if (backBtn.contains(x, y)) { goBack(); return; }
         if (logoTop.contains(x, y) || logoCenter.contains(x, y)) { logoHit(); return; }
-        if (y < catsBottom() && y > H * 0.12f) {
+        if (!boxset && y < catsBottom() && y > H * 0.12f) {
             float cw = getWidth() / (float) Math.max(1, cats.size());
             setCat((int) (x / cw)); inCats = false; return;
         }
@@ -245,7 +268,7 @@ public class HomeView extends View {
                 if (velocity != null) { velocity.addMovement(e); velocity.computeCurrentVelocity(1000); }
                 boolean tap = e.getActionMasked() == MotionEvent.ACTION_UP && !gestureChose && Math.hypot(x - downX, y - downY) < 28 * s;
                 if (tap) onTap(x, y, H);
-                else if (sectionSwipe && e.getActionMasked() == MotionEvent.ACTION_UP) {
+                else if (sectionSwipe && !boxset && e.getActionMasked() == MotionEvent.ACTION_UP) {
                     if (x - downX < -40 * s) setCat(cat + 1);
                     else if (x - downX > 40 * s) setCat(cat - 1);
                 } else if (rowDrag && e.getActionMasked() == MotionEvent.ACTION_UP && velocity != null) {
@@ -271,7 +294,12 @@ public class HomeView extends View {
     public void setKids(boolean k) { kids = k; invalidate(); }
     static final float KIDS_SCALE = 1.7f;
     private float big() { return kids ? KIDS_SCALE : 1f; }
-    private boolean covers() { String id = cats.get(cat).id; if (kids) return id.equals("kplay") || id.equals("kgames") || gameRow(id); return id.equals("mygames") || id.equals("steam") || gameRow(id); }
+    private boolean covers() {
+        if (boxset) return true;
+        String id = cats.get(cat).id;
+        if (kids) return id.equals("kplay") || id.equals("kgames") || id.equals("kroblox") || gameRow(id);
+        return id.equals("mygames") || id.equals("steam") || id.equals("trilogies") || id.equals("coop") || id.equals("roblox") || gameRow(id);
+    }
     /** 0.10.12: the Dreamcast and handheld game rows use portrait covers (player's own picture or a title card). */
     private static boolean gameRow(String id) { return id.equals("dreamcast") || id.equals("kdc") || id.equals("psp") || id.equals("kpsp"); }      // 0.9.5: portrait box-art tiles
     /** 0.10.6: the Featured / Kids Play row uses wide 16:9-ish covers (feature graphics, Roblox art). */
@@ -336,8 +364,8 @@ public class HomeView extends View {
 
         background(c, W, H, anim);
         topBar(c, W, H);
-        categories(c, W, H);
-        if (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true) mark(c, W, H);
+        if (!boxset) categories(c, W, H);
+        if (!boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
         tiles(c, W, H);
         hints(c, W, H);
         if (prompt != null) prompt(c, W, H);
@@ -811,10 +839,10 @@ public class HomeView extends View {
         p.setShader(null); p.setColor(0xF0141820); c.drawRoundRect(backBtn, 14 * s, 14 * s, p);
         stroke.setShader(null); stroke.setStrokeWidth(2.2f * s); stroke.setColor(GOLD);
         c.drawRoundRect(backBtn, 14 * s, 14 * s, stroke);
-        text(c, "Back", backBtn.centerX(), backBtn.centerY() + 7 * s, Math.max(16 * s, 14 * den), 0xFFFFFFFF, Paint.Align.CENTER, true);
+        text(c, boxset ? "Exit" : "Back", backBtn.centerX(), backBtn.centerY() + 7 * s, Math.max(16 * s, 14 * den), 0xFFFFFFFF, Paint.Align.CENTER, true);
         float y = backBtn.centerY() + 6 * s;
         p.setColor(0x33FFFFFF); c.drawRect(backBtn.right + 8 * s, backBtn.top, W, backBtn.top + 1, p);
-        String[][] hs = {{"A", "Open"}, {"L1 R1", "Category"}, {"Y", "Settings"}};
+        String[][] hs = boxset ? new String[][]{{"A", "Open"}, {"Start / Select", "Hold to leave (no PIN)"}} : new String[][]{{"A", "Open"}, {"L1 R1", "Category"}, {"Y", "Settings"}};
         float x = backBtn.right + 16 * s;
         for (String[] hnt : hs) {
             if (x > W - 150 * s) break;          // keep Online visible; the Back button is always drawn
