@@ -69,7 +69,7 @@ def test_steam_is_started_first_then_asked_for_the_game(env):
     (secs, err), seen = run(cfg, fs)
     assert err == "" and secs > 0.5
     calls = fs.calls()
-    assert calls[0] == "-gamepadui" and calls[1] == "steam://rungameid/4242" and len(calls) == 2
+    assert calls[0] == "-bigpicture -gamepadui" and calls[1] == "steam://rungameid/4242" and len(calls) == 2
     phases = [p for p, _ in seen]
     assert phases[0] == "starting" and "launching" in phases and phases[-1] == "playing"
     assert phases.index("launching") < phases.index("playing")

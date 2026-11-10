@@ -93,6 +93,8 @@ class Backend(QObject):
     askEvent = Signal(str, str, str)   # kind, status; reply stays in memory, never a Store value
     uiPrefsChanged = Signal()
     robloxFixDone = Signal(object, str)         # (steps, verdict) from the Roblox fix thread
+    steamFixDone = Signal(object, str)          # (steps, verdict) from the Fix Steam thread
+    steamFixProgress = Signal(str)              # live status text while Fix Steam runs
     pageChanged = Signal()                      # the rows of the help / fix / Windows pages changed
     padBatteriesChanged = Signal()
     brightnessChanged = Signal()                # the brightness % in the top bar / Settings changed
@@ -145,7 +147,10 @@ class Backend(QObject):
         self.importScanned.connect(self._on_import_scanned, Qt.QueuedConnection)
         self.inputFixDone.connect(self._input_fix_finished, Qt.QueuedConnection)
         self.robloxFixDone.connect(self._roblox_fix_finished, Qt.QueuedConnection)
+        self.steamFixDone.connect(self._steam_fix_finished, Qt.QueuedConnection)
+        self.steamFixProgress.connect(self._steam_fix_progress, Qt.QueuedConnection)
         self._rbx_state, self._rbx_steps, self._rbx_verdict = "idle", [], ""
+        self._stfix_state, self._stfix_steps, self._stfix_verdict, self._stfix_progress = "idle", [], "", ""
         self._input_fixing = False
         self.kioskDone.connect(self._kiosk_finished, Qt.QueuedConnection)
         self.launchStatus.connect(self._on_launch_status, Qt.QueuedConnection)
@@ -1231,6 +1236,97 @@ class Backend(QObject):
             if g is not None and not g.missing and not self._running:
                 self._launch_game(g)
                 self.pageRequested.emit("close")
+
+    def _steam_fail_looks_fixable(self, err: str) -> bool:
+        e = (err or "").lower()
+        return any(s in e for s in (
+            "couldn't start steam", "could not start steam", "couldnt start steam",
+            "low on disk space", "disk space", "failed to start steam",
+            "steam failed", "missing permissions", "gl32", "i386",
+        ))
+
+    def _steam_fix_rows(self) -> list:
+        rows = [self._info("Steam sometimes says \"Couldn't start Steam. Are you running low on disk space?\" even when there is plenty of space. "
+                           "This is often a missing 32-bit graphics runtime or a broken first-run file — not a full disk.")]
+        if self._stfix_state == "running":
+            rows.append({"kind": "progress", "title": self._stfix_progress or "Working — checking Steam..."})
+            rows.append(self._info("Your games in steamapps are never deleted. A password box appears only if 32-bit system libraries need installing."))
+            for st in self._stfix_steps:
+                rows.append({"kind": "item", "id": "noop", "title": ("OK   " if st.ok else "FIX  ") + st.title, "detail": st.detail,
+                             "value": "" if st.ok else "Problem"})
+        elif self._stfix_state == "done":
+            for st in self._stfix_steps:
+                rows.append({"kind": "item", "id": "noop", "title": ("OK   " if st.ok else "FIX  ") + st.title, "detail": st.detail,
+                             "value": "" if st.ok else "Problem"})
+            rows.append(self._info("Result:  " + self._stfix_verdict))
+        else:
+            for t in ("1  Free space at the Steam folder and in /tmp",
+                      "2  Flatpak Steam: update, and install the GL32 runtime for the same Platform version",
+                      "3  Broken first-run files (ubuntu12_32 and package) moved aside so Steam can rebuild them — games stay",
+                      "4  Native .deb Steam: enable i386 and install steam-installer / steam-libs-i386 if they are missing"):
+                rows.append(self._info(t))
+            rows.append(self._info("Press Run fix. Progress shows on this page, then CodeAque tries to start Steam in Big Picture."))
+        rows.append({"kind": "done", "id": "stfixrun", "title": "Working..." if self._stfix_state == "running" else "Run fix"})
+        rows.append({"kind": "item", "id": "stfixopen", "title": "Open Steam now",
+                     "detail": "Starts Steam in Big Picture / console mode (steam -bigpicture, or flatpak run ... -bigpicture)."})
+        rows.append({"kind": "item", "id": "copylog", "title": "Copy CodeAque's log (to send to someone who is helping you)"})
+        rows.append({"kind": "item", "id": "back", "title": "Back"})
+        return rows
+
+    def _steam_fix_activate(self, rid: str) -> str:
+        if rid == "stfixrun":
+            if self._stfix_state == "running":
+                return ""
+            self._stfix_state, self._stfix_steps, self._stfix_verdict, self._stfix_progress = "running", [], "", "Starting..."
+            def work():
+                def progress(msg: str):
+                    self.steamFixProgress.emit(msg)
+                try:
+                    from . import steamrepair
+                    steps, verdict = steamrepair.run_fix(progress=progress)
+                except Exception as exc:  # pragma: no cover - safety net
+                    steps, verdict = [], f"That hit a problem: {exc}"
+                self.steamFixDone.emit(steps, verdict)
+            threading.Thread(target=work, name="atari-steam-fix", daemon=True).start()
+            return "refresh"
+        if rid == "stfixopen":
+            return self._open_steam_console()
+        if rid == "copylog":
+            self.copyLog()
+            return ""
+        return ""
+
+    def _steam_fix_progress(self, text: str) -> None:
+        self._stfix_progress = text or ""
+        self.pageChanged.emit()
+
+    def _open_steam_console(self) -> str:
+        from . import steam as steam_mod
+        from . import steamrepair
+        if not launcher.steam_available(self.cfg):
+            self.show_toast("Steam isn't installed yet. Install it from Settings > Install emulators and apps "
+                            "(choose everything), or from Software Manager, then sign in and use Settings > Steam games > Rescan.", 12000)
+            return ""
+        base = launcher.steam_base_command(self.cfg)
+        cmd = steamrepair.console_command(base, running=steam_mod.steam_running())
+        try:
+            subprocess.Popen(cmd, env=launcher.clean_env(), stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+            self.show_toast("Starting Steam in Big Picture.", 5000)
+            return "close"
+        except OSError as exc:
+            self.show_toast(f"Could not start Steam: {exc}", 10000)
+            return ""
+
+    def _steam_fix_finished(self, steps, verdict: str) -> None:
+        self._stfix_state, self._stfix_steps, self._stfix_verdict = "done", list(steps), verdict
+        self._stfix_progress = ""
+        self.pageChanged.emit()
+        space_ok = all(st.ok for st in steps if getattr(st, "id", "") == "space")
+        installed = any(getattr(st, "id", "") == "steam" and st.ok for st in steps) or launcher.steam_available(self.cfg)
+        if space_ok and installed:
+            self._open_steam_console()
+            self.pageRequested.emit("close")
 
     def _input_fix_finished(self, ok: bool, text: str) -> None:
         self._input_fixing = False
@@ -3562,6 +3658,8 @@ class Backend(QObject):
                                    "Steam Play (Proton) is switched on for all games by default."))
             rows.append({"kind": "item", "id": "steamproton", "title": "Turn Steam Play (Proton) on for all games now",
                          "detail": "Needs Steam closed. Does nothing if you already picked a tool. Writes a backup first (config.vdf.code-backup)."})
+        rows.append({"kind": "item", "id": "steamfix", "title": "Fix Steam",
+                     "detail": "One press: checks free space, updates Flatpak Steam and the matching 32-bit GL32 runtime, moves broken first-run files aside, and installs steam-installer / steam-libs-i386 if needed (never deletes your games). Use this if Steam says it could not start, or mentions disk space."})
         rows.append({"kind": "item", "id": "inputfix", "title": "Fix Steam controller / gamepad permissions",
                      "detail": "Use this if Steam says \"Missing permissions for input devices\". Installs Valve's controller rules (asks for your password once)."})
         rows.append(self._info("Where to keep Steam games: a Linux drive (ext4). Windows (NTFS) drives and USB sticks (exFAT / FAT) make many Proton games fail."))
@@ -4832,6 +4930,9 @@ class Backend(QObject):
         if gid == "app:roblox" and err and ("APK bundle" in err or "Permission Update Required" in err):      # Sober fell back to its file screen: show the step-by-step fix
             self._rbx_state = "idle"
             self.pageRequested.emit("robloxfix")
+        if err and (gid == "app:steam" or str(gid).startswith("steam:")) and self._steam_fail_looks_fixable(err):
+            self._stfix_state = "idle"
+            self.pageRequested.emit("steamfix")
 
     @Slot()
     def toggleFullscreen(self) -> None:
@@ -6438,7 +6539,7 @@ class Backend(QObject):
                 "winchoose": "WHICH PROGRAM STARTS THE GAME?", "winwork": "OPENING THE ARCHIVE",
                 "install": "INSTALL", "installmenu": "INSTALL EMULATORS & APPS", "steam": "STEAM",
                 "recordings": "RECORDINGS", "coverpick": "PICK A COVER", "nocovers": "COVERS NOT FOUND",
-                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX",
+                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM",
                 "ask": "ASK CODEAQUE", "dlsystem": "WHICH SYSTEM IS THIS FILE FOR?", "files": "MY FILES", "fileact": "WHAT TO DO WITH IT", "deletegame": "DELETE GAME", "about": "ABOUT CODEAQUE"}.get(name, name.upper())
 
     @Property(str, notify=padStyleChanged)
@@ -6473,6 +6574,7 @@ class Backend(QObject):
                 "simtycoon": "Your simulation and management games. Enter / A to play or install.  Esc / B = back.",
                 "golive": "Enter / A to press.  Esc / B = back.",
                 "robloxfix": "Enter / A on Run fix.  Esc / B = back.",
+                "steamfix": "Enter / A on Run fix.  Esc / B = back.",
                 "downloads": "Enter / A on a finished file adds it to your games.  Esc / B = back.",
                 "files": "Downloads, Games, Videos.  Enter / A opens;  Esc / B goes up.",
                 "fileact": "Enter / A on the button you want.  Esc / B = back to the list.",
@@ -6686,6 +6788,8 @@ class Backend(QObject):
             return self._addgames_rows()
         if name == "robloxfix":
             return self._roblox_fix_rows()
+        if name == "steamfix":
+            return self._steam_fix_rows()
         if name == "golive":
             return self._golive_rows()
         if name == "downloads":
@@ -6997,6 +7101,8 @@ class Backend(QObject):
             return self._help_activate(rid)
         if name == "robloxfix":
             return self._roblox_fix_activate(rid)
+        if name == "steamfix":
+            return self._steam_fix_activate(rid)
         if name == "golive":
             return self._golive_activate(rid)
         if name == "downloads":
@@ -7079,6 +7185,9 @@ class Backend(QObject):
                 ok, msg = steamfix.set_default_proton(cfg_root=self.cfg.steam_root)
                 kiosk.log_event("steam: " + msg)
                 self.show_toast(msg, 9000)
+            elif rid == "steamfix":
+                self._stfix_state, self._stfix_progress = "idle", ""
+                return "page:steamfix"
             elif rid == "inputfix":
                 self.fixInputPermissions()
             return ""

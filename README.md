@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.33
+
+**Fix Steam** in Settings (and offered when a Steam launch fails). On the Win600 / Linux Mint, Steam can say "Couldn't start Steam. Are you running low on disk space?" even when there is plenty of space. One press checks free space at the Steam folder and in /tmp, updates Flatpak Steam and installs the 32-bit GL32 runtime for the same Platform version, moves a broken first-run bootstrap (`ubuntu12_32` and `package`) aside so Steam can rebuild it (games in steamapps are never deleted), and for the native .deb installer enables i386 and installs `steam-installer` / `steam-libs-i386` if they are missing (password box via pkexec, no terminal). Progress is shown on screen, then Steam is started in Big Picture (`steam -bigpicture` or `flatpak run com.valvesoftware.Steam -bigpicture`). Not tried yet on a real Win600.
+
 ## What's new in 0.10.32
 
 Big cover tiles for **Trilogy Mode**, **Co-op Mode**, **Roblox Mode** and **Box Set Mode** on the handheld home (and on Android). Official Steam and Roblox covers are fetched at runtime and cached on the device; CodeAque's own art is only the fallback. Roblox tiles are official place links (`roblox://` on Android, Sober or the official page on Linux). **Box Set Mode** is a simple full-screen view of the Trilogy and Co-op box-set for an adult (Code's sister): enter it from a big tile or Settings. Leave with the visible **Exit** button or by holding Start/Select — no PIN (Kids/lock mode is unchanged). A Settings toggle, **Lock into Box Set Mode on reboot**, starts CodeAque at login straight into Box Set Mode after every reboot (the existing autostart, also refreshed by Win600 `--emulators-only` updates). Turning the toggle off stops the reboot lock; leaving Box Set Mode does not.

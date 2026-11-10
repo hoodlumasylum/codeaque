@@ -420,10 +420,24 @@ def big_picture_wanted(cfg: Config) -> bool:
     return bool(getattr(cfg, "steam_bigpicture", True)) or kiosk.shell_mode()
 
 
+def steam_available(cfg: Config, home: Path | None = None) -> bool:
+    """True when a Steam executable CodeAque can actually run is on this machine."""
+    base = steam_base_command(cfg, home)
+    if not base:
+        return False
+    if cfg.steam_command.strip():
+        return bool(shutil.which(base[0]) or Path(base[0]).exists())
+    if base[0] == "flatpak":
+        return bool(shutil.which("flatpak")) and flatpak_installed("com.valvesoftware.Steam", home)
+    return bool(shutil.which(base[0]) or Path(base[0]).exists())
+
+
 def bigpicture_command(cfg: Config, base: list[str], running: bool) -> list[str]:
-    """How to put Steam into full-screen Big Picture mode: a fresh start uses `-gamepadui`; a Steam that is
-    already open is told with the steam:// link (a second `steam` call would only hand the request over)."""
-    return base + (["steam://open/bigpicture"] if running else ["-gamepadui"])
+    """How to put Steam into full-screen Big Picture / console mode.
+    A Steam that is already open is told with steam://open/bigpicture; a fresh start uses
+    -bigpicture (and -gamepadui for newer Steam). Flatpak uses `flatpak run ... -bigpicture`."""
+    from . import steamrepair
+    return steamrepair.console_command(list(base) if base else ["steam"], running)
 
 
 def _close_bigpicture(base: list[str]):
@@ -779,7 +793,7 @@ def _run_steam(cfg: Config, game: Game, on_started, poll: float, start_timeout: 
     if steam_running():
         _slog(f"Steam is already running (window process {'up' if ui_ready() else 'not up yet'})")
     else:
-        spawn(base + (["-gamepadui"] if big_picture_wanted(cfg) else ["-silent"]), "Steam is not running - starting it")
+        spawn(base + (["-bigpicture", "-gamepadui"] if big_picture_wanted(cfg) else ["-silent"]), "Steam is not running - starting it")
         seen = False
         while True:
             if cancelled():

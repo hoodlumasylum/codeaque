@@ -73,7 +73,7 @@ public final class StoreArt {
     static String get(String url, long max) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(8000); c.setReadTimeout(15000);
-        c.setRequestProperty("User-Agent", "CodeAque/0.10.32");
+        c.setRequestProperty("User-Agent", "CodeAque/0.10.33");
         try (InputStream in = c.getInputStream()) {
             if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
             ByteArrayOutputStream o = new ByteArrayOutputStream();

@@ -382,10 +382,10 @@ def test_big_picture_is_on_by_default_and_saved(tmp_path):
 
 def test_big_picture_commands():
     base = ["steam"]
-    assert launcher.bigpicture_command(None, base, running=False) == ["steam", "-gamepadui"]
+    assert launcher.bigpicture_command(None, base, running=False) == ["steam", "-bigpicture", "-gamepadui"]
     assert launcher.bigpicture_command(None, base, running=True) == ["steam", "steam://open/bigpicture"]
     fp = ["flatpak", "run", "com.valvesoftware.Steam"]
-    assert launcher.bigpicture_command(None, fp, False) == ["flatpak", "run", "com.valvesoftware.Steam", "-gamepadui"]
+    assert launcher.bigpicture_command(None, fp, False) == ["flatpak", "run", "com.valvesoftware.Steam", "-bigpicture", "-gamepadui"]
 
 
 def test_steam_process_detection_in_a_fake_proc(tmp_path):
@@ -462,7 +462,7 @@ def test_steam_tile_opens_big_picture_and_esc_twice_comes_back(xvfb, fake_steam)
     secs, err = launcher.run_game(cfg, game, on_started=lambda: started.append(1))
     th.join(10)
     assert err == "" and started == [1] and time.time() - t0 < 20
-    assert lines(log) == ["-gamepadui", "steam://close/bigpicture"]
+    assert lines(log) == ["-bigpicture -gamepadui", "steam://close/bigpicture"]
 
 
 @X
@@ -476,13 +476,13 @@ def test_a_single_esc_and_esc_inside_a_game_do_not_close_steam(xvfb, fake_steam)
         time.sleep(0.12)
         tap()                                               # Esc twice - but the game owns Esc
         time.sleep(1.5)
-        assert alive.exists() and lines(log) == ["-gamepadui"]
+        assert alive.exists() and lines(log) == ["-bigpicture -gamepadui"]
         exitwatch.request_quit("gamepad")                   # Guide + B still returns
     th = threading.Thread(target=press, daemon=True)
     th.start()
     secs, err = launcher.run_game(cfg, game, on_started=lambda: None)
     th.join(10)
-    assert err == "" and lines(log) == ["-gamepadui", "steam://close/bigpicture"]
+    assert err == "" and lines(log) == ["-bigpicture -gamepadui", "steam://close/bigpicture"]
 
 
 def test_guide_b_leaves_big_picture_without_a_keyboard_watcher(fake_steam, monkeypatch):
@@ -498,7 +498,7 @@ def test_guide_b_leaves_big_picture_without_a_keyboard_watcher(fake_steam, monke
     th.start()
     secs, err = launcher.run_game(cfg, game, on_started=lambda: None)
     th.join(10)
-    assert err == "" and lines(log) == ["-gamepadui", "steam://close/bigpicture"]
+    assert err == "" and lines(log) == ["-bigpicture -gamepadui", "steam://close/bigpicture"]
 
 
 def test_already_running_steam_is_switched_with_the_open_link_and_toggle_off_keeps_the_old_behaviour(fake_steam, monkeypatch):
