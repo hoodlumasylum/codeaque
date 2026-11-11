@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.35
+
+**Kids mode Settings PIN.** Tapping Settings or Adult mode from Kids mode always asks for the parent PIN first, even if the PIN was entered a minute earlier (for example after leaving Kids mode and turning it back on). A wrong PIN or Cancel leaves Kids mode as it is. Keyboard Enter / OK submits the PIN. If no PIN is set yet, you are asked to create one (4-6 digits, typed twice).
+
+**Roblox Mode** on Android tries the public explore feed even when the phone's "online" check is wrong or stale, so it should no longer get stuck on the official 12-game list when the network is actually up. Kids mode still keeps the official short list only.
+
+Not tried yet on a real phone.
+
 ## What's new in 0.10.34
 
 **Roblox Mode** on Android now refreshes from Roblox's public, unauthenticated explore API each time you open it, then loads the next page as you scroll near the end. Covers still come from Roblox's public thumbnails API and are cached on the device. If you are offline, the last cached list is shown, then the official short list of popular places. Tiles still open with the official `roblox://placeId=` link (or the official games page). Kids mode keeps the official short list only, because the public explore feed includes titles Roblox rates above minimal. No login and no API keys are used. Not tried yet on a real phone.

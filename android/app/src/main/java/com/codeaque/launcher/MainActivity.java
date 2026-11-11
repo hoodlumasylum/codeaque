@@ -610,11 +610,11 @@ public class MainActivity extends Activity implements HomeView.Host {
     private boolean boxsetBootApplied;
     /** 0.10.23: a parent PIN exists (set from Kids mode or Lock mode). */
     private boolean pinSet() { return prefs.getString("lockPin", null) != null; }
-    /** 0.10.23: whenever a PIN is set, leaving Kids mode and any Play Store launch from Kids mode need it. */
+    /** 0.10.23 / 0.10.35: leaving Kids mode (Grown-ups Settings / Adult mode, or hold Select) and any Play Store
+     *  launch from Kids mode need the parent PIN. A PIN entered earlier must not skip that. */
     private boolean kidsPinGate(Catalog.Item it) {
-        if (!pinSet() || pinFresh()) return false;
-        if (it.isAction()) return "kidsoff".equals(it.action);
-        if (!prefs.getBoolean("kidsMode", false)) return false;
+        if (!prefs.getBoolean("kidsMode", false) || pinFresh()) return false;
+        if (it.isAction()) return "kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action) || "goto:settings".equals(it.action);
         return Catalog.opensStore(it, installed(it));
     }
     private boolean locked() { return prefs.getBoolean("lockMode", false) && prefs.getString("lockPin", null) != null; }
@@ -646,26 +646,85 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void askPin(String title, Runnable ok) {
+        if (!pinSet()) { createParentPin(ok); return; }   // 0.10.35: no PIN yet, make one, then continue
         long wait = prefs.getLong("lockWaitUntil", 0) - System.currentTimeMillis();
         if (wait > 0) { toast("Too many wrong PINs. Try again in " + ((wait + 999) / 1000) + " s."); return; }
         android.widget.EditText e = new android.widget.EditText(this);
         e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(title)
+        e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(title)
                 .setMessage("Enter the parent PIN." + (pinIsDefault() ? "\n\nStill using 1234 \u2013 change it in Settings." : "")
                         + "\n\nForgot it? Clearing CodeAque's data (Android Settings > Apps > CodeAque > Storage > Clear data) resets it to 1234, along with CodeAque's other settings.")
                 .setView(e)
+                .setPositiveButton("OK", (d, w) -> submitPin(e.getText().toString(), ok))
+                .setNegativeButton("Cancel", null)
+                .create();
+        bindPinEnter(e, dlg);
+        dlg.show();
+        e.requestFocus();
+        if (dlg.getWindow() != null) dlg.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+    }
+    /** 0.10.35: OK, keyboard Enter, or the IME Done/Go key all submit the same way. A wrong PIN stays in Kids mode. */
+    private void bindPinEnter(android.widget.EditText e, AlertDialog dlg) {
+        e.setOnEditorActionListener((v, id, ev) -> {
+            if (id == android.view.inputmethod.EditorInfo.IME_ACTION_DONE || id == android.view.inputmethod.EditorInfo.IME_ACTION_GO
+                    || id == android.view.inputmethod.EditorInfo.IME_ACTION_NEXT
+                    || (ev != null && ev.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && (ev.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER || ev.getKeyCode() == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                            || ev.getKeyCode() == android.view.KeyEvent.KEYCODE_DPAD_CENTER))) {
+                dlg.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                return true;
+            }
+            return false;
+        });
+        e.setOnKeyListener((v, code, ev) -> {
+            if (ev.getAction() == android.view.KeyEvent.ACTION_UP && (code == android.view.KeyEvent.KEYCODE_ENTER
+                    || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || code == android.view.KeyEvent.KEYCODE_DPAD_CENTER)) {
+                dlg.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                return true;
+            }
+            return false;
+        });
+    }
+    private void submitPin(String typed, Runnable ok) {
+        if (LockPin.check(typed, prefs.getString("lockPin", null))) {
+            prefs.edit().putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+            pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000; ok.run();
+        } else {
+            int n = prefs.getInt("lockWrong", 0) + 1;
+            prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
+            toast("Wrong PIN.");
+        }
+    }
+    /** 0.10.35: first-time PIN, 4-6 digits typed twice. Cancel or a mismatch leaves Kids mode as it is. */
+    private void createParentPin(Runnable ok) {
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        android.widget.EditText a = new android.widget.EditText(this), b = new android.widget.EditText(this);
+        for (android.widget.EditText e : new android.widget.EditText[]{a, b}) {
+            e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+            e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
+            e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+            box.addView(e);
+        }
+        a.setHint("New parent PIN (4-6 digits)"); b.setHint("Type it again");
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Create a parent PIN")
+                .setMessage("Kids mode needs a parent PIN before Settings or Adult mode can open. Pick 4 to 6 digits.")
+                .setView(box)
                 .setPositiveButton("OK", (d, w) -> {
-                    if (LockPin.check(e.getText().toString(), prefs.getString("lockPin", null))) {
-                        prefs.edit().putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
-                        pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000; ok.run();
-                    } else {
-                        int n = prefs.getInt("lockWrong", 0) + 1;
-                        prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
-                        toast("Wrong PIN.");
-                    }
+                    String p = a.getText().toString();
+                    if (!LockPin.validPin(p)) { toast("The PIN must be 4 to 6 digits. Still in Kids mode."); return; }
+                    if (!p.equals(b.getText().toString())) { toast("The two PINs didn't match. Still in Kids mode."); return; }
+                    prefs.edit().putString("lockPin", LockPin.newHash(p)).putBoolean("pinDefault", p.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+                    pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000; ok.run();
                 })
-                .setNegativeButton("Cancel", null).show();
+                .setNegativeButton("Cancel", null)
+                .create();
+        bindPinEnter(b, dlg);
+        dlg.show();
+        a.requestFocus();
+        if (dlg.getWindow() != null) dlg.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
     }
 
     /** Settings > Lock mode: on = set a new 4-6 digit PIN (typed twice); off = needs the PIN (open() already asked). */
@@ -1101,11 +1160,12 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kids": kidsMode(true); break;
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
-            case "adultpin": parentGo(false, false); break;      // 0.10.30 Kids "Grown-ups" row (PIN)
-            case "settingspin": parentGo(true, false); break;    // 0.10.30
+            case "adultpin": parentGo(false, true); break;      // 0.10.35: always ask, even if a PIN was entered a minute ago
+            case "settingspin": parentGo(true, true); break;    // 0.10.35
             case "sortapps": sortApps(); break;            // 0.10.27
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 leaveBoxSet();
+                pinOkUntil = 0;                               // 0.10.35: a PIN from before Kids mode must not unlock Settings
                 prefs.edit().putBoolean("kidsMode", true).apply(); rescan(); toast("Kids mode is on. Leaving it needs the parent PIN."); break;
             case "boxset": enterBoxSet(); break;             // 0.10.32: no PIN to leave
             case "boxsetboot": toggleBoxSetBoot(); break;
@@ -1394,10 +1454,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             List<Catalog.Item> cached = RobloxDiscover.loadCache(robloxCacheFile());
             if (!cached.isEmpty()) showRoblox(cached);
         }
-        if (!online()) {
-            if (robloxItems == null || robloxItems.isEmpty()) showRoblox(RobloxDiscover.fallback());
-            return;
-        }
+        // 0.10.35: always try the public explore API. online() can be stale or wrong on some phones,
+        // and skipping the fetch was leaving Roblox Mode on the official 12-game list.
         robloxSession = RobloxDiscover.newSession();
         robloxToken = "";
         robloxLoading = true;
@@ -1422,7 +1480,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void loadMoreRoblox() {
-        if (robloxLoading || robloxToken == null || robloxToken.isEmpty() || !online()) return;
+        if (robloxLoading || robloxToken == null || robloxToken.isEmpty()) return;
         long now = android.os.SystemClock.uptimeMillis();
         if (now - robloxMoreAt < 2500) return;   // onDraw can be near the end every frame
         robloxMoreAt = now;

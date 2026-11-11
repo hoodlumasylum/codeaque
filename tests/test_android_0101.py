@@ -403,6 +403,16 @@ def test_kids_pin_play_store_and_exit():
     assert cp.index('LockPin.check(cur.getText()') < cp.index('putString("lockPin", LockPin.newHash(p))')
     assert 'remove("lockPin")' not in m and "kidsPinSetup" not in m
     assert 'act("Change PIN", "gear", "changepin")' in (SRC / "Catalog.java").read_text()
+    # 0.10.35: Settings / Adult mode from Kids always ask; Enter submits; no leftover PIN window
+    assert 'case "adultpin": parentGo(false, true);' in m and 'case "settingspin": parentGo(true, true);' in m
+    k = m.split('case "kidson":', 1)[1].split("break;", 1)[0]
+    assert "pinOkUntil = 0" in k
+    ap = m.split("private void askPin(", 1)[1].split("private void lockToggle()", 1)[0]
+    assert "IME_ACTION_DONE" in ap and "setOnEditorActionListener" in ap and "BUTTON_POSITIVE" in ap
+    assert "createParentPin(" in ap and "Still using 1234" in ap
+    assert '"kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action)' in m
+    rbx = m.split("private void refreshRoblox()", 1)[1].split("private void loadMoreRoblox()", 1)[0]
+    assert "RobloxDiscover.newSession()" in rbx and "if (!online())" not in rbx
 
 
 def test_kids_no_streams_or_all_apps():

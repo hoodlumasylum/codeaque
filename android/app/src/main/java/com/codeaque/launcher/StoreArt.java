@@ -70,16 +70,23 @@ public final class StoreArt {
         return robloxHost(url) ? url : null;
     }
 
+    static final String UA = "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
     static String get(String url, long max) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(8000); c.setReadTimeout(15000);
-        c.setRequestProperty("User-Agent", "CodeAque/0.10.34");
-        try (InputStream in = c.getInputStream()) {
-            if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
-            ByteArrayOutputStream o = new ByteArrayOutputStream();
-            byte[] b = new byte[16384]; int n;
-            while ((n = in.read(b)) > 0) { o.write(b, 0, n); if (o.size() > max) throw new java.io.IOException("too big"); }
-            return o.toString("UTF-8");
+        c.setInstanceFollowRedirects(true);
+        c.setRequestProperty("User-Agent", UA);
+        c.setRequestProperty("Accept", "application/json, text/plain, */*");
+        try {
+            int code = c.getResponseCode();
+            InputStream raw = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            if (code != 200 || raw == null) throw new java.io.IOException("HTTP " + code);
+            try (InputStream in = raw) {
+                ByteArrayOutputStream o = new ByteArrayOutputStream();
+                byte[] b = new byte[16384]; int n;
+                while ((n = in.read(b)) > 0) { o.write(b, 0, n); if (o.size() > max) throw new java.io.IOException("too big"); }
+                return o.toString("UTF-8");
+            }
         } finally { c.disconnect(); }
     }
 
@@ -89,6 +96,7 @@ public final class StoreArt {
         try {
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(8000); c.setReadTimeout(15000);
+            c.setRequestProperty("User-Agent", UA);
             try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(tmp)) {
                 if (c.getResponseCode() != 200) return false;
                 byte[] b = new byte[16384]; int n; long t = 0;
