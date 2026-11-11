@@ -398,9 +398,10 @@ def test_kids_pin_play_store_and_exit():
     assert '"kidsoff".equals(it.action)' in g and "Catalog.opensStore(" in g
     st = m.split("private void store(String pkg) {", 1)[1][:300]
     assert 'getBoolean("kidsMode", false) && pinSet() && !pinFresh()' in st
-    assert "Still using 1234" in m.split("private void askPin(", 1)[1][:2500]
+    assert "default 1234" in m.split("private void askPin(", 1)[1][:4000]
     cp = m.split("private void changePin()", 1)[1].split("private boolean homePromptShown;", 1)[0]
     assert cp.index('LockPin.check(cur.getText()') < cp.index('putString("lockPin", LockPin.newHash(p))')
+    assert "showPinDlg(" in cp and "addForgotPin(" in cp and "bindPinEnter(" in cp
     assert 'remove("lockPin")' not in m and "kidsPinSetup" not in m
     assert 'act("Change PIN", "gear", "changepin")' in (SRC / "Catalog.java").read_text()
     # 0.10.35: Settings / Adult mode from Kids always ask; Enter submits; no leftover PIN window
@@ -409,7 +410,11 @@ def test_kids_pin_play_store_and_exit():
     assert "pinOkUntil = 0" in k
     ap = m.split("private void askPin(", 1)[1].split("private void lockToggle()", 1)[0]
     assert "IME_ACTION_DONE" in ap and "setOnEditorActionListener" in ap and "BUTTON_POSITIVE" in ap
-    assert "createParentPin(" in ap and "Still using 1234" in ap
+    assert "createParentPin(" in ap and "default 1234" in ap
+    # 0.10.36: compact, scrollable PIN dialog; Forgot PIN? help; Enter / A / DPAD_CENTER submit
+    assert "Forgot PIN?" in ap and "ScrollView" in ap and "showPinDlg(" in ap and "SOFT_INPUT_ADJUST_RESIZE" in ap
+    assert "KEYCODE_BUTTON_A" in ap and "KEYCODE_DPAD_CENTER" in ap and "pinSubmitKey(" in ap
+    assert "createParentPin(" in ap and "showPinDlg(dlg, a)" in ap
     assert '"kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action)' in m
     rbx = m.split("private void refreshRoblox()", 1)[1].split("private void loadMoreRoblox()", 1)[0]
     assert "RobloxDiscover.newSession()" in rbx and "if (!online())" not in rbx

@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.36
+
+**Parent PIN dialog on short landscape screens.** The PIN prompt is compact so OK and Cancel stay on screen on a wide, short handheld. The message is one short line (for example "Enter the parent PIN (default 1234)."), and "Forgot PIN?" shows the reset hint. IME Done / Enter and controller A / DPAD_CENTER submit the PIN on every parent PIN dialog (Settings, Adult mode, Change PIN, and the rest).
+
 ## What's new in 0.10.35
 
 **Kids mode Settings PIN.** Tapping Settings or Adult mode from Kids mode always asks for the parent PIN first, even if the PIN was entered a minute earlier (for example after leaving Kids mode and turning it back on). A wrong PIN or Cancel leaves Kids mode as it is. Keyboard Enter / OK submits the PIN. If no PIN is set yet, you are asked to create one (4-6 digits, typed twice).

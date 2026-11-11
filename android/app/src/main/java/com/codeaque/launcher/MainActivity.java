@@ -649,43 +649,107 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (!pinSet()) { createParentPin(ok); return; }   // 0.10.35: no PIN yet, make one, then continue
         long wait = prefs.getLong("lockWaitUntil", 0) - System.currentTimeMillis();
         if (wait > 0) { toast("Too many wrong PINs. Try again in " + ((wait + 999) / 1000) + " s."); return; }
+        android.widget.EditText e = pinField();
+        android.widget.LinearLayout box = pinBox(pinIsDefault() ? "Enter the parent PIN (default 1234)." : "Enter the parent PIN.", e);
+        addForgotPin(box);
+        AlertDialog dlg = pinDlg(title, box)
+                .setPositiveButton("OK", (d, w) -> submitPin(e.getText().toString(), ok))
+                .setNegativeButton("Cancel", null)
+                .create();
+        bindPinEnter(e, dlg, () -> submitPin(e.getText().toString(), ok));
+        showPinDlg(dlg, e);
+    }
+    /** One compact PIN field. IME Done so Enter submits on a keyboard or handheld. */
+    private android.widget.EditText pinField() {
         android.widget.EditText e = new android.widget.EditText(this);
         e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
         e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
-        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(title)
-                .setMessage("Enter the parent PIN." + (pinIsDefault() ? "\n\nStill using 1234 \u2013 change it in Settings." : "")
-                        + "\n\nForgot it? Clearing CodeAque's data (Android Settings > Apps > CodeAque > Storage > Clear data) resets it to 1234, along with CodeAque's other settings.")
-                .setView(e)
-                .setPositiveButton("OK", (d, w) -> submitPin(e.getText().toString(), ok))
-                .setNegativeButton("Cancel", null)
-                .create();
-        bindPinEnter(e, dlg);
-        dlg.show();
-        e.requestFocus();
-        if (dlg.getWindow() != null) dlg.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        e.setSingleLine(true);
+        return e;
     }
-    /** 0.10.35: OK, keyboard Enter, or the IME Done/Go key all submit the same way. A wrong PIN stays in Kids mode. */
-    private void bindPinEnter(android.widget.EditText e, AlertDialog dlg) {
+    /** Short message plus fields, no tall AlertDialog setMessage block. */
+    private android.widget.LinearLayout pinBox(String msg, android.view.View... fields) {
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int p = Math.max(8, (int) (8 * getResources().getDisplayMetrics().density));
+        box.setPadding(p, p / 2, p, 0);
+        if (msg != null && !msg.isEmpty()) {
+            android.widget.TextView t = new android.widget.TextView(this);
+            t.setText(msg);
+            t.setMaxLines(2);
+            t.setPadding(0, 0, 0, p / 2);
+            box.addView(t);
+        }
+        for (android.view.View v : fields) box.addView(v);
+        return box;
+    }
+    private void addForgotPin(android.widget.LinearLayout box) {
+        android.widget.TextView f = new android.widget.TextView(this);
+        f.setText("Forgot PIN?");
+        f.setPadding(0, (int) (6 * getResources().getDisplayMetrics().density), 0, 0);
+        f.setOnClickListener(v -> toast("Clearing CodeAque's data in Android Settings > Apps > CodeAque > Storage resets the PIN to 1234."));
+        box.addView(f);
+    }
+    private AlertDialog.Builder pinDlg(String title, android.view.View body) {
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.setFillViewport(true);
+        sv.addView(body);
+        return new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(title).setView(sv);
+    }
+    /** Keep OK/Cancel on screen on a short landscape handheld; resize for the keyboard. */
+    private void showPinDlg(AlertDialog dlg, android.widget.EditText focus) {
+        dlg.show();
+        if (focus != null) focus.requestFocus();
+        if (dlg.getWindow() == null) return;
+        android.view.Window w = dlg.getWindow();
+        w.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+                | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        int width = Math.min(dm.widthPixels * 92 / 100, (int) (420 * dm.density));
+        int maxH = Math.max(dm.heightPixels * 80 / 100, 1);
+        w.setLayout(width, android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+        android.view.View decor = w.getDecorView();
+        decor.post(() -> {
+            if (dlg.getWindow() != null && decor.getHeight() > maxH) dlg.getWindow().setLayout(width, maxH);
+        });
+    }
+    /** 0.10.36: OK, IME Done/Enter, and controller A / DPAD_CENTER all submit the same way. A wrong PIN stays in Kids mode. */
+    private void bindPinEnter(android.widget.EditText e, AlertDialog dlg, Runnable submit) {
         e.setOnEditorActionListener((v, id, ev) -> {
             if (id == android.view.inputmethod.EditorInfo.IME_ACTION_DONE || id == android.view.inputmethod.EditorInfo.IME_ACTION_GO
                     || id == android.view.inputmethod.EditorInfo.IME_ACTION_NEXT
                     || (ev != null && ev.getAction() == android.view.KeyEvent.ACTION_DOWN
-                        && (ev.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER || ev.getKeyCode() == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
-                            || ev.getKeyCode() == android.view.KeyEvent.KEYCODE_DPAD_CENTER))) {
-                dlg.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                        && pinSubmitKey(ev.getKeyCode()))) {
+                clickPinOk(dlg, submit);
                 return true;
             }
             return false;
         });
         e.setOnKeyListener((v, code, ev) -> {
-            if (ev.getAction() == android.view.KeyEvent.ACTION_UP && (code == android.view.KeyEvent.KEYCODE_ENTER
-                    || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || code == android.view.KeyEvent.KEYCODE_DPAD_CENTER)) {
-                dlg.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            if (ev.getAction() == android.view.KeyEvent.ACTION_UP && pinSubmitKey(code)) {
+                clickPinOk(dlg, submit);
                 return true;
             }
             return false;
         });
+        dlg.setOnKeyListener((d, code, ev) -> {
+            if (ev.getAction() == android.view.KeyEvent.ACTION_UP && pinSubmitKey(code)) {
+                clickPinOk(dlg, submit);
+                return true;
+            }
+            return false;
+        });
+    }
+    private boolean pinSubmitKey(int code) {
+        return code == android.view.KeyEvent.KEYCODE_ENTER || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                || code == android.view.KeyEvent.KEYCODE_DPAD_CENTER || code == android.view.KeyEvent.KEYCODE_BUTTON_A;
+    }
+    private void clickPinOk(AlertDialog dlg, Runnable submit) {
+        if (!dlg.isShowing()) return;
+        android.widget.Button b = dlg.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (b != null && b.isEnabled()) b.performClick();
+        else if (submit != null) { dlg.dismiss(); submit.run(); }
     }
     private void submitPin(String typed, Runnable ok) {
         if (LockPin.check(typed, prefs.getString("lockPin", null))) {
@@ -699,19 +763,11 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
     /** 0.10.35: first-time PIN, 4-6 digits typed twice. Cancel or a mismatch leaves Kids mode as it is. */
     private void createParentPin(Runnable ok) {
-        android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
-        android.widget.EditText a = new android.widget.EditText(this), b = new android.widget.EditText(this);
-        for (android.widget.EditText e : new android.widget.EditText[]{a, b}) {
-            e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-            e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)});
-            e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
-            box.addView(e);
-        }
+        android.widget.EditText a = pinField(), b = pinField();
         a.setHint("New parent PIN (4-6 digits)"); b.setHint("Type it again");
-        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Create a parent PIN")
-                .setMessage("Kids mode needs a parent PIN before Settings or Adult mode can open. Pick 4 to 6 digits.")
-                .setView(box)
+        a.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        android.widget.LinearLayout box = pinBox("Pick a parent PIN (4-6 digits).", a, b);
+        AlertDialog dlg = pinDlg("Create a parent PIN", box)
                 .setPositiveButton("OK", (d, w) -> {
                     String p = a.getText().toString();
                     if (!LockPin.validPin(p)) { toast("The PIN must be 4 to 6 digits. Still in Kids mode."); return; }
@@ -721,10 +777,9 @@ public class MainActivity extends Activity implements HomeView.Host {
                 })
                 .setNegativeButton("Cancel", null)
                 .create();
-        bindPinEnter(b, dlg);
-        dlg.show();
-        a.requestFocus();
-        if (dlg.getWindow() != null) dlg.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        a.setOnEditorActionListener((v, id, ev) -> { b.requestFocus(); return true; });
+        bindPinEnter(b, dlg, null);
+        showPinDlg(dlg, a);
     }
 
     /** Settings > Lock mode: on = set a new 4-6 digit PIN (typed twice); off = needs the PIN (open() already asked). */
@@ -819,18 +874,15 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     /** Current PIN, then the new PIN twice. */
     private void changePin() {
-        android.widget.LinearLayout box = new android.widget.LinearLayout(this); box.setOrientation(android.widget.LinearLayout.VERTICAL);
-        android.widget.EditText cur = new android.widget.EditText(this), a = new android.widget.EditText(this), b = new android.widget.EditText(this);
-        for (android.widget.EditText e : new android.widget.EditText[]{cur, a, b}) {
-            e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-            e.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(6)}); box.addView(e);
-        }
-        cur.setHint("Current PIN"); a.setHint("New PIN (4-6 digits)"); b.setHint("New PIN again");
         long wait = prefs.getLong("lockWaitUntil", 0) - System.currentTimeMillis();
         if (wait > 0) { toast("Too many wrong PINs. Try again in " + ((wait + 999) / 1000) + " s."); return; }
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Change PIN")
-                .setMessage(pinIsDefault() ? "Still using 1234 \u2013 pick your own PIN." : "Forgot the PIN? Clearing CodeAque's data resets it to 1234.")
-                .setView(box)
+        android.widget.EditText cur = pinField(), a = pinField(), b = pinField();
+        cur.setHint("Current PIN"); a.setHint("New PIN (4-6 digits)"); b.setHint("New PIN again");
+        cur.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        a.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        android.widget.LinearLayout box = pinBox(pinIsDefault() ? "Pick a new PIN (default is 1234)." : "Current PIN, then a new one.", cur, a, b);
+        addForgotPin(box);
+        AlertDialog dlg = pinDlg("Change PIN", box)
                 .setPositiveButton("Change", (d, w) -> {
                     if (!LockPin.check(cur.getText().toString(), prefs.getString("lockPin", null))) {
                         int n = prefs.getInt("lockWrong", 0) + 1;
@@ -843,7 +895,12 @@ public class MainActivity extends Activity implements HomeView.Host {
                     prefs.edit().putString("lockPin", LockPin.newHash(p)).putBoolean("pinDefault", p.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
                     toast("PIN changed.");
                 })
-                .setNegativeButton("Cancel", null).show();
+                .setNegativeButton("Cancel", null)
+                .create();
+        cur.setOnEditorActionListener((v, id, ev) -> { a.requestFocus(); return true; });
+        a.setOnEditorActionListener((v, id, ev) -> { b.requestFocus(); return true; });
+        bindPinEnter(b, dlg, null);
+        showPinDlg(dlg, cur);
     }
 
     private boolean homePromptShown;

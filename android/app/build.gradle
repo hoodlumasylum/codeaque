@@ -2,6 +2,6 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.codeaque.launcher'
     compileSdk 34
-    defaultConfig { applicationId 'com.codeaque.launcher'; minSdk 24; targetSdk 30; versionCode 135; versionName '0.10.35' }
+    defaultConfig { applicationId 'com.codeaque.launcher'; minSdk 24; targetSdk 30; versionCode 136; versionName '0.10.36' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_11; targetCompatibility JavaVersion.VERSION_11 }
 }
