@@ -66,11 +66,11 @@ public final class Catalog {
 
     /** A game file from a folder the user chose (Android's folder picker); opened with an installed emulator. */
     /** 0.10.12: a Dreamcast / PSP game found by the scan, labelled with its clean name. */
-    /** 0.10.15 Kids mode: a Dreamcast / PSP row shows only its games; the emulator tile only when there are none. */
+    /** 0.10.37 Kids mode: Dreamcast / PSP rows list only the player's own game files, never the emulator app. */
     static Item[] kidsGamesOnly(List<Item> items) {
         List<Item> g = new ArrayList<>();
         for (Item i : items) if (i.isRom()) g.add(i);
-        return (g.isEmpty() ? items : g).toArray(new Item[0]);
+        return g.toArray(new Item[0]);
     }
     public static boolean isViceCity(String label) { return label != null && label.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", "").contains("vicecity"); }
     /** 0.10.16: Hoodlum Asylum's own Dreamcast covers, matched loosely (any case, no punctuation/spaces). Returns a key or null. */
@@ -273,15 +273,85 @@ public final class Catalog {
     /** 0.10.24: things Kids mode never shows or opens: All Apps, and streaming / video apps. */
     public static boolean kidsBlocked(Item it) {
         if (it == null) return false;
-        if ("allapps".equals(it.action) || "downloads".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
+        if (it == PLAY_STORE) return true;   // 0.10.37: no Play Store tile or shortcut in Kids mode
+        if ("allapps".equals(it.action) || "downloads".equals(it.action) || "filemgr".equals(it.action) || "settings".equals(it.action) || "browser".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
         if ("boxset".equals(it.action) || "boxsetboot".equals(it.action) || "goto:trilogies".equals(it.action) || "goto:coop".equals(it.action)) return true;
         if (it.action != null && it.action.startsWith("steamstore:")) return true;
-        if (it.isDeviceApp() && streamingPkg(it.pkg)) return true;
-        for (String p : it.packages) if (streamingPkg(p)) return true;
+        if (kidsEmulator(it)) return true;   // 0.10.37: emulator apps stay in adult mode only
+        if (it.isDeviceApp() && (streamingPkg(it.pkg) || ScreenTime.blockedKidPackage(it.pkg))) return true;
+        for (String p : it.packages) if (streamingPkg(p) || ScreenTime.blockedKidPackage(p)) return true;
+        return false;
+    }
+
+    /** Known Android emulator packages, plus a cautious "emu" / "emulator" heuristic. Not Temu or ordinary games. */
+    static final String[] EMU_PACKAGES = {
+            "com.retroarch", "com.retroarch.aarch64", "com.retroarch.ra32",
+            "org.ppsspp.ppsspp", "org.ppsspp.ppssppgold",
+            "com.github.stenzek.duckstation",
+            "org.dolphinemu.dolphinemu",
+            "org.mupen64plusae.v3.fzurita", "org.mupen64plusae.v3.alpha",
+            "com.flycast.emulator", "com.reicast.emulator",
+            "com.dsemu.drastic",
+            "org.citra.citra_emu", "io.github.lime3ds.android", "io.github.azahar3ds", "io.github.azahar",
+            "org.yuzu.yuzu_emu", "org.suyu.suyu_emu", "org.sudachi.sudachi_emu", "org.stratoemu.strato",
+            "org.ryujinx", "skyline.emu", "org.skylineemu.skyline",
+            "org.vita3k.emulator", "me.vita3k.emulator",
+            "io.mgba.mgba", "io.mgba", "com.explusalpha.snes9xplus",
+            "com.seleuco.mame4droid", "com.seleuco.mame4droid2", "org.mamedev.mame",
+            "org.redream", "me.magnum.melonds",
+            "com.swordfish.lemuroid",
+            "xyz.aethersx2.android", "xyz.nethersx2.android", "xyz.aethersx2.emulator",
+            "org.pcsx2.pcsx2", "info.cemu.cemu"
+    };
+    static final String[] EMU_WORDS = {
+            "retroarch", "libretro", "ppsspp", "duckstation", "dolphinemu", "dolphin.emu",
+            "aethersx2", "nethersx2", "citra_emu", "citra.emu", "lime3ds",
+            "yuzu_emu", "yuzu.emu", "suyu_emu", "sudachi", "stratoemu", "ryujinx",
+            "skyline.emu", "skylineemu", "vita3k", "snes9x", "lemuroid", "drastic",
+            "melonds", "desmume", "flycast", "reicast", "redream", "mupen64", "m64plus",
+            "mame4droid", "mamedev", "pcsx2", "mgba"
+    };
+    public static boolean emulatorPkg(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        String p = pkg.toLowerCase(java.util.Locale.ROOT);
+        for (String k : EMU_PACKAGES) {
+            String kk = k.toLowerCase(java.util.Locale.ROOT);
+            if (p.equals(kk) || p.startsWith(kk + ".")) return true;
+        }
+        for (String w : EMU_WORDS) if (p.contains(w)) return true;
+        if (p.contains("emulator") || p.contains("emulation")) return true;
+        for (String part : p.split("[._]")) {
+            if (part.equals("emu") || part.equals("emulator") || part.equals("emulation")) return true;
+            if (part.length() >= 5 && part.endsWith("emu")) return true;   // dolphinemu, dsemu; not "temu"
+        }
+        return false;
+    }
+    public static boolean kidsEmulator(Item it) {
+        if (it == null || it.isRom()) return false;
+        if (it == RETROARCH || it == DREAMCAST || it == PSP) return true;
+        if (it.pkg != null && emulatorPkg(it.pkg)) return true;
+        for (String p : it.packages) if (emulatorPkg(p)) return true;
+        if (it.label != null) {
+            String l = it.label.toLowerCase(java.util.Locale.ROOT);
+            if (l.contains("emulator") || l.contains("emulation")) return true;
+        }
         return false;
     }
     /** 0.10.26: the big "Kids Mode" tile, first on the normal home: one tap, no PIN to go in (leaving needs the PIN). */
     public static final Item KIDS_ON = act("Kids Mode", "pad", "kidson");
+    /** 0.10.37: parent picks Kids (all ages) or Kids 12+; always behind the PIN. */
+    public static final Item KIDS_PROFILE = act("Kids profile", "pad", "kidsprofile");
+    public static final Item SCREEN_TIME = act("Screen time", "pad", "screentime");
+    /** 0.10.37: Settings (adult, PIN). Default on: CodeAque opens in the last Kids / Kids 12+ profile. */
+    public static final boolean ALWAYS_KIDS_DEFAULT = true;
+    public static final Item ALWAYS_KIDS = act("Always start in Kids mode", "pad", "alwayskids");
+    /** 0.10.37: Settings (adult, PIN). Screen-pin CodeAque in Kids mode; fallback brings it back if the child swipes away. */
+    public static final Item KIDS_LOCK = act("Lock phone to CodeAque in Kids mode", "gear", "kidslock");
+    /** 0.10.37: adult Settings, PIN. Uses root (su) when present to set device owner; otherwise shows the ADB steps. */
+    public static final Item LOCK_PHONE = act("Lock phone to CodeAque", "gear", "lockphone");
+    public static final Item REMOVE_OWNER = act("Remove device owner", "gear", "removeowner");
+    public static final String DPM_SET_OWNER = "dpm set-device-owner com.codeaque.launcher/.AdminReceiver";
+
     /** 0.10.30: a plain Settings tile next to Kids Mode on the grown-up home (jumps to the Settings row, like Y). */
     public static final Item SETTINGS_TILE = act("Settings", "gear", "goto:settings");
     /** 0.10.30: Kids mode "Grown-ups" row. Both ask for the parent PIN, then Adult mode opens (Kids mode off)
@@ -406,12 +476,18 @@ public final class Catalog {
         c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS, ROBLOX_MODE));
         c.add(new Category("kroblox", "Roblox", "cube", ROBLOX_ITEMS));
         List<Item> newGames = new ArrayList<>();   // 0.10.24: no streaming / TV / video apps in Kids mode
-        for (Item a : added) if (!kidsBlocked(a) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
+        for (Item a : added) {
+            if (kidsEmulator(a)) continue;   // 0.10.37: never list emulator apps, even if a parent approved the package
+            if (!kidsBlocked(a) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
+        }
         if (!newGames.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", newGames.toArray(new Item[0])));
         c.add(new Category("kgames", "Kids Games", "invader", KIDS));
-        c.add(new Category("kstore", "Play Store", "grid", PLAY_STORE));
-        Category dc = dreamcast(roms, false); c.add(new Category("kdc", dc.label, dc.icon, kidsGamesOnly(dc.items)));   // 0.10.15: games only
-        Category ps = psp(roms, false); c.add(new Category("kpsp", ps.label, ps.icon, kidsGamesOnly(ps.items)));   // 0.10.7 / 0.10.15
+        Category dc = dreamcast(roms, false);
+        Item[] dci = kidsGamesOnly(dc.items);
+        if (dci.length > 0) c.add(new Category("kdc", dc.label, dc.icon, dci));   // 0.10.37: omit empty / emulator-only rows
+        Category ps = psp(roms, false);
+        Item[] psi = kidsGamesOnly(ps.items);
+        if (psi.length > 0) c.add(new Category("kpsp", ps.label, ps.icon, psi));
         c.add(new Category("kthemes", "Themes", "palette", KIDS_THEMES));   // 0.10.27: kids can change the look, nothing else
         c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
         c.add(new Category("kparent", "Grown-ups", "gear", KIDS_PARENT));   // 0.10.30: Adult mode and the grown-up menu, both behind the PIN
@@ -653,7 +729,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
+                act("Home app", "home", "home"), act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
         return c;
     }
 

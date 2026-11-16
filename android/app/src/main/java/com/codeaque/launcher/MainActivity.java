@@ -35,17 +35,21 @@ public class MainActivity extends Activity implements HomeView.Host {
     private final Map<String, Integer> sounds = new HashMap<>();
     private final Map<String, Boolean> installedCache = new HashMap<>();
     private SharedPreferences prefs;
-    // 0.10.34: Roblox Mode public explore list (adult home). Kids mode keeps the official short list.
+    // 0.10.34 / 0.10.37: Roblox explore list. Kids / Kids 12+ show a filtered feed (official short list if ratings fail).
     private List<Catalog.Item> robloxItems;
+    private List<RobloxDiscover.Game> robloxGames;
     private String robloxSession = "", robloxToken = "";
-    private boolean robloxOn, robloxLoading;
+    private boolean robloxOn, robloxLoading, robloxRatingsOk, timeUpScreen;
     private long robloxMoreAt;
+    private Catalog.Item pendingPlay;
+    private boolean pinDialogOpen;
 
     @Override protected void onCreate(Bundle b) {
         Catalog.VERSION = myVersion();   // 0.10.28
         super.onCreate(b);
         prefs = getSharedPreferences("codeaque", MODE_PRIVATE);
         ensurePin();                                  // 0.10.23: default parent PIN 1234 (hashed)
+        applyAlwaysKids();                            // 0.10.37: default on — cold start / Home after reboot opens in Kids mode
         edgeToEdge();
         view = new HomeView(this, this);
         setContentView(view);
@@ -92,12 +96,16 @@ public class MainActivity extends Activity implements HomeView.Host {
         if ("com.codeaque.launcher.INSTALLED".equals(i.getAction())) {
             int st = i.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, -999);
             if (st == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                if (prefs.getBoolean("kidsMode", false) && !pinFresh()) {
+                    toast("A parent PIN is needed to install updates."); return;
+                }
                 Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);     // Android's own "Install this update?" prompt
                 if (confirm != null) startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             } else if (st != android.content.pm.PackageInstaller.STATUS_SUCCESS)
                 Toast.makeText(this, "Update not installed: " + i.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE), Toast.LENGTH_LONG).show();
             return;
         }
+        handleKidsGuardIntent(i);
         if (parentEntry(i)) return;      // 0.10.30
         if (i.hasExtra("theme")) { prefs.edit().putString("theme", Palette.byId(i.getStringExtra("theme")).id).apply(); view.setTheme(theme()); }
         if (i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
@@ -105,6 +113,8 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override protected void onResume() {
         super.onResume();
+        pausePlayClock();            // 0.10.37: stop counting when CodeAque is back
+        handleKidsGuardIntent(getIntent());
         scanDreamcast();
         kidsDiff();
         lockResume();                 // 0.10.21
@@ -114,7 +124,23 @@ public class MainActivity extends Activity implements HomeView.Host {
         installedCache.clear();       // apps may have been installed while we were away
         immersive();
         rescan();
+        ScreenTimeService.sync(this);
+        if (prefs.getBoolean("kidsMode", false)) {
+            prefs.edit().remove("kidsFgPkg").apply();   // back on the Kids home: only CodeAque itself is allowed in front
+            syncDeviceOwnerKiosk();
+            syncKidsPinning();
+        } else if (deviceOwner()) syncDeviceOwnerKiosk();
         view.invalidate();
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        maybeBounceKidsLeave();
+    }
+
+    @Override protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        maybeBounceKidsLeave();
     }
 
     @Override public void onWindowFocusChanged(boolean has) {
@@ -225,8 +251,15 @@ public class MainActivity extends Activity implements HomeView.Host {
                         Catalog.placements(prefs.getStringSet("placed", null)), apps));
         if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.29: Phone / Messages in Kids mode and adult mode
         if (locked()) cs = Catalog.applyLockMode(cs);   // Lock mode, Android settings and Home tiles disappear
-        if (!kidsOn && robloxItems != null && !robloxItems.isEmpty())
-            cs = Catalog.replaceItems(cs, "roblox", robloxItems);  // 0.10.34: keep the discovered list across a rescan
+        if (kidsOn) {
+            if (robloxGames != null && robloxRatingsOk) {
+                java.util.List<Catalog.Item> shown = applyRobloxFilter(robloxGames, true);
+                cs = Catalog.replaceItems(cs, "kroblox", shown.isEmpty() ? RobloxDiscover.fallback() : shown);
+            }
+            // else leave the official short list from kidsMode() — never reuse an unfiltered adult feed
+        } else if (robloxItems != null && !robloxItems.isEmpty()) {
+            cs = Catalog.replaceItems(cs, "roblox", robloxItems);  // 0.10.34
+        }
         syncAliases();                                  // 0.10.30: Adult / Settings home-screen icons off while locked
         view.setCategories(cs);
         if (view.boxSet() && !kidsOn) view.setBoxSet(true, java.util.Arrays.asList(Catalog.boxSetItems()));
@@ -259,7 +292,6 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     /** Not-installed Play tiles: the listing's icon (or feature graphic when wide); installed ones keep their own icon. */
     /** The listing's own wide feature graphic, installed or not (Featured row); null = keep the icon. */
-    private final java.util.HashMap<Integer, android.graphics.Bitmap> ownArt = new java.util.HashMap<>();
     private android.graphics.Bitmap playFeature(Catalog.Item it) { return it.storePackage() == null ? null : playFeature(it.storePackage()); }
     private android.graphics.Bitmap playFeature(String pkg) {
         String k = pkg + "#F";
@@ -343,20 +375,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             return store;   // 0.10.32: runtime Steam / Roblox art, original mode fallback
         if (Catalog.isDreamcastRom(it) || Catalog.isPspRom(it)) return gameCover(it);   // 0.10.12: the player's own cover, else a title card
         if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it); if (w != null) return w; }   // 0.10.6 wide covers
-        int own = it == Catalog.MARVEL_RIVALS ? R.drawable.duat_realm_s1 : it == Catalog.MINECRAFT ? R.drawable.duat_realm_blocks
-                : it == Catalog.ROBLOX ? R.drawable.duat_realm_bricks : 0;   // 0.10.6: Hoodlum Asylum's own "Duat Realm" art, logos cropped out
-        if (own != 0) {
-            if (ownArt.containsKey(own)) return ownArt.get(own);
-            final int id = own;
-            if (fetching.add("res:" + id)) new Thread(() -> {
-                android.graphics.Bitmap b = null;
-                try { b = android.graphics.BitmapFactory.decodeResource(getResources(), id); } catch (Exception ignored) { }
-                android.graphics.Bitmap fb = b;
-                runOnUiThread(() -> { ownArt.put(id, fb); fetching.remove("res:" + id); view.invalidate(); });
-            }).start();
-            if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
-            return null;
-        }
+        if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();   // 0.10.37: official Steam header at runtime, no bundled Duat art
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp() && launchIntent(it) == null) return playArt(it, true);   // 0.10.3
         android.graphics.Bitmap b = null;
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp()) {     // a catalogue tile (Steam, Steam Link): the installed app's own banner
@@ -576,9 +595,15 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override public void open(Catalog.Item it) {
         try {
+            if (pinDialogOpen) return;   // 0.10.37: a leaked A / Enter / tap after a wrong PIN must not launch the tile
+            pendingPlay = null;
             if (prefs.getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)
                     && !(it.isDeviceApp() && prefs.getStringSet("kidsApproved", Collections.<String>emptySet()).contains(it.pkg))) { toast("Not available in Kids mode."); return; }   // 0.10.24; 0.10.27: parent-approved apps open
+            if (prefs.getBoolean("kidsMode", false) && ScreenTime.isPlayLaunch(it) && stTimeUp()) {
+                askPin("Parent PIN: time's up", () -> screenTimeExtend(it)); return;
+            }
             if (kidsPinGate(it)) { askPin("Parent PIN", () -> open(it)); return; }   // 0.10.23
+            if (prefs.getBoolean("kidsMode", false) && ScreenTime.isPlayLaunch(it)) pendingPlay = it;
             if (it.isAction()) {
                 if (mustPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }
                 action(it.action); return;
@@ -602,7 +627,13 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     private void start(Intent i) {
         if (locked() && !pinFresh() && blockedTarget(i)) { toast("Locked by a parent."); return; }   // 0.10.21 Lock mode
+        if (prefs.getBoolean("kidsMode", false) && !pinFresh() && kidsBlockedIntent(i)) {
+            toast("Not available in Kids mode."); pendingPlay = null; return;
+        }
+        if (prefs.getBoolean("kidsMode", false) && prefs.getBoolean("kidsLock", false))
+            allowKidsForeground(i.getPackage() != null ? i.getPackage() : (i.getComponent() != null ? i.getComponent().getPackageName() : null));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i);
+        if (pendingPlay != null) { onPlayLaunched(pendingPlay); pendingPlay = null; }
     }
 
     // ---------- 0.10.21 Lock mode (parent PIN). Soft lock inside CodeAque; full kiosk only if CodeAque is device owner. ----------
@@ -614,14 +645,16 @@ public class MainActivity extends Activity implements HomeView.Host {
      *  launch from Kids mode need the parent PIN. A PIN entered earlier must not skip that. */
     private boolean kidsPinGate(Catalog.Item it) {
         if (!prefs.getBoolean("kidsMode", false) || pinFresh()) return false;
-        if (it.isAction()) return "kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action) || "goto:settings".equals(it.action);
+        if (it.isAction()) return "kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action) || "goto:settings".equals(it.action) || "update".equals(it.action);
         return Catalog.opensStore(it, installed(it));
     }
     private boolean locked() { return prefs.getBoolean("lockMode", false) && prefs.getString("lockPin", null) != null; }
     /** Safe contacts and Downloads always ask for the parent PIN. Everything else uses the lock list only while Lock mode is on. */
     private boolean mustPin(String action) {
         if (action == null) return false;
-        if (action.equals("safecontacts") || action.equals("downloads") || action.equals("blockunknown") || action.equals("safeonly")) return true;
+        if (action.equals("safecontacts") || action.equals("downloads") || action.equals("blockunknown") || action.equals("safeonly")
+                || action.equals("kidsprofile") || action.equals("screentime") || action.equals("alwayskids") || action.equals("kidslock")
+                || action.equals("lockphone") || action.equals("removeowner")) return true;
         return locked() && LockPin.needsPin(action);
     }
     /** A correct PIN opens grown-up things for 2 minutes. */
@@ -652,12 +685,18 @@ public class MainActivity extends Activity implements HomeView.Host {
         android.widget.EditText e = pinField();
         android.widget.LinearLayout box = pinBox(pinIsDefault() ? "Enter the parent PIN (default 1234)." : "Enter the parent PIN.", e);
         addForgotPin(box);
+        final boolean[] done = { false };
         AlertDialog dlg = pinDlg(title, box)
-                .setPositiveButton("OK", (d, w) -> submitPin(e.getText().toString(), ok))
-                .setNegativeButton("Cancel", null)
+                .setPositiveButton("OK", null)
+                .setNegativeButton("Cancel", (d, w) -> closePinDialog())
+                .setOnCancelListener(d -> closePinDialog())
                 .create();
-        bindPinEnter(e, dlg, () -> submitPin(e.getText().toString(), ok));
+        dlg.setCanceledOnTouchOutside(true);
+        Runnable submit = () -> trySubmitPin(dlg, e, ok, done);
+        bindPinEnter(e, dlg, submit);
+        pinDialogOpen = true;
         showPinDlg(dlg, e);
+        bindPinOk(dlg, submit);
     }
     /** One compact PIN field. IME Done so Enter submits on a keyboard or handheld. */
     private android.widget.EditText pinField() {
@@ -714,29 +753,28 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (dlg.getWindow() != null && decor.getHeight() > maxH) dlg.getWindow().setLayout(width, maxH);
         });
     }
-    /** 0.10.36: OK, IME Done/Enter, and controller A / DPAD_CENTER all submit the same way. A wrong PIN stays in Kids mode. */
+    /** 0.10.36 / 0.10.37: OK, IME Done/Enter, and controller A / DPAD_CENTER all go through the same verifier.
+     *  The dialog stays open on a wrong or empty PIN, and A / Enter is consumed so it cannot launch the tile underneath. */
     private void bindPinEnter(android.widget.EditText e, AlertDialog dlg, Runnable submit) {
         e.setOnEditorActionListener((v, id, ev) -> {
             if (id == android.view.inputmethod.EditorInfo.IME_ACTION_DONE || id == android.view.inputmethod.EditorInfo.IME_ACTION_GO
-                    || id == android.view.inputmethod.EditorInfo.IME_ACTION_NEXT
-                    || (ev != null && ev.getAction() == android.view.KeyEvent.ACTION_DOWN
-                        && pinSubmitKey(ev.getKeyCode()))) {
-                clickPinOk(dlg, submit);
+                    || (ev != null && ev.getAction() == android.view.KeyEvent.ACTION_DOWN && pinSubmitKey(ev.getKeyCode()))) {
+                if (submit != null) submit.run();
                 return true;
             }
             return false;
         });
         e.setOnKeyListener((v, code, ev) -> {
-            if (ev.getAction() == android.view.KeyEvent.ACTION_UP && pinSubmitKey(code)) {
-                clickPinOk(dlg, submit);
+            if (pinSubmitKey(code)) {
+                if (ev.getAction() == android.view.KeyEvent.ACTION_UP && submit != null) submit.run();
                 return true;
             }
             return false;
         });
         dlg.setOnKeyListener((d, code, ev) -> {
-            if (ev.getAction() == android.view.KeyEvent.ACTION_UP && pinSubmitKey(code)) {
-                clickPinOk(dlg, submit);
-                return true;
+            if (pinSubmitKey(code)) {
+                if (ev.getAction() == android.view.KeyEvent.ACTION_UP && submit != null) submit.run();
+                return true;   // consume DOWN and UP so HomeView cannot activate a tile
             }
             return false;
         });
@@ -745,21 +783,33 @@ public class MainActivity extends Activity implements HomeView.Host {
         return code == android.view.KeyEvent.KEYCODE_ENTER || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
                 || code == android.view.KeyEvent.KEYCODE_DPAD_CENTER || code == android.view.KeyEvent.KEYCODE_BUTTON_A;
     }
-    private void clickPinOk(AlertDialog dlg, Runnable submit) {
-        if (!dlg.isShowing()) return;
+    /** Replace AlertDialog's auto-dismiss OK handler. Only the verifier may dismiss and run onSuccess. */
+    private void bindPinOk(AlertDialog dlg, Runnable submit) {
         android.widget.Button b = dlg.getButton(AlertDialog.BUTTON_POSITIVE);
-        if (b != null && b.isEnabled()) b.performClick();
-        else if (submit != null) { dlg.dismiss(); submit.run(); }
+        if (b != null) b.setOnClickListener(v -> { if (submit != null) submit.run(); });
     }
-    private void submitPin(String typed, Runnable ok) {
-        if (LockPin.check(typed, prefs.getString("lockPin", null))) {
-            prefs.edit().putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
-            pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000; ok.run();
-        } else {
-            int n = prefs.getInt("lockWrong", 0) + 1;
-            prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
-            toast("Wrong PIN.");
+    private void closePinDialog() { pinDialogOpen = false; }
+
+    /** Shared accept/reject path for every "enter the parent PIN" dialog. Wrong / empty never runs ok. */
+    private void trySubmitPin(AlertDialog dlg, android.widget.EditText e, Runnable ok, boolean[] done) {
+        if (dlg == null || !dlg.isShowing() || done[0]) return;
+        int r = PinAction.verify(e.getText().toString(), prefs.getString("lockPin", null));
+        if (r != PinAction.ACCEPTED) {
+            if (r != PinAction.EMPTY) {
+                int n = prefs.getInt("lockWrong", 0) + 1;
+                prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
+            }
+            toast(r == PinAction.EMPTY ? "Enter the parent PIN." : "Wrong PIN.");
+            e.setText("");
+            e.requestFocus();
+            return;
         }
+        done[0] = true;
+        prefs.edit().putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+        pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000;
+        pinDialogOpen = false;
+        dlg.dismiss();
+        if (ok != null) ok.run();
     }
     /** 0.10.35: first-time PIN, 4-6 digits typed twice. Cancel or a mismatch leaves Kids mode as it is. */
     private void createParentPin(Runnable ok) {
@@ -767,19 +817,35 @@ public class MainActivity extends Activity implements HomeView.Host {
         a.setHint("New parent PIN (4-6 digits)"); b.setHint("Type it again");
         a.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
         android.widget.LinearLayout box = pinBox("Pick a parent PIN (4-6 digits).", a, b);
+        final boolean[] done = { false };
         AlertDialog dlg = pinDlg("Create a parent PIN", box)
-                .setPositiveButton("OK", (d, w) -> {
-                    String p = a.getText().toString();
-                    if (!LockPin.validPin(p)) { toast("The PIN must be 4 to 6 digits. Still in Kids mode."); return; }
-                    if (!p.equals(b.getText().toString())) { toast("The two PINs didn't match. Still in Kids mode."); return; }
-                    prefs.edit().putString("lockPin", LockPin.newHash(p)).putBoolean("pinDefault", p.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
-                    pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000; ok.run();
-                })
-                .setNegativeButton("Cancel", null)
+                .setPositiveButton("OK", null)
+                .setNegativeButton("Cancel", (d, w) -> closePinDialog())
+                .setOnCancelListener(d -> closePinDialog())
                 .create();
+        dlg.setCanceledOnTouchOutside(true);
+        Runnable submit = () -> {
+            if (dlg == null || !dlg.isShowing() || done[0]) return;
+            int r = PinAction.verifyNew(a.getText().toString(), b.getText().toString());
+            if (r != PinAction.ACCEPTED) {
+                toast(r == PinAction.EMPTY ? "Type the new PIN twice."
+                        : r == PinAction.INVALID ? "The PIN must be 4 to 6 digits. Still in Kids mode."
+                        : "The two PINs didn't match. Still in Kids mode.");
+                return;
+            }
+            done[0] = true;
+            String pin = a.getText().toString();
+            prefs.edit().putString("lockPin", LockPin.newHash(pin)).putBoolean("pinDefault", pin.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+            pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000;
+            pinDialogOpen = false;
+            dlg.dismiss();
+            if (ok != null) ok.run();
+        };
         a.setOnEditorActionListener((v, id, ev) -> { b.requestFocus(); return true; });
-        bindPinEnter(b, dlg, null);
+        bindPinEnter(b, dlg, submit);
+        pinDialogOpen = true;
         showPinDlg(dlg, a);
+        bindPinOk(dlg, submit);
     }
 
     /** Settings > Lock mode: on = set a new 4-6 digit PIN (typed twice); off = needs the PIN (open() already asked). */
@@ -827,6 +893,11 @@ public class MainActivity extends Activity implements HomeView.Host {
         Runnable go = () -> {
             boolean wasKids = prefs.getBoolean("kidsMode", false);
             prefs.edit().putBoolean("kidsMode", false).apply();
+            timeUpScreen = false;
+            if (wasKids) stopKidsPinning();   // 0.10.37: PIN exit drops screen pinning
+            if (wasKids) syncDeviceOwnerKiosk();   // clears Kids install / factory-reset restrictions
+            ScreenTimeService.sync(this);
+            if (wasKids && deviceOwner() && locked()) kioskOn();
             rescan();
             view.focus(toSettings ? "settings" : "", 0);   // "" = the first row
             toast(toSettings ? "Settings" + (wasKids ? ". Kids mode is off; the Kids Mode tile turns it back on." : "")
@@ -882,25 +953,43 @@ public class MainActivity extends Activity implements HomeView.Host {
         a.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
         android.widget.LinearLayout box = pinBox(pinIsDefault() ? "Pick a new PIN (default is 1234)." : "Current PIN, then a new one.", cur, a, b);
         addForgotPin(box);
+        final boolean[] done = { false };
         AlertDialog dlg = pinDlg("Change PIN", box)
-                .setPositiveButton("Change", (d, w) -> {
-                    if (!LockPin.check(cur.getText().toString(), prefs.getString("lockPin", null))) {
-                        int n = prefs.getInt("lockWrong", 0) + 1;
-                        prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
-                        toast("Wrong current PIN. Nothing was changed."); return;
-                    }
-                    String p = a.getText().toString();
-                    if (!LockPin.validPin(p)) { toast("The new PIN must be 4 to 6 digits. Nothing was changed."); return; }
-                    if (!p.equals(b.getText().toString())) { toast("The two new PINs didn't match. Nothing was changed."); return; }
-                    prefs.edit().putString("lockPin", LockPin.newHash(p)).putBoolean("pinDefault", p.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
-                    toast("PIN changed.");
-                })
-                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Change", null)
+                .setNegativeButton("Cancel", (d, w) -> closePinDialog())
+                .setOnCancelListener(d -> closePinDialog())
                 .create();
         cur.setOnEditorActionListener((v, id, ev) -> { a.requestFocus(); return true; });
         a.setOnEditorActionListener((v, id, ev) -> { b.requestFocus(); return true; });
-        bindPinEnter(b, dlg, null);
+        Runnable submit = () -> {
+            if (dlg == null || !dlg.isShowing() || done[0]) return;
+            int curR = PinAction.verify(cur.getText().toString(), prefs.getString("lockPin", null));
+            if (curR != PinAction.ACCEPTED) {
+                if (curR != PinAction.EMPTY) {
+                    int n = prefs.getInt("lockWrong", 0) + 1;
+                    prefs.edit().putInt("lockWrong", n).putLong("lockWaitUntil", System.currentTimeMillis() + LockPin.backoff(n)).apply();
+                }
+                toast(curR == PinAction.EMPTY ? "Enter the current PIN." : "Wrong current PIN. Nothing was changed.");
+                return;
+            }
+            int neu = PinAction.verifyNew(a.getText().toString(), b.getText().toString());
+            if (neu != PinAction.ACCEPTED) {
+                toast(neu == PinAction.EMPTY ? "Type the new PIN twice."
+                        : neu == PinAction.INVALID ? "The new PIN must be 4 to 6 digits. Nothing was changed."
+                        : "The two new PINs didn't match. Nothing was changed.");
+                return;
+            }
+            done[0] = true;
+            String pin = a.getText().toString();
+            prefs.edit().putString("lockPin", LockPin.newHash(pin)).putBoolean("pinDefault", pin.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+            pinDialogOpen = false;
+            dlg.dismiss();
+            toast("PIN changed.");
+        };
+        bindPinEnter(b, dlg, submit);
+        pinDialogOpen = true;
         showPinDlg(dlg, cur);
+        bindPinOk(dlg, submit);
     }
 
     private boolean homePromptShown;
@@ -918,23 +1007,45 @@ public class MainActivity extends Activity implements HomeView.Host {
         try { return ((android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE)).isDeviceOwnerApp(getPackageName()); }
         catch (Exception e) { return false; }
     }
+    /** The active device-admin component (AdminReceiver for new setups, or CodeAqueAdmin if that was set earlier). */
+    private android.content.ComponentName adminComponent() {
+        android.content.ComponentName a = new android.content.ComponentName(this, AdminReceiver.class);
+        android.content.ComponentName b = new android.content.ComponentName(this, CodeAqueAdmin.class);
+        try {
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            if (dpm.isAdminActive(a)) return a;
+            if (dpm.isAdminActive(b)) return b;
+        } catch (Exception ignored) { }
+        return a;
+    }
     static final String[] KIOSK_RULES = {android.os.UserManager.DISALLOW_FACTORY_RESET, android.os.UserManager.DISALLOW_SAFE_BOOT,
             android.os.UserManager.DISALLOW_ADD_USER, android.os.UserManager.DISALLOW_OUTGOING_CALLS, android.os.UserManager.DISALLOW_SMS};
-    /** Device owner only (set with adb): lock task over CodeAque plus the games it can open, CodeAque pinned as Home. UNTESTED ON A REAL DEVICE. */
+    /** Applied only while Kids mode is on and CodeAque is the device owner. Cleared on a PIN exit to adult mode. */
+    static final String[] KIDS_KIOSK_RULES = {android.os.UserManager.DISALLOW_INSTALL_APPS,
+            android.os.UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, android.os.UserManager.DISALLOW_FACTORY_RESET};
+    /** Device owner: lock task over CodeAque plus the games it can open, CodeAque pinned as Home. UNTESTED ON A REAL DEVICE. */
     private void kioskOn() { kioskOn(new String[0]); }
     private void kioskOn(String[] extra) {
         try {
             android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-            android.content.ComponentName admin = new android.content.ComponentName(this, CodeAqueAdmin.class);
-            java.util.Set<String> allow = new java.util.TreeSet<>(); allow.add(getPackageName());
-            for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0))
-                if (!LockPin.blocked(r.activityInfo.packageName) && !otherHome(r.activityInfo.packageName)) allow.add(r.activityInfo.packageName);
-            allow.add("com.android.vending"); allow.add("com.google.android.packageinstaller"); allow.add("com.android.packageinstaller");
-            for (String x : extra) if (x != null) allow.add(x);   // 0.10.22: the dialer / SMS app, only for a Safe contacts call or text
+            android.content.ComponentName admin = adminComponent();
+            java.util.Set<String> allow = prefs.getBoolean("kidsMode", false) ? kidsLockTaskPackages() : new java.util.TreeSet<>();
+            if (!prefs.getBoolean("kidsMode", false)) {
+                allow.add(getPackageName());
+                for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0))
+                    if (!LockPin.blocked(r.activityInfo.packageName) && !otherHome(r.activityInfo.packageName)) allow.add(r.activityInfo.packageName);
+                allow.add("com.android.vending"); allow.add("com.google.android.packageinstaller"); allow.add("com.android.packageinstaller");
+            }
+            for (String x : extra) if (x != null && !(prefs.getBoolean("kidsMode", false) && ScreenTime.blockedKidPackage(x))) allow.add(x);   // 0.10.22: the dialer / SMS app, only for a Safe contacts call or text
             dpm.setLockTaskPackages(admin, allow.toArray(new String[0]));
-            if (android.os.Build.VERSION.SDK_INT >= 28)
-                dpm.setLockTaskFeatures(admin, android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS | android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO);
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                int feat = android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS;
+                if (!prefs.getBoolean("kidsMode", false)) feat |= android.app.admin.DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO;
+                dpm.setLockTaskFeatures(admin, feat);   // Kids: no recents / notifications; power menu still works
+            }
             for (String r : KIOSK_RULES) dpm.addUserRestriction(admin, r);
+            if (prefs.getBoolean("kidsMode", false))
+                for (String r : KIDS_KIOSK_RULES) dpm.addUserRestriction(admin, r);
             IntentFilter home = new IntentFilter(Intent.ACTION_MAIN); home.addCategory(Intent.CATEGORY_HOME); home.addCategory(Intent.CATEGORY_DEFAULT);
             dpm.addPersistentPreferredActivity(admin, home, new android.content.ComponentName(this, MainActivity.class));
             startLockTask();
@@ -944,11 +1055,56 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (!deviceOwner()) return;
         try {
             android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-            android.content.ComponentName admin = new android.content.ComponentName(this, CodeAqueAdmin.class);
+            android.content.ComponentName admin = adminComponent();
             for (String r : KIOSK_RULES) dpm.clearUserRestriction(admin, r);
+            for (String r : KIDS_KIOSK_RULES) dpm.clearUserRestriction(admin, r);
             try { stopLockTask(); } catch (Exception ignored) { }
             dpm.setLockTaskPackages(admin, new String[0]);
+            dpm.clearPackagePersistentPreferredActivities(admin, getPackageName());
         } catch (Exception ignored) { }
+    }
+
+    /** CodeAque plus approved Kids / Kids 12+ game packages (not Settings, Play Store, installers or emulators). */
+    private java.util.Set<String> kidsLockTaskPackages() {
+        java.util.Set<String> allow = new java.util.TreeSet<>();
+        allow.add(getPackageName());
+        java.util.List<Catalog.Item> games = new java.util.ArrayList<>();
+        games.add(Catalog.ROBLOX); games.add(Catalog.MINECRAFT); games.add(Catalog.MARVEL_RIVALS); games.add(Catalog.GEFORCE_NOW);
+        for (Catalog.Item k : Catalog.KIDS) games.add(k);
+        for (Catalog.Item it : games) {
+            if (it == null || Catalog.kidsEmulator(it)) continue;
+            for (String p : it.packages) if (p != null && !ScreenTime.blockedKidPackage(p) && !Catalog.emulatorPkg(p)) allow.add(p);
+        }
+        for (String p : prefs.getStringSet("kidsApproved", java.util.Collections.<String>emptySet()))
+            if (p != null && !ScreenTime.blockedKidPackage(p) && !Catalog.emulatorPkg(p)) allow.add(p);
+        String fg = prefs.getString("kidsFgPkg", null);
+        if (fg != null && !ScreenTime.blockedKidPackage(fg) && !Catalog.emulatorPkg(fg)) allow.add(fg);
+        return allow;
+    }
+
+    /** When CodeAque is the device owner, apply or drop the Kids kiosk. No-op if we are not the owner. */
+    private void syncDeviceOwnerKiosk() {
+        if (!deviceOwner()) return;
+        if (prefs.getBoolean("kidsMode", false)) kioskOn();
+        else {
+            try {
+                android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                android.content.ComponentName admin = adminComponent();
+                for (String r : KIDS_KIOSK_RULES) {
+                    boolean keep = locked();
+                    if (keep) {
+                        keep = false;
+                        for (String k : KIOSK_RULES) if (k.equals(r)) { keep = true; break; }
+                    }
+                    if (!keep) dpm.clearUserRestriction(admin, r);
+                }
+                if (locked()) kioskOn();
+                else {
+                    try { stopLockTask(); } catch (Exception ignored) { }
+                    // Preferred Home stays so a reboot still opens CodeAque; restrictions for installs are off.
+                }
+            } catch (Exception ignored) { }
+        }
     }
     // ---------- 0.10.22 Safe contacts: Call & Text only to numbers a parent added ----------
     static final int REQ_CONTACTS = 61, REQ_CALL = 62, REQ_ROLE = 63;
@@ -1139,12 +1295,20 @@ public class MainActivity extends Activity implements HomeView.Host {
         }
     }
 
-    /** Settings > Remove full kiosk: CodeAque gives up device owner (PIN asked by open()). */
+    /** Settings > Remove device owner (PIN already asked). So a buyer is not stuck with a kiosk phone. */
     private void removeOwner() {
         if (!deviceOwner()) { toast("CodeAque is not the device owner, so there is nothing to remove."); return; }
-        kioskOff();
-        try { ((android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE)).clearDeviceOwnerApp(getPackageName()); toast("Full kiosk removed."); }
-        catch (Exception e) { toast("Could not remove it: " + e.getMessage()); }
+        dlg().setTitle("Remove device owner?")
+                .setMessage("This turns off the full kiosk lock. The phone can have other Home apps and accounts again. To set device owner later you need a factory-reset phone with no accounts, or root (su) from this same Settings item.")
+                .setPositiveButton("Remove", (d, w) -> {
+                    kioskOff();
+                    try {
+                        ((android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE)).clearDeviceOwnerApp(getPackageName());
+                        toast("Device owner removed. The phone is no longer locked to CodeAque.");
+                    } catch (Exception e) { toast("Could not remove it: " + e.getMessage()); }
+                    rescan();
+                })
+                .setNegativeButton("Cancel", null).show();
     }
 
     /** Adult-mode Downloads. LibreTorrent if it is installed, otherwise its Play Store or F-Droid page.
@@ -1215,6 +1379,11 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "bootanim": bootAnim(); break;
             case "rotation": rotationToggle(); break;
             case "kids": kidsMode(true); break;
+            case "kidsprofile": kidsProfilePicker(); break;   // 0.10.37: always PIN (mustPin)
+            case "screentime": screenTimePicker(); break;
+            case "alwayskids": alwaysKidsToggle(); break;   // 0.10.37: adult Settings, PIN
+            case "kidslock": kidsLockToggle(); break;
+            case "lockphone": lockPhone(); break;         // 0.10.37: set device owner (su if present, else ADB guide)
             case "gfn:rivals": openRivals(); break;
             case "kidsoff": kidsMode(false); break;
             case "adultpin": parentGo(false, true); break;      // 0.10.35: always ask, even if a PIN was entered a minute ago
@@ -1223,7 +1392,11 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 leaveBoxSet();
                 pinOkUntil = 0;                               // 0.10.35: a PIN from before Kids mode must not unlock Settings
-                prefs.edit().putBoolean("kidsMode", true).apply(); rescan(); toast("Kids mode is on. Leaving it needs the parent PIN."); break;
+                prefs.edit().putBoolean("kidsMode", true).apply(); timeUpScreen = false;
+                ScreenTimeService.sync(this); rescan();
+                syncDeviceOwnerKiosk();
+                syncKidsPinning();
+                toast(kids12() ? "Kids 12+ is on. Leaving it needs the parent PIN." : "Kids mode is on. Leaving it needs the parent PIN."); break;
             case "boxset": enterBoxSet(); break;             // 0.10.32: no PIN to leave
             case "boxsetboot": toggleBoxSetBoot(); break;
             case "lock": lockToggle(); break;              // 0.10.21
@@ -1332,6 +1505,9 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     /** manual = Settings > Update (asks and installs); otherwise the once-a-day quiet check that only tells you. */
     private void checkUpdate(boolean manual) {
+        if (manual && prefs.getBoolean("kidsMode", false) && !pinFresh()) {
+            askPin("Parent PIN: Update", () -> checkUpdate(true)); return;
+        }
         if (updating) return;
         updating = true;
         if (manual) toast("Checking for updates ...");
@@ -1342,7 +1518,10 @@ public class MainActivity extends Activity implements HomeView.Host {
                 if (u == null || !UpdateInfo.newer(u.version, mine)) { Catalog.updateAvailable = false; if (manual) toast("You're up to date! (CodeAque " + mine + ")"); return; }
                 prefs.edit().putString("updKnown", u.version).apply();
                 Catalog.updateAvailable = true; runOnUiThread(() -> view.invalidate());   // 0.10.28 badge
-                if (!manual) { runOnUiThread(() -> updatePopup(u, mine)); return; }
+                if (!manual) {
+                    if (prefs.getBoolean("kidsMode", false)) return;   // 0.10.37: badge only; installing needs the parent PIN
+                    runOnUiThread(() -> updatePopup(u, mine)); return;
+                }
                 runOnUiThread(() -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle("Update to CodeAque " + u.version + "?")
                         .setMessage("You have " + mine + ". The new version is downloaded, checked against the release's SHA256SUMS.txt and then Android asks you to install it.")
@@ -1356,6 +1535,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void install(UpdateInfo u) {
+        if (prefs.getBoolean("kidsMode", false) && !pinFresh()) { toast("A parent PIN is needed to install updates."); return; }
         try {
             toast("Downloading CodeAque " + u.version + " ...");
             String want = null;
@@ -1483,16 +1663,13 @@ public class MainActivity extends Activity implements HomeView.Host {
         toast("Box Set Mode. Press Exit or hold Start / Select to leave (no PIN).");
     }
 
-        @Override public void robloxRow(boolean on, boolean nearEnd) {
-        if (prefs.getBoolean("kidsMode", false)) {   // official short list only (explore includes mild/moderate titles)
-            robloxOn = false;
-            return;
-        }
+    @Override public void robloxRow(boolean on, boolean nearEnd) {
         if (!on) { robloxOn = false; return; }
         if (!robloxOn) {
             robloxOn = true;
             refreshRoblox();
         } else if (nearEnd) {
+            if (prefs.getBoolean("kidsMode", false) && !robloxRatingsOk) return;  // official short list: do not append unfiltered pages
             loadMoreRoblox();
         }
     }
@@ -1502,14 +1679,32 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void showRoblox(List<Catalog.Item> items) {
         if (items == null || items.isEmpty()) return;
         robloxItems = items;
-        if (!prefs.getBoolean("kidsMode", false)) view.replaceRow("roblox", items);
+        view.replaceRow(prefs.getBoolean("kidsMode", false) ? "kroblox" : "roblox", items);
+    }
+
+    private int robloxProfile() {
+        return prefs.getBoolean("kidsMode", false) ? RobloxDiscover.Profile.kids(prefs.getString("kidsProfile", "kids")) : RobloxDiscover.Profile.ALL;
+    }
+
+    private List<Catalog.Item> applyRobloxFilter(List<RobloxDiscover.Game> games, boolean ratingsOk) {
+        int p = robloxProfile();
+        if (!RobloxDiscover.Profile.isKids(p)) return RobloxDiscover.filter(games, RobloxDiscover.Profile.ALL);
+        if (!ratingsOk) return RobloxDiscover.fallback();
+        return RobloxDiscover.filter(games, p);
     }
 
     private void refreshRoblox() {
         if (robloxLoading) return;
+        boolean kids = prefs.getBoolean("kidsMode", false);
         if (robloxItems == null || robloxItems.isEmpty()) {
-            List<Catalog.Item> cached = RobloxDiscover.loadCache(robloxCacheFile());
-            if (!cached.isEmpty()) showRoblox(cached);
+            List<RobloxDiscover.Game> cached = RobloxDiscover.loadGames(robloxCacheFile());
+            boolean ok = !kids || RobloxDiscover.hasUsableRatings(cached);
+            List<Catalog.Item> shown = applyRobloxFilter(cached, ok);
+            if (!shown.isEmpty()) {
+                robloxGames = cached;
+                robloxRatingsOk = ok;
+                showRoblox(shown);
+            }
         }
         // 0.10.35: always try the public explore API. online() can be stale or wrong on some phones,
         // and skipping the fetch was leaving Roblox Mode on the official 12-game list.
@@ -1517,17 +1712,34 @@ public class MainActivity extends Activity implements HomeView.Host {
         robloxToken = "";
         robloxLoading = true;
         final String session = robloxSession;
+        final boolean lookup = kids;
         new Thread(() -> {
             RobloxDiscover.Page page;
-            try { page = RobloxDiscover.fetchPage(session, ""); }
-            catch (Exception e) { page = new RobloxDiscover.Page(new java.util.ArrayList<>(), ""); }
+            try { page = RobloxDiscover.fetchPage(session, "", lookup); }
+            catch (Exception e) { page = new RobloxDiscover.Page(new java.util.ArrayList<RobloxDiscover.Game>(), ""); }
             final RobloxDiscover.Page got = page;
             runOnUiThread(() -> {
                 robloxLoading = false;
-                if (!got.items.isEmpty()) {
+                boolean ok = !prefs.getBoolean("kidsMode", false) || RobloxDiscover.hasUsableRatings(got.games);
+                if (!got.games.isEmpty() && ok) {
+                    robloxRatingsOk = true;
                     robloxToken = got.nextToken;
+                    robloxGames = got.games;
+                    List<Catalog.Item> shown = applyRobloxFilter(got.games, true);
+                    if (shown.isEmpty() && !got.nextToken.isEmpty()) { loadMoreRoblox(); return; }
+                    showRoblox(shown.isEmpty() ? RobloxDiscover.fallback() : shown);
+                    RobloxDiscover.saveGames(robloxCacheFile(), got.games);
+                } else if (prefs.getBoolean("kidsMode", false)) {
+                    robloxRatingsOk = false;
+                    robloxToken = "";
+                    robloxGames = null;
+                    showRoblox(RobloxDiscover.fallback());  // never show an unfiltered Kids feed
+                } else if (!got.items.isEmpty()) {
+                    robloxRatingsOk = true;
+                    robloxToken = got.nextToken;
+                    robloxGames = got.games;
                     showRoblox(got.items);
-                    RobloxDiscover.saveCache(robloxCacheFile(), got.items);
+                    RobloxDiscover.saveGames(robloxCacheFile(), got.games);
                 } else if (robloxItems == null || robloxItems.isEmpty()) {
                     List<Catalog.Item> cached = RobloxDiscover.loadCache(robloxCacheFile());
                     showRoblox(cached.isEmpty() ? RobloxDiscover.fallback() : cached);
@@ -1538,24 +1750,29 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     private void loadMoreRoblox() {
         if (robloxLoading || robloxToken == null || robloxToken.isEmpty()) return;
+        if (prefs.getBoolean("kidsMode", false) && !robloxRatingsOk) return;
         long now = android.os.SystemClock.uptimeMillis();
         if (now - robloxMoreAt < 2500) return;   // onDraw can be near the end every frame
         robloxMoreAt = now;
         robloxLoading = true;
         final String session = robloxSession, token = robloxToken;
+        final boolean lookup = prefs.getBoolean("kidsMode", false);
         new Thread(() -> {
             RobloxDiscover.Page page;
-            try { page = RobloxDiscover.fetchPage(session, token); }
-            catch (Exception e) { page = new RobloxDiscover.Page(new java.util.ArrayList<>(), ""); }
+            try { page = RobloxDiscover.fetchPage(session, token, lookup); }
+            catch (Exception e) { page = new RobloxDiscover.Page(new java.util.ArrayList<RobloxDiscover.Game>(), ""); }
             final RobloxDiscover.Page got = page;
             runOnUiThread(() -> {
                 robloxLoading = false;
-                if (!got.items.isEmpty()) {
+                boolean ok = !prefs.getBoolean("kidsMode", false) || RobloxDiscover.hasUsableRatings(got.games);
+                if (!got.games.isEmpty() && ok) {
                     robloxToken = got.nextToken;
-                    List<Catalog.Item> merged = RobloxDiscover.merge(robloxItems, got.items);
-                    showRoblox(merged);
-                    RobloxDiscover.saveCache(robloxCacheFile(), merged);
-                } else if (!got.nextToken.isEmpty()) {
+                    robloxGames = RobloxDiscover.mergeGames(robloxGames, got.games);
+                    robloxRatingsOk = true;
+                    List<Catalog.Item> shown = applyRobloxFilter(robloxGames, true);
+                    showRoblox(shown);
+                    RobloxDiscover.saveGames(robloxCacheFile(), robloxGames);
+                } else if (!got.nextToken.isEmpty() && ok) {
                     robloxToken = got.nextToken;
                 }
             });
@@ -2044,15 +2261,201 @@ public class MainActivity extends Activity implements HomeView.Host {
         return null;
     }
 
+    // ---------- 0.10.37 Always start in Kids mode (Settings, parent PIN; default on) ----------
+    /** Cold start and Home-after-reboot (onCreate). Does not run on ordinary resume, so a parent who just left Kids mode is not bounced back. */
+    private void applyAlwaysKids() {
+        if (!prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT)) return;
+        if (!prefs.getBoolean("kidsMode", false))
+            prefs.edit().putBoolean("kidsMode", true).apply();   // last-used kidsProfile (kids / kids12) is left as it is
+    }
+    private void alwaysKidsToggle() {
+        boolean on = !prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT);
+        prefs.edit().putBoolean("alwaysKids", on).apply();
+        toast(on
+                ? "Always start in Kids mode is on. After a restart (or Home after a reboot), CodeAque opens in " + (kids12() ? "Kids 12+" : "Kids mode") + ". Leaving still needs the parent PIN."
+                : "Always start in Kids mode is off. CodeAque will stay in whichever mode you leave it in.");
+    }
+
+    // ---------- 0.10.37 Lock phone to CodeAque in Kids mode (screen pinning + bounce fallback) ----------
+    private void kidsLockToggle() {
+        boolean on = !prefs.getBoolean("kidsLock", false);
+        prefs.edit().putBoolean("kidsLock", on).apply();
+        if (on) {
+            ScreenTimeService.sync(this);
+            if (prefs.getBoolean("kidsMode", false)) syncKidsPinning();
+            String extra = !ScreenTimeService.canUsage(this) ? " Usage access is not on, so the swipe-away fallback may not see which app is in front." : "";
+            if (prefs.getBoolean("kidsMode", false) && !ScreenTimeService.canOverlay(this) && android.os.Build.VERSION.SDK_INT >= 29)
+                extra += " Display over other apps helps bring CodeAque back on Android 10+.";
+            toast("Lock phone to CodeAque in Kids mode is on. Android may ask you to confirm screen pinning. A child can usually unpin with Back and Recents unless CodeAque is the device owner (full silent lock)." + extra);
+        } else {
+            stopKidsPinning();
+            ScreenTimeService.sync(this);
+            toast("Lock phone to CodeAque in Kids mode is off.");
+        }
+    }
+
+    /** Pin CodeAque when Kids mode + the Settings toggle are on. No-op if already pinned or we just handed off to a game. */
+    private void syncKidsPinning() {
+        if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
+        if (prefs.getString("kidsFgPkg", null) != null) return;   // an approved game is allowed in front
+        view.post(() -> {
+            if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
+            if (prefs.getString("kidsFgPkg", null) != null) return;
+            if (inLockTask()) return;
+            try { startLockTask(); }
+            catch (Exception e) { /* Android may refuse if we are not focused; the bounce fallback still runs. */ }
+        });
+    }
+
+    /** Called on a PIN exit from Kids mode, or when the parent turns the toggle off. */
+    private void stopKidsPinning() {
+        prefs.edit().remove("kidsFgPkg").apply();
+        if (deviceOwner() && (locked() || prefs.getBoolean("kidsMode", false))) return;   // device-owner kiosk stays pinned
+        if (!inLockTask()) return;
+        try { stopLockTask(); } catch (Exception ignored) { }
+    }
+
+    private boolean inLockTask() {
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            if (am == null) return false;
+            if (android.os.Build.VERSION.SDK_INT >= 23)
+                return am.getLockTaskModeState() != android.app.ActivityManager.LOCK_TASK_MODE_NONE;
+            return am.isInLockTaskMode();
+        } catch (Exception e) { return false; }
+    }
+
+    /** Remember the game we just launched, and unpin so it can come to the front (without device owner, only one task can be pinned). */
+    private void allowKidsForeground(String pkg) {
+        if (!prefs.getBoolean("kidsMode", false) || pkg == null || pkg.isEmpty() || pkg.equals(getPackageName())) return;
+        if (ScreenTime.blockedKidPackage(pkg) || Catalog.emulatorPkg(pkg)) return;
+        prefs.edit().putString("kidsFgPkg", pkg).apply();
+        // Device owner can keep lock-task and still open a whitelisted game. Without it, pinning must pause.
+        if (deviceOwner() && prefs.getBoolean("kidsMode", false)) {
+            try { syncDeviceOwnerKiosk(); } catch (Exception ignored) { }
+            return;
+        }
+        if (prefs.getBoolean("kidsLock", false) && inLockTask() && !(deviceOwner() && locked())) {
+            try { stopLockTask(); } catch (Exception ignored) { }
+        }
+    }
+
+    private String launchPackage(Catalog.Item it) {
+        if (it == null) return null;
+        if (it.pkg != null) return it.pkg;
+        if (it.storePackage() != null) return it.storePackage();
+        if (it.action != null && (it.action.startsWith("roblox:") || "goto:roblox".equals(it.action) || it == Catalog.ROBLOX))
+            return "com.roblox.client";
+        return null;
+    }
+
+    /** If the child swipes to Recents or another app and pinning is off / was unpinned, try to come back (same path as Strict). */
+    private void maybeBounceKidsLeave() {
+        if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
+        if (prefs.getString("kidsFgPkg", null) != null) return;   // leaving for an approved game
+        if (pinDialogOpen) return;
+        final int gen = ++kidsBounceGen;
+        view.postDelayed(() -> {
+            if (gen != kidsBounceGen) return;
+            if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
+            if (prefs.getString("kidsFgPkg", null) != null) return;
+            if (hasWindowFocus() || inLockTask()) return;
+            ScreenTimeService.bringKidsHome(this, false);
+        }, 400);
+    }
+    private int kidsBounceGen;
+
+    // ---------- 0.10.37 Lock phone to CodeAque (optional device owner, root or ADB) ----------
+    /** PIN already asked. If su is present, try dpm set-device-owner; otherwise show the ADB steps. */
+    private void lockPhone() {
+        if (deviceOwner()) {
+            syncDeviceOwnerKiosk();
+            toast(prefs.getBoolean("kidsMode", false)
+                    ? "CodeAque is already the device owner. Kids mode is using the full kiosk lock."
+                    : "CodeAque is already the device owner. Turn on Kids mode to lock the phone (no Recents swipe).");
+            return;
+        }
+        if (hasSu()) {
+            toast("Asking for root to set device owner. Allow the superuser prompt if it appears.");
+            new Thread(() -> {
+                StringBuilder out = new StringBuilder();
+                int rc = su(Catalog.DPM_SET_OWNER, out);
+                String text = out.toString();
+                runOnUiThread(() -> {
+                    if (deviceOwner()) {
+                        syncDeviceOwnerKiosk();
+                        toast("Device owner is on. In Kids mode the phone stays on CodeAque (no Recents swipe). Remove it later with Settings > Remove device owner.");
+                    } else showDeviceOwnerFailed(rc, text);
+                });
+            }).start();
+        } else showAdbKioskGuide("CodeAque needs a one-time setup to fully lock the phone. This handheld does not have root (su), so the steps use a computer and adb.");
+    }
+
+    private void showDeviceOwnerFailed(int rc, String text) {
+        String low = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
+        boolean accounts = low.contains("account") || low.contains("not allowed") || low.contains("users present")
+                || low.contains("already some accounts") || low.contains("cannot be set");
+        String msg;
+        if (rc < 0)
+            msg = "Root (su) could not be started. You can still set this up from a computer with adb.";
+        else if (accounts)
+            msg = "Android would not make CodeAque the device owner. That usually means a Google (or other) account is already on the phone. Remove every account in Android Settings > Accounts, or use a factory-reset phone with no account added yet. Then try this button again.";
+        else {
+            String clip = text == null ? "" : text.trim();
+            if (clip.length() > 400) clip = clip.substring(clip.length() - 400);
+            msg = "Could not set device owner" + (clip.isEmpty() ? "." : ":\n" + clip) + "\n\nIf a Google account is on the phone, remove it or factory-reset first, then try again.";
+        }
+        dlg().setTitle("Could not lock the phone")
+                .setMessage(msg)
+                .setPositiveButton("Show ADB steps", (d, w) -> showAdbKioskGuide(null))
+                .setNegativeButton("OK", null).show();
+    }
+
+    /** Short on-phone copy of docs/android-kiosk-setup.md (USB debugging + adb from Linux Mint). */
+    private void showAdbKioskGuide(String lead) {
+        String steps = (lead == null ? "" : lead + "\n\n")
+                + "This only works on a freshly reset phone with no Google account added yet.\n\n"
+                + "1. On the phone: Settings > About, tap Build number seven times to open developer options. Turn on USB debugging.\n"
+                + "2. On the Dell (Linux Mint), open a terminal and install adb if needed:\n"
+                + "   sudo apt install adb\n"
+                + "3. Plug the phone in with a data USB cable. If the phone asks, allow this computer.\n"
+                + "4. In the same terminal run:\n"
+                + "   adb devices\n"
+                + "   (you should see the phone listed). Then:\n"
+                + "   adb shell " + Catalog.DPM_SET_OWNER + "\n"
+                + "5. You should see a success message. Open CodeAque, turn on Kids mode, and the phone stays on CodeAque (no Recents swipe).\n\n"
+                + "To undo later: in CodeAque Settings (parent PIN) choose Remove device owner. Do not skip this if you will sell or give the phone away.";
+        android.widget.TextView tv = new android.widget.TextView(this);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        tv.setPadding(pad, pad, pad, pad);
+        tv.setTextIsSelectable(true);
+        tv.setText(steps);
+        tv.setTextSize(15);
+        android.widget.ScrollView sc = new android.widget.ScrollView(this);
+        sc.addView(tv);
+        dlg().setTitle("Lock phone to CodeAque")
+                .setView(sc)
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
     // ---------- 0.10.2 Kids mode ----------
     private void kidsMode(boolean on) {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(on ? "Turn on Kids mode?" : "Turn off Kids mode?")
-                .setMessage(on ? "The home shows only Play, Kids Games and the Play Store, with big tiles. Retro, game files, Ask and "
+                .setMessage(on ? "The home shows only Play, Roblox and Kids Games, with big tiles. Retro, game files, Ask and "
                         + "Settings are hidden. To get Settings back, use the Grown-ups row (parent PIN), or hold Select (or Y / Menu) for a second."
                         + (Rotation.suggest(android.os.Build.MANUFACTURER, android.os.Build.MODEL, android.os.Build.HARDWARE, android.os.Build.BOARD) ? " Recommended on this handheld." : "")
                         : "This brings back all rows and Settings.")
-                .setPositiveButton(on ? "Turn on" : "Turn off", (d, w) -> { prefs.edit().putBoolean("kidsMode", on).apply(); rescan(); })
+                .setPositiveButton(on ? "Turn on" : "Turn off", (d, w) -> {
+                    prefs.edit().putBoolean("kidsMode", on).apply();
+                    if (!on) { timeUpScreen = false; stopKidsPinning(); }
+                    if (deviceOwner()) { if (on || locked()) { syncDeviceOwnerKiosk(); } }
+                    else if (!on) { /* not owner: screen pin already stopped */ }
+                    ScreenTimeService.sync(this); rescan();
+                    if (on) { syncDeviceOwnerKiosk(); syncKidsPinning(); toast(kids12() ? "Kids 12+ is on." : "Kids mode is on."); }
+                    else syncDeviceOwnerKiosk();
+                })
                 .setNegativeButton("Cancel", null).show();
     }
 
@@ -2132,7 +2535,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (r.activityInfo != null && Catalog.canHideLauncher(r.activityInfo.packageName) && !out.contains(r.activityInfo.packageName)) out.add(r.activityInfo.packageName);
         return out;
     }
-    /** PIN-gated: disables the other launchers with pm disable-user (root), or re-enables the ones CodeAque hid. */
+    /** PIN-gated: hide other Home apps. Device owner uses setApplicationHidden (no root).
+     *  Otherwise su -c 'pm disable-user --user 0 <pkg>' — any su, not only Magisk. */
     private void hideLaunchers() {
         askPin("Hide other launchers", () -> {
             java.util.Set<String> hidden = new java.util.HashSet<>(prefs.getStringSet("hiddenLaunchers", new java.util.HashSet<>()));
@@ -2140,33 +2544,120 @@ public class MainActivity extends Activity implements HomeView.Host {
             StringBuilder m = new StringBuilder("Turns off the other Home apps so Android stops asking which one to use. Nothing is uninstalled.\n\n");
             m.append(others.isEmpty() ? "No other launchers are on right now." : "Will turn off:\n" + String.join("\n", others));
             if (!hidden.isEmpty()) m.append("\n\nHidden by CodeAque:\n").append(String.join("\n", hidden));
+            if (!deviceOwner() && !hasSu())
+                m.append("\n\nThis phone is not rooted and CodeAque is not the device owner, so Hide them will not work. Settings > Lock phone to CodeAque can set device owner (root or adb), or use a rooted phone.");
             AlertDialog.Builder b = dlg().setTitle("Hide other launchers").setMessage(m.toString()).setNegativeButton("Cancel", null);
             if (!others.isEmpty()) b.setPositiveButton("Hide them", (d, w) -> new Thread(() -> {
                 java.util.Set<String> h = new java.util.HashSet<>(hidden); int n = 0;
-                for (String pkg : others) if (su("pm disable-user --user 0 " + pkg, null) == 0) { h.add(pkg); n++; }
+                boolean owner = deviceOwner();
+                for (String pkg : others) {
+                    if (!safePkg(pkg)) continue;
+                    if (owner && setLauncherHidden(pkg, true)) { h.add(pkg); n++; }
+                    else if (su("pm disable-user --user 0 " + pkg, null) == 0) { h.add(pkg); n++; }
+                }
                 prefs.edit().putStringSet("hiddenLaunchers", h).apply();
-                toast(n == 0 ? "Needs root (Magisk). Nothing was changed." : "Hid " + n + " launcher(s). Undo is in the same menu.");
+                if (n > 0) toast("Hid " + n + " launcher(s). Undo is in the same menu.");
+                else toast(hideLaunchersUnavailable());
                 makeHome(false);
             }).start());
             if (!hidden.isEmpty()) b.setNeutralButton("Undo (show them again)", (d, w) -> new Thread(() -> {
                 java.util.Set<String> left = new java.util.HashSet<>();
-                for (String pkg : hidden) if (su("pm enable " + pkg, null) != 0) left.add(pkg);
+                boolean owner = deviceOwner();
+                for (String pkg : hidden) {
+                    if (!safePkg(pkg)) { left.add(pkg); continue; }
+                    boolean ok = owner && setLauncherHidden(pkg, false);
+                    if (!ok) ok = su("pm enable " + pkg, null) == 0;
+                    if (!ok) left.add(pkg);
+                }
                 prefs.edit().putStringSet("hiddenLaunchers", left).apply();
                 toast(left.isEmpty() ? "The other launchers are back." : "Could not turn some back on: " + String.join(", ", left));
             }).start());
             b.show();
         });
     }
-
-    /** Runs one command as root; the user must allow the Magisk superuser prompt. Returns exit code, -1 if su is missing. */
-    private int su(String cmd, StringBuilder out) {
+    private static boolean safePkg(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        for (int i = 0; i < pkg.length(); i++) {
+            char c = pkg.charAt(i);
+            if (!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') && c != '.' && c != '_') return false;
+        }
+        return true;
+    }
+    /** Device-owner hide (no root). False if we are not the owner or the call failed. */
+    private boolean setLauncherHidden(String pkg, boolean hidden) {
+        if (!deviceOwner()) return false;
         try {
-            Process p = new ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start();
-            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
-                String l; while ((l = r.readLine()) != null) if (out != null && out.length() < 120000) out.append(l).append('\n');
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            dpm.setApplicationHidden(adminComponent(), pkg, hidden);
+            return dpm.isApplicationHidden(adminComponent(), pkg) == hidden;
+        } catch (Exception e) { return false; }
+    }
+    private String hideLaunchersUnavailable() {
+        if (deviceOwner()) return "CodeAque is the device owner, but hiding the other launchers still failed. Nothing was changed.";
+        if (hasSu() || su("id", null) == 0)
+            return "Root (su) is present, but the hide command did not work. Nothing was changed. This does not need Magisk.";
+        return "Hiding other launchers needs CodeAque as the device owner, or a rooted phone (the su program, in /system/xbin/su or similar). This phone has neither, so nothing was changed.";
+    }
+
+    /** Known su locations. Includes the K56 path (/system/xbin/su) and is not limited to Magisk. */
+    static final String[] SU_PATHS = {
+            "su", "/system/xbin/su", "/system/bin/su", "/sbin/su", "/su/bin/su", "/debug_ramdisk/su"
+    };
+    /** Quick check: an su binary exists on a known path or on PATH. Does not need to be Magisk, and does not require canExecute (often false for apps). File check only — no process — so it is safe on the UI thread. */
+    private boolean hasSu() {
+        for (String p : SU_PATHS) {
+            if ("su".equals(p)) continue;
+            if (new java.io.File(p).exists()) return true;
+        }
+        String path = System.getenv("PATH");
+        if (path != null) {
+            for (String dir : path.split(":")) {
+                if (dir == null || dir.isEmpty()) continue;
+                if (new java.io.File(dir, "su").exists()) return true;
             }
-            return p.waitFor();
-        } catch (Exception e) { return -1; }
+        }
+        return false;
+    }
+    /** Every su we might run: known paths, PATH, and `command -v su` / `which su`. */
+    private java.util.List<String> suBinaries() {
+        java.util.LinkedHashSet<String> bins = new java.util.LinkedHashSet<>();
+        for (String p : SU_PATHS) bins.add(p);
+        String path = System.getenv("PATH");
+        if (path != null) {
+            for (String dir : path.split(":")) {
+                if (dir == null || dir.isEmpty()) continue;
+                java.io.File f = new java.io.File(dir, "su");
+                if (f.exists()) bins.add(f.getAbsolutePath());
+            }
+        }
+        try {
+            Process w = new ProcessBuilder("sh", "-c", "command -v su || which su").redirectErrorStream(true).start();
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(w.getInputStream()))) {
+                String l = r.readLine();
+                if (l != null) {
+                    l = l.trim();
+                    if (!l.isEmpty() && new java.io.File(l).exists()) bins.add(l);
+                }
+            }
+            w.waitFor();
+        } catch (Exception ignored) { }
+        return new java.util.ArrayList<>(bins);
+    }
+    /** Runs one command as root via `su -c`. Tries every su binary until one succeeds (including `su -c id`). Returns 0 on success, otherwise the last exit code or -1 if su is missing. */
+    private int su(String cmd, StringBuilder out) {
+        int last = -1;
+        for (String bin : suBinaries()) {
+            if (!"su".equals(bin) && !new java.io.File(bin).exists()) continue;
+            try {
+                Process p = new ProcessBuilder(bin, "-c", cmd).redirectErrorStream(true).start();
+                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                    String l; while ((l = r.readLine()) != null) if (out != null && out.length() < 120000) out.append(l).append('\n');
+                }
+                last = p.waitFor();
+                if (last == 0) return 0;
+            } catch (Exception ignored) { }
+        }
+        return last;
     }
 
     private void bootAnimDownload() {
@@ -2408,4 +2899,186 @@ public class MainActivity extends Activity implements HomeView.Host {
         }
         return onlineVal;
     }
+
+    // ---------- 0.10.37 Kids profile, screen time, Strict mode ----------
+    private boolean kids12() { return "kids12".equals(prefs.getString("kidsProfile", "kids")); }
+
+    private ScreenTime.State stLoad() { return ScreenTimeService.load(prefs, System.currentTimeMillis()); }
+    private void stSave(ScreenTime.State s) { ScreenTimeService.save(prefs, s); }
+    private boolean stTimeUp() { return ScreenTime.timeUp(stLoad(), System.currentTimeMillis(), java.util.TimeZone.getDefault()); }
+
+    @Override public String kidsBanner() {
+        if (!prefs.getBoolean("kidsMode", false)) return "";
+        String who = kids12() ? "Kids 12+" : "Kids";
+        String time = ScreenTime.label(stLoad(), System.currentTimeMillis(), java.util.TimeZone.getDefault());
+        return time.isEmpty() ? who : who + "  ·  " + time;
+    }
+    @Override public boolean timeUpTile(Catalog.Item it) {
+        return prefs.getBoolean("kidsMode", false) && ScreenTime.isPlayLaunch(it) && stTimeUp();
+    }
+    @Override public boolean timeUpScreen() { return prefs.getBoolean("kidsMode", false) && timeUpScreen; }
+    @Override public void timeUpAskParent() { askPin("Parent PIN: time's up", () -> screenTimeExtend(null)); }
+    @Override public boolean pinDialogOpen() { return pinDialogOpen; }
+
+    private void handleKidsGuardIntent(Intent i) {
+        if (i == null) return;
+        if (i.getBooleanExtra("kidsTimeUp", false)) { timeUpScreen = true; i.removeExtra("kidsTimeUp"); }
+        if (i.getBooleanExtra("kidsBounce", false)) i.removeExtra("kidsBounce");
+    }
+
+    private boolean kidsBlockedIntent(Intent i) {
+        String pkg = i.getComponent() != null ? i.getComponent().getPackageName() : i.getPackage();
+        if (pkg == null) {
+            String a = i.getAction();
+            if (a != null && (a.startsWith("android.settings.") || a.equals(Intent.ACTION_INSTALL_PACKAGE))) return true;
+            try {
+                ResolveInfo r = getPackageManager().resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY);
+                if (r != null && r.activityInfo != null) pkg = r.activityInfo.packageName;
+            } catch (Exception ignored) { }
+        }
+        return ScreenTime.blockedKidPackage(pkg) || Catalog.emulatorPkg(pkg);
+    }
+
+    private void onPlayLaunched(Catalog.Item it) {
+        if (!prefs.getBoolean("kidsMode", false) || !ScreenTime.isPlayLaunch(it)) return;
+        allowKidsForeground(launchPackage(it));
+        ScreenTime.State s = ScreenTime.startPlay(stLoad(), System.currentTimeMillis(), java.util.TimeZone.getDefault());
+        stSave(s);
+        ScreenTimeService.sync(this);
+    }
+
+    private void pausePlayClock() {
+        ScreenTime.State s = stLoad();
+        if (s.startedAt <= 0) return;
+        s = ScreenTime.pausePlay(s, System.currentTimeMillis(), java.util.TimeZone.getDefault());
+        stSave(s);
+        if (prefs.getBoolean("kidsMode", false) && s.strict && ScreenTime.timeUp(s, System.currentTimeMillis(), java.util.TimeZone.getDefault()))
+            timeUpScreen = true;
+        ScreenTimeService.sync(this);
+    }
+
+    private void screenTimeExtend(Catalog.Item openAfter) {
+        timeUpScreen = false;
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Screen time")
+                .setItems(new String[]{"Add 15 minutes", "Add 30 minutes", "Unlock for today", "Cancel"}, (d, w) -> {
+                    long now = System.currentTimeMillis();
+                    java.util.TimeZone tz = java.util.TimeZone.getDefault();
+                    ScreenTime.State s = stLoad();
+                    if (w == 0) s = ScreenTime.addMinutes(s, 15, now, tz);
+                    else if (w == 1) s = ScreenTime.addMinutes(s, 30, now, tz);
+                    else if (w == 2) s = ScreenTime.unlockToday(s, now, tz);
+                    else { view.invalidate(); return; }
+                    stSave(s);
+                    timeUpScreen = false;
+                    ScreenTimeService.sync(this);
+                    toast(w == 2 ? "Unlocked for today." : "Added play time.");
+                    view.invalidate();
+                    if (openAfter != null) open(openAfter);
+                }).setOnCancelListener(d -> view.invalidate()).show();
+    }
+
+    private void kidsProfilePicker() {
+        boolean twelve = kids12();
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Kids profile")
+                .setSingleChoiceItems(new String[]{"Kids (all ages only)", "Kids 12+ (up to 12+ / 13+)"}, twelve ? 1 : 0, (d, w) -> {
+                    String next = w == 1 ? "kids12" : "kids";
+                    if (next.equals(prefs.getString("kidsProfile", "kids"))) { d.dismiss(); return; }
+                    prefs.edit().putString("kidsProfile", next).apply();
+                    // Re-filter any already fetched Roblox list; never show unfiltered games
+                    if (robloxGames != null && !robloxGames.isEmpty()) {
+                        robloxRatingsOk = !prefs.getBoolean("kidsMode", false) || RobloxDiscover.hasUsableRatings(robloxGames);
+                        showRoblox(applyRobloxFilter(robloxGames, robloxRatingsOk));
+                    } else if (prefs.getBoolean("kidsMode", false)) {
+                        robloxItems = null; robloxOn = false;
+                    }
+                    toast(w == 1 ? "Kids 12+ will be used the next time Kids mode is on." : "Kids (all ages) will be used the next time Kids mode is on.");
+                    rescan();
+                    d.dismiss();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void screenTimePicker() {
+        ScreenTime.State s = stLoad();
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        labels.add("Off");
+        for (int m : new int[]{15, 30, 45, 60, 90, 120}) labels.add(m + " minutes");
+        labels.add("Custom…");
+        labels.add(s.strict ? "Strict: on (tap to turn off)" : "Strict: off (tap to turn on)");
+        labels.add(ScreenTimeService.canOverlay(this) ? "Display over other apps: allowed" : "Allow display over other apps");
+        labels.add(ScreenTimeService.canUsage(this) ? "Usage access: allowed" : "Allow usage access (to bounce Settings / Play Store)");
+        int pre = 0;
+        if (s.limitMin > 0) {
+            pre = 7; // custom unless it matches a preset
+            int[] ps = {0, 15, 30, 45, 60, 90, 120};
+            for (int i = 0; i < ps.length; i++) if (ps[i] == s.limitMin) pre = i;
+        }
+        String msg = "Daily play limit (resets at midnight on this device). "
+                + (s.strict ? "Strict mode tries to bring CodeAque back when time runs out, or when Settings, Play Store or the package installer opens."
+                            : "Without Strict mode, time is counted when the child comes back, and the next game is blocked.")
+                + " Android cannot force-close another app without device-owner rights.";
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Screen time")
+                .setMessage(msg)
+                .setSingleChoiceItems(labels.toArray(new String[0]), pre, (d, w) -> {
+                    long now = System.currentTimeMillis();
+                    java.util.TimeZone tz = java.util.TimeZone.getDefault();
+                    if (w <= 6) {
+                        int min = w == 0 ? 0 : new int[]{0, 15, 30, 45, 60, 90, 120}[w];
+                        stSave(ScreenTime.setLimit(stLoad(), min, now, tz));
+                        toast(min == 0 ? "Screen time is off." : "Daily limit: " + min + " minutes.");
+                        d.dismiss();
+                    } else if (w == 7) {
+                        d.dismiss();
+                        screenTimeCustom();
+                        return;
+                    } else if (w == 8) {
+                        boolean on = !stLoad().strict;
+                        stSave(ScreenTime.setStrict(stLoad(), on, now, tz));
+                        if (on && !ScreenTimeService.canOverlay(this) && android.os.Build.VERSION.SDK_INT >= 29) {
+                            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                                    .setTitle("Display over other apps")
+                                    .setMessage("On Android 10 and newer, CodeAque may need this to bring Kids mode back when time runs out. It is not required, but Strict mode works more reliably with it.")
+                                    .setPositiveButton("Open settings", (a, b) -> ScreenTimeService.openOverlaySettings(this))
+                                    .setNegativeButton("Not now", null).show();
+                        }
+                        toast(on ? "Strict mode is on." : "Strict mode is off.");
+                        d.dismiss();
+                    } else if (w == 9) {
+                        ScreenTimeService.openOverlaySettings(this);
+                        d.dismiss();
+                    } else {
+                        ScreenTimeService.openUsageSettings(this);
+                        d.dismiss();
+                    }
+                    ScreenTimeService.sync(this);
+                    view.invalidate();
+                })
+                .setNegativeButton("Close", null).show();
+    }
+
+    private void screenTimeCustom() {
+        android.widget.EditText e = new android.widget.EditText(this);
+        e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        e.setHint("Minutes");
+        int cur = stLoad().limitMin;
+        if (cur > 0) e.setText(Integer.toString(cur));
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Custom daily limit")
+                .setView(e)
+                .setPositiveButton("Set", (d, w) -> {
+                    int min = 0;
+                    try { min = Integer.parseInt(e.getText().toString().trim()); } catch (Exception ignored) { }
+                    if (min < 1 || min > 24 * 60) { toast("Enter a number of minutes between 1 and 1440."); return; }
+                    stSave(ScreenTime.setLimit(stLoad(), min, System.currentTimeMillis(), java.util.TimeZone.getDefault()));
+                    ScreenTimeService.sync(this);
+                    toast("Daily limit: " + min + " minutes.");
+                    view.invalidate();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+
 }

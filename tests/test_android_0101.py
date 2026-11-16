@@ -17,7 +17,7 @@ def test_bootanim_constants_and_flow():
               "\"Remove boot animation\"", "\"Restart now\"", "getLaunchIntentForPackage(BootAnim.MAGISK_PKG)",
               "Install from storage", "bootAnimAvailable()"):
         assert s in m, s
-    assert 'new ProcessBuilder("su", "-c", cmd)' in m
+    assert 'new ProcessBuilder(bin, "-c", cmd)' in m and "SU_PATHS" in m
 
 
 def test_bootanim_not_bundled_and_manifest_queries():
@@ -36,8 +36,8 @@ def test_featured_roblox_minecraft_first_without_logos():
     assert "cat = 0; catAnim = 0;" in h
     m = (SRC / "MainActivity.java").read_text()
     assert "market://details?id=" in m and "https://play.google.com/store/apps/details?id=" in m
-    assets = [p.name.lower() for p in (AND / "app/src/main").rglob("*")]
-    assert not any("roblox" in n or "minecraft" in n for n in assets)
+    assets = [p.name.lower() for p in (AND / "app/src/main/res").rglob("*")]
+    assert not any("roblox" in n or "minecraft" in n or "duat" in n for n in assets)
 
 
 KIDS = {  # package: PEGI rating read from play.google.com (en_GB) on 7 Nov 2026
@@ -108,7 +108,7 @@ def test_geforce_now_on_featured():
 def test_kids_mode_big_and_locked_down():
     c = (SRC / "Catalog.java").read_text()
     km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
-    assert '"Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS, ROBLOX_MODE)' in km and "GEFORCE_NOW" not in km.split("KIDS_WIFI", 1)[0] and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" in km
+    assert '"Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS, ROBLOX_MODE)' in km and "GEFORCE_NOW" not in km.split("KIDS_WIFI", 1)[0] and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" not in km
     for bad in ("RETROARCH", "romfolder", "settings", "ask", "projector", "k56", "bios"):
         assert bad not in km.lower().replace("kids games", "")
     h = (SRC / "HomeView.java").read_text()
@@ -151,9 +151,10 @@ def test_rotation_ignores_app_orientation_and_runs_before_launch():
 
 def test_roblox_tile_is_original_drawn_art():
     h = (SRC / "HomeView.java").read_text()
-    assert "if (it == Catalog.ROBLOX && cov == null) blockyArt(c);" in h and "private void buddy(" in h
-    assets = [p.name.lower() for p in (AND / "app/src/main").rglob("*")]
-    assert not any("roblox" in n for n in assets)
+    assert "blockyArt" not in h and "private void buddy(" not in h
+    assert "if (it == Catalog.ROBLOX && cov == null)" not in h
+    assets = [p.name.lower() for p in (AND / "app/src/main/res").rglob("*")]
+    assert not any("roblox" in n or "duat" in n for n in assets)
 
 
 def test_marvel_rivals_gfn_tile():
@@ -205,7 +206,8 @@ def test_android_update_popup():
     assert '"New update ready (v" + u.version + ")"' in pop and '"Update now"' in pop and '"Later"' in pop
     assert "UpdateInfo.snoozed(u.version" in pop and "install(u)" in pop and "setTextSize(big)" in pop
     assert "Settings" not in pop.replace("SHA256SUMS", "")
-    assert "if (!manual) { runOnUiThread(() -> updatePopup(u, mine)); return; }" in m
+    assert "if (!manual)" in m and "runOnUiThread(() -> updatePopup(u, mine)); return;" in m
+    assert 'if (prefs.getBoolean("kidsMode", false)) return;   // 0.10.37: badge only' in m
     assert 'putString("updKnown", u.version)' in m
 
 
@@ -223,21 +225,26 @@ def test_kids_mode_new_games_and_update_tile():
 
 def test_featured_wide_covers_and_roblox_art():
     h = (SRC / "HomeView.java").read_text()
-    assert 'id.equals("steam") || id.equals("kplay")' in h and "(wide() ? (kids ? 220 : 266)" in h
-    art = h.split("private void blockyArt(Canvas c)", 1)[1].split("/** One blocky buddy", 1)[0]
-    assert "speed lines" in art and "buddy(c," in art and "drawText" not in art and "Bitmap" not in art
+    assert 'id.equals("steam") || id.equals("kplay")' in h and "(wide() ? (kids ? 220 : 292)" in h
+    assert "blockyArt" not in h and "buddy(" not in h
     m = (SRC / "MainActivity.java").read_text()
     assert "if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it)" in m
     assert "ownFeature(html, i)" in (SRC / "PlayArt.java").read_text()
 
 
-def test_rivals_tile_uses_own_duat_art():
+def test_rivals_tile_has_no_bundled_duat_art():
     m = (SRC / "MainActivity.java").read_text()
+    h = (SRC / "HomeView.java").read_text()
     for r in ("duat_realm_s1", "duat_realm_blocks", "duat_realm_bricks"):
-        assert f"R.drawable.{r}" in m
+        assert f"R.drawable.{r}" not in m and r not in h
         f = AND / f"app/src/main/res/drawable-nodpi/{r}.webp"
-        assert f.is_file() and f.stat().st_size < 120_000
-    assert "if (it == Catalog.ROBLOX && cov == null) blockyArt(c);" in (SRC / "HomeView.java").read_text()
+        assert not f.exists()
+    assert "blockyArt" not in h and "Duat" not in h
+    assert "if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();" in m
+    # Linux launcher never bundled Duat art either
+    root = AND.parent
+    leftovers = [p for p in root.rglob("*") if "duat" in p.name.lower() and "test_android" not in p.name]
+    assert leftovers == [], leftovers
 
 
 def test_files_tile_not_in_kids():
@@ -317,8 +324,10 @@ def test_scan_cache_shared_with_kids_rows():
 
 def test_kids_rows_games_only():
     c = (SRC / "Catalog.java").read_text()
-    assert 'new Category("kdc", dc.label, dc.icon, kidsGamesOnly(dc.items))' in c and 'new Category("kpsp", ps.label, ps.icon, kidsGamesOnly(ps.items))' in c
-    assert "return (g.isEmpty() ? items : g).toArray(new Item[0]);" in c
+    assert "kidsGamesOnly(dc.items)" in c and "kidsGamesOnly(ps.items)" in c
+    assert "if (dci.length > 0) c.add(new Category(\"kdc\"" in c and "if (psi.length > 0) c.add(new Category(\"kpsp\"" in c
+    assert "return g.toArray(new Item[0]);" in c
+    assert "return (g.isEmpty() ? items : g).toArray(new Item[0]);" not in c
 
 
 def test_ha_dreamcast_covers():
@@ -335,7 +344,7 @@ def test_kids_games_wide_covers():
     m = (SRC / "MainActivity.java").read_text()
     assert 'id.equals("kgames")' in h and "host.wideCover(it)" in h and "Bitmap wideCover(Catalog.Item item);" in h
     body = m.split("public android.graphics.Bitmap wideCover(", 1)[1].split("private android.graphics.Bitmap playIconFor(", 1)[0]
-    assert body.index("playFeature(pkg)") < body.index("iconBanner(ai)")
+    assert body.index("playFeature(pkg)") < body.index("iconBanner(src)")
 
 
 def test_ha_dreamcast_covers_0118():
@@ -350,7 +359,7 @@ def test_big_bold_tile_names():
     h = (SRC / "HomeView.java").read_text()
     assert "private void tileName(" in h and '"sans-serif-black"' in h
     tiles = h.split("private void tiles(", 1)[1].split("private void titleCard(", 1)[0]
-    cover = h.split("private void coverTile(", 1)[1].split("private void blockyArt(", 1)[0]
+    cover = h.split("private void coverTile(", 1)[1].split("private void updBadge(", 1)[0]
     assert "tileName(c, lab" in tiles and "tileName(c, lab" in cover and "0.48f" in cover
 
 
@@ -366,10 +375,10 @@ def test_lock_mode():
     m = (SRC / "MainActivity.java").read_text()
     man = (AND / "app/src/main/AndroidManifest.xml").read_text()
     op = m.split("public void open(Catalog.Item it) {", 1)[1].split("private void store(", 1)[0]
-    assert op.index("LockPin.needsPin(it.action)") < op.index("action(it.action); return;") and "LockPin.blocked(it.pkg)" in op
+    assert op.index("mustPin(it.action)") < op.index("action(it.action); return;") and "LockPin.blocked(it.pkg)" in op
     assert "blockedTarget(i)" in op and 'case "lock": lockToggle();' in m and "lockResume();" in m.split("protected void onResume()", 1)[1][:400]
-    assert 'putString("lockPin", LockPin.newHash(p))' in m and "startLockTask()" in m and "setLockTaskPackages" in m
-    assert ".CodeAqueAdmin" in man and "BIND_DEVICE_ADMIN" in man and "category.HOME" in man
+    assert 'putString("lockPin", LockPin.newHash(pin))' in m and "startLockTask()" in m and "setLockTaskPackages" in m
+    assert ".AdminReceiver" in man and ".CodeAqueAdmin" in man and "BIND_DEVICE_ADMIN" in man and "category.HOME" in man
     assert 'act("Lock mode", "gear", "lock")' in (SRC / "Catalog.java").read_text()
 
 
@@ -383,7 +392,7 @@ def test_safe_contacts():
     assert sl.index("SafeContacts.allowed(") < sl.index("startActivity(")
     imp = m.split("private void importSafe()", 1)[1][:400]
     assert "requestPermissions(new String[]{android.Manifest.permission.READ_CONTACTS}" in imp
-    assert "else if (!locked()) safeLaunch(new Intent(Intent.ACTION_DIAL" in m        # no dialer fallback while locked
+    assert "safeLaunch(new Intent(Intent.ACTION_DIAL, Uri.parse(\"tel:\" + c.number)));" in m.split("onRequestPermissionsResult", 1)[1]
     assert "CALL_PHONE" in man and "READ_CONTACTS" in man and "BIND_SCREENING_SERVICE" in man and "BIND_CALL_REDIRECTION_SERVICE" in man
     assert 'android.hardware.telephony" android:required="false"' in man
 
@@ -392,15 +401,15 @@ def test_kids_pin_play_store_and_exit():
     m = (SRC / "MainActivity.java").read_text()
     oc = m.split("protected void onCreate(", 1)[1][:400]
     assert "ensurePin();" in oc and 'DEFAULT_PIN = "1234"' in m and "LockPin.newHash(DEFAULT_PIN)" in m
-    op = m.split("public void open(Catalog.Item it) {", 1)[1][:900]
-    assert op.index("kidsPinGate(it)") < op.index("action(it.action)")
+    op = m.split("public void open(Catalog.Item it) {", 1)[1][:2000]
+    assert op.index("if (pinDialogOpen) return") < op.index("kidsPinGate(it)") < op.index("action(it.action)")
     g = m.split("private boolean kidsPinGate(", 1)[1].split("private boolean locked()", 1)[0]
     assert '"kidsoff".equals(it.action)' in g and "Catalog.opensStore(" in g
     st = m.split("private void store(String pkg) {", 1)[1][:300]
     assert 'getBoolean("kidsMode", false) && pinSet() && !pinFresh()' in st
     assert "default 1234" in m.split("private void askPin(", 1)[1][:4000]
     cp = m.split("private void changePin()", 1)[1].split("private boolean homePromptShown;", 1)[0]
-    assert cp.index('LockPin.check(cur.getText()') < cp.index('putString("lockPin", LockPin.newHash(p))')
+    assert cp.index('PinAction.verify(cur.getText()') < cp.index('putString("lockPin", LockPin.newHash(pin))')
     assert "showPinDlg(" in cp and "addForgotPin(" in cp and "bindPinEnter(" in cp
     assert 'remove("lockPin")' not in m and "kidsPinSetup" not in m
     assert 'act("Change PIN", "gear", "changepin")' in (SRC / "Catalog.java").read_text()
@@ -415,6 +424,37 @@ def test_kids_pin_play_store_and_exit():
     assert "Forgot PIN?" in ap and "ScrollView" in ap and "showPinDlg(" in ap and "SOFT_INPUT_ADJUST_RESIZE" in ap
     assert "KEYCODE_BUTTON_A" in ap and "KEYCODE_DPAD_CENTER" in ap and "pinSubmitKey(" in ap
     assert "createParentPin(" in ap and "showPinDlg(dlg, a)" in ap
+    # 0.10.37: only PinAction.ACCEPTED grants access; wrong / empty / Cancel do not dismiss into a launch
+    assert "PinAction.verify(" in ap and "r != PinAction.ACCEPTED" in ap and "bindPinOk(" in ap
+    assert "pinDialogOpen = true" in ap and "setPositiveButton(\"OK\", null)" in ap
+    assert "if (pinDialogOpen) return" in m.split("public void open(Catalog.Item it) {", 1)[1][:400]
+    assert "boolean pinDialogOpen();" in (SRC / "HomeView.java").read_text()
+    assert "if (host.pinDialogOpen()) return true;" in (SRC / "HomeView.java").read_text()
+    assert "if (host.pinDialogOpen()) return;" in (SRC / "HomeView.java").read_text()
+    # Always start in Kids mode on cold start, before the first paint
+    oc = m.split("protected void onCreate(", 1)[1].split("protected void onNewIntent(", 1)[0]
+    assert oc.index("applyAlwaysKids()") < oc.index("rescan();")
+    assert 'getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT)' in m
+    assert 'case "alwayskids": alwaysKidsToggle();' in m and "ALWAYS_KIDS" in (SRC / "Catalog.java").read_text()
+    assert "emulatorPkg(pkg)" in m and "kidsEmulator(" in (SRC / "Catalog.java").read_text()
+    # 0.10.37: screen-pin in Kids mode + bounce fallback (same bringKidsHome as Strict)
+    assert 'case "kidslock": kidsLockToggle();' in m and "KIDS_LOCK" in (SRC / "Catalog.java").read_text()
+    assert "startLockTask()" in m.split("private void syncKidsPinning()", 1)[1][:800]
+    assert "stopLockTask()" in m.split("private void stopKidsPinning()", 1)[1][:600]
+    assert "if (wasKids) stopKidsPinning();" in m
+    assert "maybeBounceKidsLeave()" in m and "onUserLeaveHint" in m
+    svc = (SRC / "ScreenTimeService.java").read_text()
+    assert 'p.getBoolean("kidsLock", false)' in svc and "bringKidsHome(" in svc
+    assert 'p.getString("kidsFgPkg"' in svc
+    assert 'case "lockphone": lockPhone();' in m and 'case "removeowner": removeOwner();' in m
+    assert "Catalog.DPM_SET_OWNER" in m and "/system/xbin/su" in m and "hasSu()" in m
+    assert "KIDS_KIOSK_RULES" in m and "DISALLOW_INSTALL_APPS" in m and "DISALLOW_INSTALL_UNKNOWN_SOURCES" in m
+    assert "syncDeviceOwnerKiosk(" in m and "clearDeviceOwnerApp(" in m
+    assert (AND.parent / "docs/android-kiosk-setup.md").is_file()
+    guide = (AND.parent / "docs/android-kiosk-setup.md").read_text()
+    assert "sudo apt install adb" in guide and "dpm set-device-owner com.codeaque.launcher/.AdminReceiver" in guide
+    assert "factory-reset" in guide.lower() and "no Google account" in guide
+    assert (SRC / "AdminReceiver.java").is_file()
     assert '"kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action)' in m
     rbx = m.split("private void refreshRoblox()", 1)[1].split("private void loadMoreRoblox()", 1)[0]
     assert "RobloxDiscover.newSession()" in rbx and "if (!online())" not in rbx
@@ -483,6 +523,13 @@ def test_home_chooser_fix_and_update_badge():
     a = (AND.parent / "android/app/src/main/java/com/codeaque/launcher/MainActivity.java").read_text()
     assert "ensureHome();" in a and "Catalog.MAKE_HOME_CMDS" in a and "Catalog.ROLE_CMD" in a
     assert "pm disable-user --user 0 " in a and '"pm enable "' in a and 'askPin("Hide other launchers"' in a
+    assert "setApplicationHidden" in a and "isApplicationHidden" in a
+    assert '"/su/bin/su"' in a and '"/system/xbin/su"' in a and "command -v su || which su" in a
+    assert 'su("id"' in a and "Needs root (Magisk)" not in a
+    su_fn = a.split("private int su(String cmd, StringBuilder out)", 1)[1].split("private void bootAnimDownload()", 1)[0]
+    assert "if (last == 0) return 0;" in su_fn  # try every su binary, not only the first
+    has = a.split("private boolean hasSu()", 1)[1].split("private java.util.List<String> suBinaries()", 1)[0]
+    assert "canExecute()" not in has  # unprivileged apps often cannot execute /system/xbin/su
     assert "hasWindowFocus()" in a and "pendingPopup" in a and "Catalog.updateAvailable = true" in a
     h = (AND.parent / "android/app/src/main/java/com/codeaque/launcher/HomeView.java").read_text()
     assert "UPDATE AVAILABLE" in h

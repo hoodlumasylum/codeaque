@@ -37,6 +37,14 @@ public class HomeView extends View {
         void leaveBoxSet();
         /** 0.10.34: Roblox row is showing (or was just left). nearEnd means load the next public page. */
         void robloxRow(boolean on, boolean nearEnd);
+        /** 0.10.37: Kids / Kids 12+ banner (profile + time left). Empty in adult mode. */
+        String kidsBanner();
+        /** 0.10.37: game tiles show Time's up when the daily limit has run out. */
+        boolean timeUpTile(Catalog.Item item);
+        boolean timeUpScreen();
+        void timeUpAskParent();
+        /** 0.10.37: while a parent PIN dialog is open, tiles must not activate (wrong PIN / A / Enter must not launch). */
+        boolean pinDialogOpen();
     }
 
     private Palette T = Palette.NEON;
@@ -131,6 +139,7 @@ public class HomeView extends View {
         notifyRoblox(true);
     }
     private void activate() {
+        if (host.pinDialogOpen()) return;
         Catalog.Item it = items().get(tile);
         host.sound("hhselect");
         if (it.action != null && it.action.startsWith("goto:")) {
@@ -145,6 +154,13 @@ public class HomeView extends View {
 
     @Override public boolean onKeyDown(int code, KeyEvent e) {
         if (splash != null) { splash = null; invalidate(); return true; }     // any button skips the splash
+        if (host.pinDialogOpen()) return true;   // 0.10.37: don't let A / Enter leak through a PIN dialog and launch the tile
+        if (kids && host.timeUpScreen()) {
+            if (code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_DPAD_CENTER
+                    || code == KeyEvent.KEYCODE_BUTTON_START)
+                host.timeUpAskParent();
+            return true;   // Back does not dismiss it; a parent PIN (or hold Select for Grown-ups) does
+        }
         if (prompt != null) {
             if (code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_DPAD_CENTER) { Catalog.Item it = prompt; prompt = null; host.open(it); }
             else if (code == KeyEvent.KEYCODE_BUTTON_B || code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) { prompt = null; host.sound("hhback"); }
@@ -203,6 +219,7 @@ public class HomeView extends View {
 
     /** Same as controller B: leave a prompt, or step back to the category row, then to the first section. */
     private void goBack() {
+        if (kids && host.timeUpScreen()) return;   // stays up until a parent PIN
         if (prompt != null) { prompt = null; host.sound("hhback"); invalidate(); return; }
         if (boxset) { host.leaveBoxSet(); return; }
         if (!inCats) inCats = true; else setCat(0);
@@ -251,6 +268,11 @@ public class HomeView extends View {
     }
 
     private void onTap(float x, float y, float H) {
+        if (kids && host.timeUpScreen()) {
+            if (r2.contains(x, y) || (y > getHeight() * 0.60f && y < getHeight() * 0.80f)) host.timeUpAskParent();
+            else if (logoTop.contains(x, y) || logoCenter.contains(x, y)) logoHit();
+            return;
+        }
         if (prompt != null) {
             if (promptOpen.contains(x, y)) { Catalog.Item it = prompt; prompt = null; host.open(it); }
             else { prompt = null; host.sound("hhback"); }
@@ -412,6 +434,7 @@ public class HomeView extends View {
         tiles(c, W, H);
         hints(c, W, H);
         if (prompt != null) prompt(c, W, H);
+        if (kids && host.timeUpScreen()) timeUpPanel(c, W, H);
         if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
 
         boolean settling = coast || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f;
@@ -640,6 +663,11 @@ public class HomeView extends View {
         p.setTextSize(20 * s);
         float wx = W - 24 * s - p.measureText(right) - 30 * s;
         icon(c, "wifi", wx, 29 * s, 22 * s, host.online() ? TXT : 0xFF555555, 2f);
+        if (kids) {
+            String ban = host.kidsBanner();
+            if (ban != null && !ban.isEmpty())
+                text(c, ban, W / 2f, 36 * s, 18 * s, GOLD, Paint.Align.CENTER, true);
+        }
     }
 
     private void categories(Canvas c, int W, int H) {
@@ -718,6 +746,7 @@ public class HomeView extends View {
             String lab = it.label.toUpperCase(Locale.ROOT);
             tileName(c, lab, r.centerX(), r.top + h * 0.86f, w - 12 * s, (kids ? 34 : 20) * s, 11 * s);   // 0.10.19 bigger, bolder
             updBadge(c);
+            timeUpBadge(c, it);
             if (!it.isAction() && !host.installed(it)) {
                 String b = it.webUrl != null ? "WEB" : "GET";
                 p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
@@ -773,8 +802,7 @@ public class HomeView extends View {
         boolean kg = kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
         Bitmap cov = kg ? host.wideCover(it) : host.cover(it), ai = cov == null ? host.appIcon(it) : null;
         c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
-        if (it == Catalog.ROBLOX && cov == null) blockyArt(c);   // fallback only; 0.10.6 uses Hoodlum Asylum's own Duat Realm art
-        else if (cov != null) {
+        if (cov != null) {
             float sc = Math.max(r.width() / cov.getWidth(), r.height() / cov.getHeight());
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
             src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
@@ -782,6 +810,7 @@ public class HomeView extends View {
         } else if (it.isRom()) {
             titleCard(c, it, sel);
             c.restore(); drawCoverFrame(c, sel);
+            timeUpBadge(c, it);
             return;
         } else {
             float hue = (Math.abs(it.key().hashCode()) % 360);
@@ -806,6 +835,7 @@ public class HomeView extends View {
         if (T.snow) { p.setColor(0xF2FFFFFF); r2.set(r.left + 6 * s, r.top - 4 * s, r.right - 6 * s, r.top + 5 * s); c.drawRoundRect(r2, 5 * s, 5 * s, p); }
         String lab = it.label.toUpperCase(Locale.ROOT);
         tileName(c, lab, r.centerX(), r.bottom - 10 * s, r.width() - 12 * s, 26 * s * big(), 11 * s);   // 0.10.19 bigger, bolder, up to 2 lines
+        timeUpBadge(c, it);
     }
     private final RectF r2 = new RectF();
     private Catalog.Item badgeItem;
@@ -820,58 +850,15 @@ public class HomeView extends View {
         p.setFakeBoldText(false);
     }
 
-    /** Original CodeAque art for the Roblox tile: a bright sky, a grass block world and two of our own blocky buddies. */
-    private void blockyArt(Canvas c) {
-        float W = r.width(), H = r.height(), x0 = r.left, y0 = r.top;
-        p.setShader(new LinearGradient(0, y0, 0, y0 + H, new int[]{0xFF2A7BFF, 0xFF33D1FF, 0xFFFFD36B}, new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
-        c.drawRect(r, p); p.setShader(null);
-        p.setColor(0x33FFFFFF);                                       // sun burst behind the action
-        for (int k = 0; k < 10; k++) {
-            double a1 = k * Math.PI / 5, a2 = a1 + Math.PI / 12; float cx = x0 + W * 0.62f, cy = y0 + H * 0.30f, R = W;
-            path.reset(); path.moveTo(cx, cy); path.lineTo(cx + (float) Math.cos(a1) * R, cy + (float) Math.sin(a1) * R);
-            path.lineTo(cx + (float) Math.cos(a2) * R, cy + (float) Math.sin(a2) * R); path.close(); c.drawPath(path, p);
-        }
-        int[] towers = {0xFF7C4DFF, 0xFFFF6E40, 0xFF00C853, 0xFFFFAB00, 0xFFE91E63};   // a blocky skyline
-        for (int k = 0; k < 9; k++) {
-            float tw = W / 9f, th = H * (0.22f + ((k * 37) % 5) * 0.06f);
-            p.setColor(towers[k % towers.length]); c.drawRect(x0 + k * tw, y0 + H * 0.72f - th, x0 + (k + 1) * tw - 2 * s, y0 + H * 0.72f, p);
-            p.setColor(0x55FFFFFF); c.drawRect(x0 + k * tw + tw * 0.25f, y0 + H * 0.72f - th + tw * 0.25f, x0 + k * tw + tw * 0.5f, y0 + H * 0.72f - th + tw * 0.5f, p);
-        }
-        float g = y0 + H * 0.72f, b = W / 12f;                         // grass + dirt blocks
-        for (int k = 0; k < 12; k++) {
-            p.setColor(k % 2 == 0 ? 0xFF4CD964 : 0xFF3BC453); c.drawRect(x0 + k * b, g, x0 + (k + 1) * b, g + H * 0.08f, p);
-            p.setColor(k % 2 == 0 ? 0xFFB5793F : 0xFFA26A35); c.drawRect(x0 + k * b, g + H * 0.08f, x0 + (k + 1) * b, y0 + H, p);
-        }
-        p.setColor(0xFFFFE14D);                                         // floating gems / coins
-        for (float[] q : new float[][]{{0.20f, 0.22f}, {0.47f, 0.14f}, {0.86f, 0.26f}}) {
-            float cx = x0 + W * q[0], cy = y0 + H * q[1], e = H * 0.05f;
-            path.reset(); path.moveTo(cx, cy - e); path.lineTo(cx + e, cy); path.lineTo(cx, cy + e); path.lineTo(cx - e, cy); path.close(); c.drawPath(path, p);
-        }
-        p.setColor(0xCCFFFFFF);                                         // speed lines behind the runner
-        for (int k = 0; k < 3; k++) c.drawRect(x0 + W * 0.05f, g - H * (0.12f + k * 0.08f), x0 + W * (0.20f - k * 0.03f), g - H * (0.12f + k * 0.08f) + 2.5f * s, p);
-        float u = H * 0.42f;
-        buddy(c, x0 + W * 0.30f, g, u, 0xFFFF4FA3, 0xFF2D7DFF, false);              // running on the grass
-        buddy(c, x0 + W * 0.66f, g - H * 0.22f, u * 1.05f, 0xFFFFC23A, 0xFF8A4DFF, true);   // mid-jump, waving
-        p.setColor(0x44000000); c.drawOval(x0 + W * 0.58f, g - 3 * s, x0 + W * 0.74f, g + 4 * s, p);   // its shadow
-    }
-
-    /** One blocky buddy standing on y: square head with a smile, shirt, arms (one waving), legs. */
-    private void buddy(Canvas c, float cx, float y, float u, int shirt, int pants, boolean wave) {
-        float hs = u * 0.62f, bw = u * 0.62f, bh = u * 0.62f, lh = u * 0.5f, aw = u * 0.2f;
-        float legTop = y - lh, bodyTop = legTop - bh, headTop = bodyTop - hs;
-        p.setColor(pants); c.drawRect(cx - bw / 2, legTop, cx - 0.02f * u, y, p); c.drawRect(cx + 0.02f * u, legTop, cx + bw / 2, y, p);
-        p.setColor(shirt); c.drawRect(cx - bw / 2, bodyTop, cx + bw / 2, legTop, p);
-        p.setColor(0xFFFFD9A8);
-        c.drawRect(cx - bw / 2 - aw, bodyTop, cx - bw / 2, legTop - bh * 0.1f, p);
-        if (wave) c.drawRect(cx + bw / 2, bodyTop - bh * 0.8f, cx + bw / 2 + aw, bodyTop + bh * 0.1f, p);
-        else c.drawRect(cx + bw / 2, bodyTop, cx + bw / 2 + aw, legTop - bh * 0.1f, p);
-        c.drawRect(cx - hs / 2, headTop, cx + hs / 2, bodyTop, p);
-        p.setColor(0xFF202020);
-        c.drawRect(cx - hs * 0.25f, headTop + hs * 0.30f, cx - hs * 0.12f, headTop + hs * 0.45f, p);
-        c.drawRect(cx + hs * 0.12f, headTop + hs * 0.30f, cx + hs * 0.25f, headTop + hs * 0.45f, p);
-        c.drawRect(cx - hs * 0.22f, headTop + hs * 0.62f, cx + hs * 0.22f, headTop + hs * 0.70f, p);
-        c.drawRect(cx - hs * 0.22f, headTop + hs * 0.55f, cx - hs * 0.14f, headTop + hs * 0.65f, p);
-        c.drawRect(cx + hs * 0.14f, headTop + hs * 0.55f, cx + hs * 0.22f, headTop + hs * 0.65f, p);
+    private void timeUpBadge(Canvas c, Catalog.Item it) {
+        if (!kids || !host.timeUpTile(it)) return;
+        p.setShader(null); p.setFakeBoldText(true); p.setTextAlign(Paint.Align.CENTER);
+        p.setTextSize(11 * s * big());
+        String t = "TIME'S UP"; float tw = p.measureText(t) + 14 * s, bh = 18 * s * big();
+        r2.set(r.centerX() - tw / 2, r.top + 6 * s, r.centerX() + tw / 2, r.top + 6 * s + bh);
+        p.setColor(0xE0C62828); c.drawRoundRect(r2, bh / 2, bh / 2, p);
+        p.setColor(0xFFFFFFFF); c.drawText(t, r2.centerX(), r2.centerY() + p.getTextSize() * 0.36f, p);
+        p.setFakeBoldText(false);
     }
 
     private void hints(Canvas c, int W, int H) {
@@ -902,6 +889,19 @@ public class HomeView extends View {
         text(c, on ? "Online" : "Offline", W - 24 * s, y, 18 * s, on ? T.accent : DIM, Paint.Align.RIGHT, false);
         p.setTextSize(18 * s);
         icon(c, "globe", W - 24 * s - p.measureText(on ? "Online" : "Offline") - 16 * s, y - 6 * s, 18 * s, on ? T.accent : DIM, 1.8f);
+    }
+
+
+    private void timeUpPanel(Canvas c, int W, int H) {
+        p.setShader(null);
+        p.setColor(0xE80A0C10); c.drawRect(0, 0, W, H, p);
+        text(c, "TIME'S UP", W / 2f, H * 0.38f, 42 * s, GOLD, Paint.Align.CENTER, true);
+        text(c, "Play time is used up for today.", W / 2f, H * 0.50f, 20 * s, 0xFFFFFFFF, Paint.Align.CENTER, false);
+        text(c, "Ask a parent to add time or unlock.", W / 2f, H * 0.56f, 16 * s, 0xFFC9D6CF, Paint.Align.CENTER, false);
+        float bw = 280 * s, bh = 64 * s;
+        r2.set(W / 2f - bw / 2, H * 0.66f, W / 2f + bw / 2, H * 0.66f + bh);
+        p.setColor(T.accent); c.drawRoundRect(r2, 12 * s, 12 * s, p);
+        text(c, "ASK A PARENT", r2.centerX(), r2.centerY() + 8 * s, 20 * s, 0xFF101010, Paint.Align.CENTER, true);
     }
 
     private void prompt(Canvas c, int W, int H) {

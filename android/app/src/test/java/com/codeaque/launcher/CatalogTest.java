@@ -62,12 +62,12 @@ public class CatalogTest {
         int kdc = Catalog.indexOf(km, "kdc"), kpsp = Catalog.indexOf(km, "kpsp"), kth = Catalog.indexOf(km, "kthemes"),
             kw = Catalog.indexOf(km, "kwifi"), kp = Catalog.indexOf(km, "kparent"), kst = Catalog.indexOf(km, "kstore"),
             kg = Catalog.indexOf(km, "kgames"), kr = Catalog.indexOf(km, "kroblox");
-        check(km.size() == 9 && kp == km.size() - 1 && kth > 0 && kdc > 0 && km.get(kdc).items.get(0) == Catalog.DREAMCAST
-                && km.get(kpsp).items.get(0) == Catalog.PSP && km.get(kw).items.size() == 2 && km.get(kw).items.get(0) == Catalog.KIDS_WIFI
+        check(km.size() == 6 && kp == km.size() - 1 && kth > 0 && kdc < 0 && kpsp < 0
+                && km.get(kw).items.size() == 2 && km.get(kw).items.get(0) == Catalog.KIDS_WIFI
                 && km.get(kw).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action)
                 && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX
                 && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS)
-                && km.get(kst).items.get(0) == Catalog.PLAY_STORE && kr == 1, "kids mode rows");
+                && kst < 0 && Catalog.kidsBlocked(Catalog.PLAY_STORE) && kr == 1, "kids mode rows");
         check(km.get(kg).items.size() == Catalog.KIDS.length, "kids mode games");
         for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
         playArtChecks();
@@ -85,7 +85,7 @@ public class CatalogTest {
         check(Catalog.newPackages(new java.util.HashSet<>(List.of("a", "b")), new java.util.HashSet<>(List.of("a", "b", "d", "c"))).equals(List.of("c", "d")), "installed-since diff");
         // 0.10.1 boot animation
         List<String> sa = new java.util.ArrayList<>(); for (Catalog.Item i : c.get(Catalog.indexOf(c, "settings")).items) sa.add(i.action);
-        check(sa.contains("kids") && sa.contains("bootanim") && sa.indexOf("bootanim") == sa.indexOf("update") + 1, "boot animation after Update");
+        check(sa.contains("kids") && sa.contains("kidsprofile") && sa.contains("screentime") && sa.contains("alwayskids") && sa.contains("kidslock") && sa.contains("lockphone") && sa.contains("removeowner") && sa.contains("bootanim") && sa.indexOf("bootanim") == sa.indexOf("update") + 1, "boot animation after Update");
         List<Catalog.Category> nm = Catalog.categories(List.of(), List.of(), List.of(), List.of(), false, false);
         for (Catalog.Item i : nm.get(Catalog.indexOf(nm, "settings")).items) check(!"bootanim".equals(i.action), "hidden without Magisk");
         check(nm.size() == c.size() && Catalog.categories(List.of(), List.of(), List.of(), List.of(), false, true).get(Catalog.indexOf(c, "settings")).items.size() == sa.size(), "shown with Magisk");
@@ -326,12 +326,48 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kroblox", "kadded", "kgames", "kstore", "kdc", "kpsp", "kthemes", "kwifi", "kparent"))), "kids rows exact " + ids);
+                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kroblox", "kadded", "kgames", "kthemes", "kwifi", "kparent"))), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
                     check(Catalog.kidsBlocked(Catalog.act("All apps", "grid", "allapps")) && Catalog.streamingPkg("tv.twitch.android.app") && Catalog.streamingPkg("com.zhiliaoapp.musically") && Catalog.streamingPkg("tv.pluto.android"), "blocked");
                     for (Catalog.Item k : Catalog.KIDS) check(!Catalog.kidsBlocked(k), "kids game allowed " + k.label);
-                    for (Catalog.Item k : new Catalog.Item[]{Catalog.ROBLOX, Catalog.MINECRAFT, Catalog.MARVEL_RIVALS, Catalog.PLAY_STORE, Catalog.GEFORCE_NOW}) check(!Catalog.kidsBlocked(k), "allowed " + k.label);
+                    for (Catalog.Item k : new Catalog.Item[]{Catalog.ROBLOX, Catalog.MINECRAFT, Catalog.MARVEL_RIVALS, Catalog.GEFORCE_NOW}) check(!Catalog.kidsBlocked(k), "allowed " + k.label);
+                    check(Catalog.kidsBlocked(Catalog.PLAY_STORE), "play store blocked in kids");
+                    // 0.10.37: emulator apps hidden in Kids / Kids 12+, still listed in adult mode
+                    Catalog.Item ra = Catalog.deviceApp("RetroArch", "com.retroarch", "x.Main");
+                    Catalog.Item pp = Catalog.deviceApp("PPSSPP", "org.ppsspp.ppsspp", "x.Main");
+                    Catalog.Item yuzu = Catalog.deviceApp("Yuzu", "org.yuzu.yuzu_emu", "x.Main");
+                    Catalog.Item lime = Catalog.deviceApp("Lime3DS", "io.github.lime3ds.android", "x.Main");
+                    Catalog.Item temu = Catalog.deviceApp("Temu", "com.einnovation.temu", "x.Main");
+                    java.util.List<Catalog.Category> ke = Catalog.kidsMode(java.util.List.of(), java.util.List.of(ra, pp, yuzu, lime, game));
+                    Catalog.Category addedEmu = ke.get(Catalog.indexOf(ke, "kadded"));
+                    check(addedEmu.items.size() == 1 && addedEmu.items.get(0) == game, "emulators not in My New Games");
+                    check(Catalog.kidsEmulator(Catalog.RETROARCH) && Catalog.kidsEmulator(Catalog.PSP) && Catalog.kidsEmulator(Catalog.DREAMCAST)
+                            && Catalog.kidsEmulator(ra) && Catalog.kidsEmulator(pp) && Catalog.kidsEmulator(yuzu)
+                            && Catalog.emulatorPkg("xyz.aethersx2.android") && Catalog.emulatorPkg("xyz.nethersx2.android")
+                            && Catalog.emulatorPkg("com.swordfish.lemuroid") && Catalog.emulatorPkg("skyline.emu")
+                            && Catalog.emulatorPkg("me.magnum.melonds") && Catalog.emulatorPkg("com.dsemu.drastic")
+                            && Catalog.emulatorPkg("org.ryujinx") && Catalog.emulatorPkg("com.github.stenzek.duckstation")
+                            && Catalog.emulatorPkg("org.vita3k.emulator") && Catalog.emulatorPkg("com.seleuco.mame4droid")
+                            && Catalog.emulatorPkg("io.mgba.mgba") && Catalog.emulatorPkg("com.explusalpha.snes9xplus")
+                            && Catalog.emulatorPkg("org.redream") && Catalog.emulatorPkg("org.mupen64plusae.v3.fzurita"), "known emulators");
+                    check(!Catalog.emulatorPkg("com.einnovation.temu") && !Catalog.emulatorPkg("com.roblox.client")
+                            && !Catalog.emulatorPkg("com.mojang.minecraftpe") && !Catalog.emulatorPkg(null)
+                            && !Catalog.kidsEmulator(Catalog.ROBLOX) && !Catalog.kidsEmulator(temu)
+                            && !Catalog.kidsEmulator(game), "games and Temu are not emulators");
+                    check(Catalog.kidsBlocked(Catalog.RETROARCH) && Catalog.kidsBlocked(ra) && !Catalog.kidsBlocked(Catalog.ROBLOX), "kids blocks emulator tiles");
+                    // approved package still cannot bring an emulator into Kids mode
+                    java.util.Set<String> appr = new java.util.HashSet<>(java.util.List.of("com.retroarch"));
+                    java.util.List<Catalog.Category> kap = Catalog.kidsMode(java.util.List.of(), java.util.List.of(ra), appr);
+                    check(Catalog.indexOf(kap, "kadded") < 0, "approved emulator still hidden");
+                    check(Catalog.ALWAYS_KIDS_DEFAULT && "alwayskids".equals(Catalog.ALWAYS_KIDS.action)
+                            && "kidslock".equals(Catalog.KIDS_LOCK.action) && "lockphone".equals(Catalog.LOCK_PHONE.action)
+                            && "removeowner".equals(Catalog.REMOVE_OWNER.action)
+                            && Catalog.DPM_SET_OWNER.equals("dpm set-device-owner com.codeaque.launcher/.AdminReceiver"), "always start in Kids; lock phone / remove owner");
+                    java.util.List<Catalog.Category> adult = Catalog.categories(java.util.List.of(), java.util.List.of(ra), java.util.List.of(Catalog.RETROARCH), java.util.List.of());
+                    check(Catalog.indexOf(adult, "retro") >= 0 && adult.get(Catalog.indexOf(adult, "retro")).items.contains(Catalog.RETROARCH)
+                            && adult.get(Catalog.indexOf(adult, "mygames")).items.contains(Catalog.RETROARCH)
+                            && adult.get(Catalog.indexOf(adult, "allapps")).items.contains(ra), "adult mode still shows emulators");
                     // normal mode unchanged: Streams, Media and All Apps rows are still there
                     java.util.List<Catalog.Category> nm = Catalog.categories(java.util.List.of(), java.util.List.of(yt), java.util.List.of(), java.util.List.of());
                     check(Catalog.indexOf(nm, "streams") >= 0 && Catalog.indexOf(nm, "media") >= 0 && Catalog.indexOf(nm, "allapps") >= 0, "normal mode unchanged");
@@ -487,6 +523,125 @@ public class CatalogTest {
         check(swapped.get(Catalog.indexOf(swapped, "roblox")).items.size() == 2
                 && swapped.get(Catalog.indexOf(cats, "steam")).items.size() == cats.get(Catalog.indexOf(cats, "steam")).items.size(), "replace only roblox row");
         List<Catalog.Category> kids = Catalog.kidsMode();
-        check(kids.get(Catalog.indexOf(kids, "kroblox")).items.size() == Catalog.ROBLOX_ITEMS.length, "kids keeps official list");
+        check(kids.get(Catalog.indexOf(kids, "kroblox")).items.size() == Catalog.ROBLOX_ITEMS.length, "kids catalog starts on official list");
+        robloxFilterChecks();
+        screenTimeChecks();
+        pinActionChecks();
+    }
+
+    /** 0.10.37: Kids / Kids 12+ maturity filters. No network. */
+    static void robloxFilterChecks() {
+        check(RobloxDiscover.band("minimal", "Maturity: Minimal", 0) == RobloxDiscover.Band.MINIMAL, "minimal");
+        check(RobloxDiscover.band("mild", "Maturity: Mild", 0) == RobloxDiscover.Band.MILD, "mild");
+        check(RobloxDiscover.band("moderate", "Maturity: Moderate", 0) == RobloxDiscover.Band.TEEN, "moderate is 12+/13+");
+        check(RobloxDiscover.band("vng-rating-override", "Age Rating: 12+", 12) == RobloxDiscover.Band.TEEN, "12+ override");
+        check(RobloxDiscover.band("restricted", "Maturity: Restricted", 17) == RobloxDiscover.Band.ADULT, "17+");
+        check(RobloxDiscover.band("", "", -1) == RobloxDiscover.Band.UNKNOWN, "unrated");
+        String json = "{"
+                + "\"sorts\":[{\"contentType\":\"Games\",\"sortId\":\"top-trending\",\"games\":["
+                + "{\"rootPlaceId\":10,\"universeId\":100,\"name\":\"Min Game\",\"contentMaturity\":\"minimal\",\"ageRecommendationDisplayName\":\"Maturity: Minimal\",\"minimumAge\":0,\"isSponsored\":false},"
+                + "{\"rootPlaceId\":11,\"universeId\":101,\"name\":\"Mild Game\",\"contentMaturity\":\"mild\",\"ageRecommendationDisplayName\":\"Maturity: Mild\",\"minimumAge\":0},"
+                + "{\"rootPlaceId\":12,\"universeId\":102,\"name\":\"Mod Game\",\"contentMaturity\":\"moderate\",\"ageRecommendationDisplayName\":\"Maturity: Moderate\",\"minimumAge\":0},"
+                + "{\"rootPlaceId\":13,\"universeId\":103,\"name\":\"Teen Override\",\"contentMaturity\":\"vng-rating-override\",\"ageRecommendationDisplayName\":\"Age Rating: 12+\",\"minimumAge\":12},"
+                + "{\"rootPlaceId\":17,\"universeId\":107,\"name\":\"Adult Game\",\"contentMaturity\":\"restricted\",\"ageRecommendationDisplayName\":\"Maturity: Restricted\",\"minimumAge\":17},"
+                + "{\"rootPlaceId\":18,\"universeId\":108,\"name\":\"Unknown Game\"},"
+                + "{\"rootPlaceId\":19,\"universeId\":109,\"name\":\"Ad Game\",\"contentMaturity\":\"minimal\",\"isSponsored\":true}"
+                + "]},"
+                + "{\"contentType\":\"Games\",\"sortId\":\"top-paid-access\",\"games\":["
+                + "{\"rootPlaceId\":99,\"universeId\":199,\"name\":\"Paid\",\"contentMaturity\":\"minimal\"}"
+                + "]}]}";
+        RobloxDiscover.Page page = RobloxDiscover.parsePage(json);
+        check(page.games.size() == 6, "parse keeps unsponsored unpaid, including unrated " + page.games.size());
+        java.util.List<Catalog.Item> kidsOnly = RobloxDiscover.filter(page.games, RobloxDiscover.Profile.KIDS);
+        check(kidsOnly.size() == 1 && "10".equals(Catalog.robloxPlaceId(kidsOnly.get(0))), "kids: minimal only");
+        java.util.List<Catalog.Item> k12 = RobloxDiscover.filter(page.games, RobloxDiscover.Profile.KIDS_12);
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (Catalog.Item i : k12) ids.add(Catalog.robloxPlaceId(i));
+        check(ids.contains("10") && ids.contains("11") && ids.contains("12") && ids.contains("13")
+                && !ids.contains("17") && !ids.contains("18") && !ids.contains("19") && !ids.contains("99") && k12.size() == 4,
+                "kids12: minimal, mild, 12+/13+; no 17+, unrated, sponsored or paid");
+        check(RobloxDiscover.filter(page.games, RobloxDiscover.Profile.ALL).size() == 6, "adult list is unfiltered aside from sponsored/paid");
+        check(RobloxDiscover.hasUsableRatings(page.games) && !RobloxDiscover.hasUsableRatings(java.util.List.of(
+                new RobloxDiscover.Game("X", "1", "2", "", "", -1))), "ratings present / missing");
+        String guide = "{\"ageRecommendationDetails\":{\"summary\":{\"ageRecommendation\":{"
+                + "\"displayName\":\"Minimal\",\"minimumAge\":0,\"displayNameWithHeaderShort\":\"Maturity: Minimal\",\"contentMaturity\":\"minimal\"}}}}";
+        RobloxDiscover.Game raw = new RobloxDiscover.Game("Looked Up", "55", "555", "", "", -1);
+        RobloxDiscover.Game rated = RobloxDiscover.applyGuidelines(raw, guide);
+        check(RobloxDiscover.band(raw) == RobloxDiscover.Band.UNKNOWN && RobloxDiscover.band(rated) == RobloxDiscover.Band.MINIMAL
+                && RobloxDiscover.allowed(RobloxDiscover.Profile.KIDS, rated), "guidelines fill");
+        check(RobloxDiscover.Profile.kids("kids12") == RobloxDiscover.Profile.KIDS_12
+                && RobloxDiscover.Profile.kids("kids") == RobloxDiscover.Profile.KIDS, "profile parse");
+        // rated cache
+        java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "codeaque-rbx-filter");
+        dir.mkdirs();
+        java.io.File cache = new java.io.File(dir, "roblox-discover.json");
+        check(RobloxDiscover.saveGames(cache, page.games), "rated cache save");
+        java.util.List<RobloxDiscover.Game> loaded = RobloxDiscover.loadGames(cache);
+        check(RobloxDiscover.filter(loaded, RobloxDiscover.Profile.KIDS).size() == 1
+                && RobloxDiscover.filter(loaded, RobloxDiscover.Profile.KIDS_12).size() == 4, "rated cache filter");
+        cache.delete();
+    }
+
+    /** 0.10.37: daily play limit, midnight reset, play start/pause. No Android. */
+    static void screenTimeChecks() {
+        java.util.TimeZone tz = java.util.TimeZone.getTimeZone("Europe/London");
+        java.util.Calendar c = java.util.Calendar.getInstance(tz);
+        c.set(2026, java.util.Calendar.NOVEMBER, 16, 10, 0, 0);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        long t0 = c.getTimeInMillis();
+        ScreenTime.State off = new ScreenTime.State(0, 0, 0, false, false, "", 0);
+        check(ScreenTime.remainingMs(off, t0, tz) == -1 && ScreenTime.label(off, t0, tz).isEmpty() && !ScreenTime.timeUp(off, t0, tz), "off");
+        ScreenTime.State s = ScreenTime.setLimit(off, 30, t0, tz);
+        check(s.limitMin == 30 && s.usedMs == 0 && "2026-11-16".equals(s.day), "set limit");
+        check(ScreenTime.remainingMs(s, t0, tz) == 30 * 60_000L && "30 min left".equals(ScreenTime.label(s, t0, tz)), "full 30");
+        s = ScreenTime.startPlay(s, t0, tz);
+        check(s.startedAt == t0, "start");
+        long t20 = t0 + 20 * 60_000L;
+        check("10 min left".equals(ScreenTime.label(s, t20, tz)), "20 min used, 10 left");
+        s = ScreenTime.pausePlay(s, t20, tz);
+        check(s.startedAt == 0 && s.usedMs == 20 * 60_000L && "10 min left".equals(ScreenTime.label(s, t20, tz)), "paused");
+        long t30 = t0 + 30 * 60_000L;
+        check(!ScreenTime.timeUp(s, t30, tz) && "10 min left".equals(ScreenTime.label(s, t30, tz)), "paused clock does not keep running");
+        s = ScreenTime.startPlay(s, t20, tz);
+        check(ScreenTime.timeUp(s, t30, tz) && "Time's up".equals(ScreenTime.label(s, t30, tz)), "used up after play resumes");
+        // running session that crosses the limit
+        s = ScreenTime.startPlay(ScreenTime.setLimit(off, 15, t0, tz), t0, tz);
+        check(ScreenTime.timeUp(s, t0 + 15 * 60_000L, tz), "hits zero while running");
+        check(ScreenTime.warn5(s, t0 + 11 * 60_000L, tz) && !ScreenTime.warn5(s, t0 + 9 * 60_000L, tz), "5 min warning window");
+        s = ScreenTime.addMinutes(ScreenTime.pausePlay(s, t0 + 15 * 60_000L, tz), 15, t0 + 15 * 60_000L, tz);
+        check(!ScreenTime.timeUp(s, t0 + 15 * 60_000L, tz) && "15 min left".equals(ScreenTime.label(s, t0 + 15 * 60_000L, tz)), "parent added 15");
+        s = ScreenTime.unlockToday(s, t0 + 16 * 60_000L, tz);
+        check(ScreenTime.remainingMs(s, t0 + 16 * 60_000L, tz) == -1 && !ScreenTime.timeUp(s, t0 + 16 * 60_000L, tz), "unlocked today");
+        // midnight reset
+        long next = ScreenTime.nextMidnight(t0, tz);
+        ScreenTime.State day2 = ScreenTime.normalize(s, next, tz);
+        check("2026-11-17".equals(day2.day) && day2.usedMs == 0 && !day2.unlocked && day2.limitMin == 15, "reset at local midnight");
+        s = ScreenTime.setStrict(day2, true, next, tz);
+        check(s.strict, "strict");
+        check(ScreenTime.isPlayLaunch(Catalog.ROBLOX) && ScreenTime.isPlayLaunch(Catalog.MINECRAFT)
+                && ScreenTime.isPlayLaunch(Catalog.robloxPlace("Doors", "6516141723"))
+                && !ScreenTime.isPlayLaunch(Catalog.PLAY_STORE) && !ScreenTime.isPlayLaunch(Catalog.KIDS_WIFI)
+                && !ScreenTime.isPlayLaunch(Catalog.KIDS_UPDATE) && !ScreenTime.isPlayLaunch(Catalog.ADULT_PIN), "play vs parent tiles");
+        check(ScreenTime.blockedKidPackage("com.android.settings") && ScreenTime.blockedKidPackage("com.android.vending")
+                && ScreenTime.blockedKidPackage("com.google.android.packageinstaller") && ScreenTime.blockedKidPackage("com.android.documentsui")
+                && !ScreenTime.blockedKidPackage("com.roblox.client") && !ScreenTime.blockedKidPackage(null), "blocked packages");
+        check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock and device owner when locked; Update is gated in Kids mode instead");
+    }
+
+    /** 0.10.37: empty / wrong / invalid PINs never grant access on the shared verifier used by every PIN dialog. */
+    static void pinActionChecks() {
+        String h = LockPin.newHash("4821");
+        check(PinAction.verify("4821", h) == PinAction.ACCEPTED, "correct pin");
+        check(PinAction.verify("0000", h) == PinAction.WRONG && !PinAction.granted(PinAction.verify("0000", h)), "wrong pin");
+        check(PinAction.verify("", h) == PinAction.EMPTY && PinAction.verify(null, h) == PinAction.EMPTY, "empty pin");
+        check(PinAction.verify("12", h) == PinAction.INVALID && PinAction.verify("12a4", h) == PinAction.INVALID, "invalid pin");
+        check(PinAction.verify("4821", null) == PinAction.WRONG && PinAction.verify("4821", "junk") == PinAction.WRONG, "missing hash");
+        check(PinAction.verifyNew("2468", "2468") == PinAction.ACCEPTED, "new pin match");
+        check(PinAction.verifyNew("2468", "2469") == PinAction.WRONG, "new pin mismatch");
+        check(PinAction.verifyNew("", "2468") == PinAction.EMPTY && PinAction.verifyNew(null, "2468") == PinAction.EMPTY, "new pin empty");
+        check(PinAction.verifyNew("12", "12") == PinAction.INVALID, "new pin too short");
+        check(!PinAction.granted(PinAction.WRONG) && !PinAction.granted(PinAction.EMPTY) && !PinAction.granted(PinAction.INVALID)
+                && PinAction.granted(PinAction.ACCEPTED), "only ACCEPTED grants");
     }
 }
+

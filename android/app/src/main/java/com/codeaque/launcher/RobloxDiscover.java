@@ -10,22 +10,131 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** 0.10.34: public, unauthenticated Roblox explore pages + official fallback.
+/** 0.10.34 / 0.10.37: public, unauthenticated Roblox explore pages + official fallback.
+ *  Kids / Kids 12+ filter on contentMaturity (and a guidelines lookup if it is missing).
  *  No login and no API keys. Plain Java so checks can run on a PC. */
 public final class RobloxDiscover {
     private RobloxDiscover() { }
 
     public static final String EXPLORE_SORTS = "https://apis.roblox.com/explore-api/v1/get-sorts";
     public static final String CACHE_NAME = "roblox-discover.json";
+    public static final String GUIDELINES = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/get-age-recommendation";
+
+    /** Int constants (not a Java enum) so the older D8 dexer can compile this class. */
+    public static final class Profile {
+        private Profile() { }
+        public static final int ALL = 0, KIDS = 1, KIDS_12 = 2;
+        public static int kids(String id) { return "kids12".equals(id) ? KIDS_12 : KIDS; }
+        public static boolean isKids(int p) { return p != ALL; }
+    }
+
+    public static final class Band {
+        private Band() { }
+        public static final int UNKNOWN = 0, MINIMAL = 1, MILD = 2, TEEN = 3, ADULT = 4;
+    }
+
+    /** One explore (or cache) row, with the public age rating when Roblox sent it. */
+    public static final class Game {
+        public final String placeId, title, universeId, contentMaturity, ageRecommendation;
+        public final int minimumAge; // -1 if Roblox did not send one
+        public Game(String title, String placeId, String universeId, String contentMaturity, String ageRecommendation, int minimumAge) {
+            this.title = title;
+            this.placeId = placeId;
+            this.universeId = universeId == null ? "" : universeId;
+            this.contentMaturity = contentMaturity == null ? "" : contentMaturity;
+            this.ageRecommendation = ageRecommendation == null ? "" : ageRecommendation;
+            this.minimumAge = minimumAge;
+        }
+        public Catalog.Item item() { return Catalog.robloxPlace(title, placeId); }
+        public Game withRating(String maturity, String rec, int minAge) {
+            return new Game(title, placeId, universeId, maturity, rec, minAge);
+        }
+    }
 
     public static final class Page {
         public final List<Catalog.Item> items;
+        public final List<Game> games;
         public final String nextToken;
-        public Page(List<Catalog.Item> items, String nextToken) {
-            this.items = items != null ? items : new ArrayList<Catalog.Item>();
+        public Page(List<Game> games, String nextToken) {
+            this.games = games != null ? games : new ArrayList<Game>();
+            this.items = itemsOf(this.games);
             this.nextToken = nextToken != null ? nextToken : "";
         }
         public boolean isEmpty() { return items.isEmpty(); }
+    }
+
+    static List<Catalog.Item> itemsOf(List<Game> games) {
+        List<Catalog.Item> out = new ArrayList<>();
+        if (games == null) return out;
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Game g : games) {
+            if (g == null || g.placeId == null || g.placeId.isEmpty() || !seen.add(g.placeId)) continue;
+            out.add(g.item());
+        }
+        return out;
+    }
+
+    static String norm(String s) { return s == null ? "" : s.trim().toLowerCase(java.util.Locale.ROOT); }
+
+    public static int band(Game g) {
+        return g == null ? Band.UNKNOWN : band(g.contentMaturity, g.ageRecommendation, g.minimumAge);
+    }
+
+    public static int band(String maturity, String rec, int minAge) {
+        String m = norm(maturity), r = norm(rec);
+        if (m.contains("restricted") || m.contains("mature") || m.contains("17") || r.contains("17+")
+                || r.contains("18+") || r.contains("restricted") || minAge >= 17)
+            return Band.ADULT;
+        if (m.equals("minimal") || r.contains("minimal") || r.contains("all ages") || r.contains("everyone"))
+            return Band.MINIMAL;
+        if (m.equals("mild") || r.contains("mild"))
+            return Band.MILD;
+        if (m.equals("moderate") || m.equals("medium") || r.contains("moderate") || r.contains("12+")
+                || r.contains("13+") || (minAge >= 12 && minAge < 17))
+            return Band.TEEN;
+        return Band.UNKNOWN;
+    }
+
+    public static boolean allowed(int p, Game g) {
+        if (g == null) return false;
+        if (p == Profile.ALL) return true;
+        int b = band(g);
+        if (p == Profile.KIDS) return b == Band.MINIMAL;
+        if (p == Profile.KIDS_12) return b == Band.MINIMAL || b == Band.MILD || b == Band.TEEN;
+        return false;
+    }
+
+    public static List<Catalog.Item> filter(List<Game> games, int p) {
+        List<Catalog.Item> out = new ArrayList<>();
+        if (games == null) return out;
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Game g : games) {
+            if (g == null || g.placeId == null || g.placeId.isEmpty()) continue;
+            if (p != Profile.ALL && !allowed(p, g)) continue;
+            if (!seen.add(g.placeId)) continue;
+            out.add(g.item());
+        }
+        return out;
+    }
+
+    public static boolean hasUsableRatings(List<Game> games) {
+        if (games == null) return false;
+        for (Game g : games) if (band(g) != Band.UNKNOWN) return true;
+        return false;
+    }
+
+    public static List<Game> mergeGames(List<Game> have, List<Game> more) {
+        List<Game> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (have != null) for (Game g : have) {
+            if (g == null || g.placeId == null || g.placeId.isEmpty() || !seen.add(g.placeId)) continue;
+            out.add(g);
+        }
+        if (more != null) for (Game g : more) {
+            if (g == null || g.placeId == null || g.placeId.isEmpty() || !seen.add(g.placeId)) continue;
+            out.add(g);
+        }
+        return out;
     }
 
     public static String newSession() { return UUID.randomUUID().toString(); }
@@ -50,13 +159,13 @@ public final class RobloxDiscover {
 
     /** Parse a get-sorts (or games-only) JSON body. Sponsored rows and paid-access sorts are skipped. */
     public static Page parsePage(String json) {
-        if (json == null || json.isEmpty()) return new Page(new ArrayList<Catalog.Item>(), "");
+        if (json == null || json.isEmpty()) return new Page(new ArrayList<Game>(), "");
         Object root = Json.read(json);
-        if (!(root instanceof Map)) return new Page(new ArrayList<Catalog.Item>(), "");
+        if (!(root instanceof Map)) return new Page(new ArrayList<Game>(), "");
         Map<?, ?> data = (Map<?, ?>) root;
         String token = str(data.get("nextSortsPageToken"));
         if (token.isEmpty()) token = str(data.get("nextPageToken"));
-        List<Catalog.Item> out = new ArrayList<>();
+        List<Game> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         Object sorts = data.get("sorts");
         if (sorts instanceof List) {
@@ -77,7 +186,7 @@ public final class RobloxDiscover {
         return new Page(out, token);
     }
 
-    static void addGames(List<Catalog.Item> out, java.util.Set<String> seen, Object games) {
+    static void addGames(List<Game> out, java.util.Set<String> seen, Object games) {
         if (!(games instanceof List)) return;
         for (Object g : (List<?>) games) {
             if (!(g instanceof Map)) continue;
@@ -87,8 +196,18 @@ public final class RobloxDiscover {
             if (place.isEmpty() || !seen.add(place)) continue;
             String title = str(first(game, "name", "title")).trim();
             if (title.isEmpty()) continue;
-            out.add(Catalog.robloxPlace(title, place));
+            String uni = digits(str(first(game, "universeId", "universeID", "id")));
+            String mat = str(first(game, "contentMaturity", "content_maturity"));
+            String rec = str(first(game, "ageRecommendationDisplayName", "ageRecommendation", "displayNameWithHeaderShort"));
+            int minAge = intOr(first(game, "minimumAge", "minimum_age"), -1);
+            out.add(new Game(title, place, uni, mat, rec, minAge));
         }
+    }
+
+    static int intOr(Object v, int fallback) {
+        if (v == null) return fallback;
+        if (v instanceof Number) return ((Number) v).intValue();
+        try { return Integer.parseInt(str(v).trim()); } catch (Exception e) { return fallback; }
     }
 
     public static List<Catalog.Item> merge(List<Catalog.Item> have, List<Catalog.Item> more) {
@@ -112,12 +231,82 @@ public final class RobloxDiscover {
     }
 
     public static Page fetchPage(String sessionId, String pageToken) {
+        return fetchPage(sessionId, pageToken, false);
+    }
+
+    public static Page fetchPage(String sessionId, String pageToken, boolean lookupRatings) {
         try {
             String body = StoreArt.get(exploreUrl(sessionId, pageToken), 2_000_000);
-            return parsePage(body);
+            Page page = parsePage(body);
+            if (lookupRatings) page = fillRatings(page);
+            return page;
         } catch (Exception e) {
-            return new Page(new ArrayList<Catalog.Item>(), "");
+            return new Page(new ArrayList<Game>(), "");
         }
+    }
+
+    /** If the explore page had no ratings, look each universe up on the public guidelines API. */
+    public static Page fillRatings(Page page) {
+        if (page == null || page.games.isEmpty() || hasUsableRatings(page.games)) return page;
+        List<Game> out = new ArrayList<>();
+        int tried = 0, ok = 0;
+        for (Game g : page.games) {
+            if (band(g) != Band.UNKNOWN || g.universeId.isEmpty() || tried >= 30) { out.add(g); continue; }
+            tried++;
+            try {
+                String body = postJson(GUIDELINES, "{\"universeId\":" + g.universeId + "}", 200_000);
+                Game rated = applyGuidelines(g, body);
+                if (band(rated) != Band.UNKNOWN) ok++;
+                out.add(rated);
+            } catch (Exception e) { out.add(g); }
+        }
+        if (ok == 0) return page; // leave unchanged so the caller can fall back to the official list
+        return new Page(out, page.nextToken);
+    }
+
+    public static Game applyGuidelines(Game g, String json) {
+        if (g == null || json == null || json.isEmpty()) return g;
+        Object root = Json.read(json);
+        if (!(root instanceof Map)) return g;
+        Map<?, ?> rec = mapPath((Map<?, ?>) root, "ageRecommendationDetails", "summary", "ageRecommendation");
+        if (rec == null) rec = mapPath((Map<?, ?>) root, "ageRecommendationDetails", "ageRecommendation");
+        if (rec == null) return g;
+        String mat = str(first(rec, "contentMaturity", "content_maturity"));
+        String name = str(first(rec, "displayNameWithHeaderShort", "displayName", "ageRecommendationDisplayName"));
+        int minAge = intOr(first(rec, "minimumAge", "minimum_age"), -1);
+        if (mat.isEmpty() && name.isEmpty() && minAge < 0) return g;
+        return g.withRating(mat, name, minAge);
+    }
+
+    static Map<?, ?> mapPath(Map<?, ?> m, String... keys) {
+        Object cur = m;
+        for (String k : keys) {
+            if (!(cur instanceof Map)) return null;
+            cur = ((Map<?, ?>) cur).get(k);
+        }
+        return cur instanceof Map ? (Map<?, ?>) cur : null;
+    }
+
+    static String postJson(String url, String body, long max) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        c.setConnectTimeout(8000); c.setReadTimeout(12000);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("User-Agent", StoreArt.UA);
+        c.setRequestProperty("Accept", "application/json");
+        c.setRequestProperty("Content-Type", "application/json");
+        byte[] raw = body.getBytes(StandardCharsets.UTF_8);
+        c.setRequestProperty("Content-Length", Integer.toString(raw.length));
+        try {
+            try (java.io.OutputStream os = c.getOutputStream()) { os.write(raw); }
+            int code = c.getResponseCode();
+            java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            if (code != 200 || in == null) throw new java.io.IOException("HTTP " + code);
+            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[4096]; int n; long t = 0;
+            while ((n = in.read(b)) > 0) { o.write(b, 0, n); t += n; if (t > max) throw new java.io.IOException("too big"); }
+            return o.toString("UTF-8");
+        } finally { c.disconnect(); }
     }
 
     public static List<Catalog.Item> loadCache(File file) {
@@ -129,35 +318,73 @@ public final class RobloxDiscover {
             if (!(root instanceof Map)) return new ArrayList<>();
             Object items = ((Map<?, ?>) root).get("items");
             if (!(items instanceof List)) return new ArrayList<>();
-            List<Catalog.Item> out = new ArrayList<>();
-            java.util.Set<String> seen = new java.util.HashSet<>();
-            for (Object it : (List<?>) items) {
-                if (!(it instanceof Map)) continue;
-                Map<?, ?> m = (Map<?, ?>) it;
-                String place = digits(str(first(m, "placeId", "place_id", "id")));
-                String title = str(first(m, "title", "name")).trim();
-                if (place.isEmpty() || title.isEmpty() || !seen.add(place)) continue;
-                out.add(Catalog.robloxPlace(title, place));
-            }
-            return out;
+            return itemsOf(gamesFromCache(items));
         } catch (Exception e) { return new ArrayList<>(); }
     }
 
+    public static List<Game> loadGames(File file) {
+        if (file == null || !file.isFile()) return new ArrayList<>();
+        try {
+            byte[] raw = java.nio.file.Files.readAllBytes(file.toPath());
+            if (raw.length < 8 || raw.length > 2_000_000) return new ArrayList<>();
+            Object root = Json.read(new String(raw, StandardCharsets.UTF_8));
+            if (!(root instanceof Map)) return new ArrayList<>();
+            Object items = ((Map<?, ?>) root).get("items");
+            if (!(items instanceof List)) return new ArrayList<>();
+            return gamesFromCache(items);
+        } catch (Exception e) { return new ArrayList<>(); }
+    }
+
+    static List<Game> gamesFromCache(Object items) {
+        List<Game> out = new ArrayList<>();
+        if (!(items instanceof List)) return out;
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Object it : (List<?>) items) {
+            if (!(it instanceof Map)) continue;
+            Map<?, ?> m = (Map<?, ?>) it;
+            String place = digits(str(first(m, "placeId", "place_id", "id")));
+            String title = str(first(m, "title", "name")).trim();
+            if (place.isEmpty() || title.isEmpty() || !seen.add(place)) continue;
+            String uni = digits(str(first(m, "universeId", "universe_id")));
+            String mat = str(first(m, "contentMaturity", "content_maturity"));
+            String rec = str(first(m, "ageRecommendation", "ageRecommendationDisplayName"));
+            int minAge = intOr(first(m, "minimumAge", "minimum_age"), -1);
+            out.add(new Game(title, place, uni, mat, rec, minAge));
+        }
+        return out;
+    }
+
     public static boolean saveCache(File file, List<Catalog.Item> items) {
-        if (file == null || items == null) return false;
+        List<Game> games = new ArrayList<>();
+        if (items != null) {
+            for (Catalog.Item it : items) {
+                String place = Catalog.robloxPlaceId(it);
+                if (place == null) continue;
+                games.add(new Game(it.label, place, "", "", "", -1));
+            }
+        }
+        return saveGames(file, games);
+    }
+
+    public static boolean saveGames(File file, List<Game> games) {
+        if (file == null || games == null) return false;
         try {
             File parent = file.getParentFile();
             if (parent != null) parent.mkdirs();
             StringBuilder sb = new StringBuilder(256);
             sb.append("{\"items\":[");
             boolean first = true;
-            for (Catalog.Item it : items) {
-                String place = Catalog.robloxPlaceId(it);
-                if (place == null) continue;
+            for (Game g : games) {
+                if (g == null || g.placeId == null || g.placeId.isEmpty()) continue;
                 if (!first) sb.append(',');
                 first = false;
-                sb.append("{\"title\":").append(Json.quote(it.label))
-                  .append(",\"placeId\":").append(Json.quote(place)).append('}');
+                sb.append("{\"title\":").append(Json.quote(g.title))
+                  .append(",\"placeId\":").append(Json.quote(g.placeId));
+                if (!g.universeId.isEmpty()) sb.append(",\"universeId\":").append(Json.quote(g.universeId));
+                if (!g.contentMaturity.isEmpty()) sb.append(",\"contentMaturity\":").append(Json.quote(g.contentMaturity));
+                if (!g.ageRecommendation.isEmpty()) sb.append(",\"ageRecommendation\":").append(Json.quote(g.ageRecommendation));
+                if (g.minimumAge >= 0) sb.append(",\"minimumAge\":").append(g.minimumAge);
+                sb.append('}');
             }
             sb.append("]}");
             File tmp = new File(file.getPath() + ".part");

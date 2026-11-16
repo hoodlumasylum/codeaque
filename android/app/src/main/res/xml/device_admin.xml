@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 0.10.21 Lock mode: only used when a parent makes CodeAque the device owner with adb (optional full kiosk). -->
+<!-- Device owner (adb dpm set-device-owner). User restrictions and lock-task do not need extra policies listed here. No wipe-data. -->
 <device-admin>
     <uses-policies />
 </device-admin>

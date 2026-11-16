@@ -31,6 +31,29 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.37
+
+**Kids Roblox feed, Kids 12+, and Screen time (Android).** Normal Kids mode now uses the same infinite Roblox explore feed as Roblox Mode, but only games Roblox rates **Minimal / all ages**. A new **Kids 12+** profile (Settings, behind the parent PIN) also allows Mild and up to 12+ / 13+. 17+, unrated, sponsored and paid-access games are hidden. If the rating cannot be read, Kids mode falls back to the official 12-game short list — it never shows an unfiltered feed. Switching Kids / Kids 12+ needs the parent PIN.
+
+**Screen time** (Settings, parent PIN): a daily play limit of Off, 15, 30, 45, 60, 90, 120 minutes, or a custom number. Time is counted only while a game launched from Kids mode is in the foreground, and it pauses when CodeAque comes back. The time left is shown on the Kids home. When it hits zero, game tiles say **Time's up** and launching asks for the parent PIN (add 15 or 30 minutes, or unlock for today). The count resets at local midnight and is stored only on the device. Optional **Strict** mode tries to bring the Kids home to the front when time runs out, with a full-screen Time's up gate. A parent can grant **Display over other apps** (more reliable on Android 10+) and **Usage access** (so Strict can also bounce back if Android Settings, the Play Store or the package installer comes to the front). A 5-minute warning notification is shown when time is almost up.
+
+**Kids mode hides app installs.** The Play Store, Files, package installer and browser-download tiles are not on the Kids home. CodeAque's own Update / APK install asks for the parent PIN. Android cannot force-close another app without device-owner rights, so without Strict (and usage access) a child who leaves CodeAque some other way is only blocked when they come back. Not tried yet on a real phone.
+
+**Always start in Kids mode (Android, on by default).** Opening CodeAque — a cold start, or coming back as the Home app after a reboot — starts in the last-used Kids or Kids 12+ profile. Leaving to adult mode still needs the parent PIN. Grown-ups can turn this off in Settings (behind the PIN). A parent who has just left Kids mode is not bounced back until the next restart.
+
+**Emulator apps stay in adult mode.** RetroArch, PPSSPP, Dolphin, DuckStation, AetherSX2 / NetherSX2, Citra, Lime3DS, Yuzu-family, Ryujinx-family, Skyline, Vita3K, mGBA, Snes9x, MAME, Redream, Flycast, Mupen64, Lemuroid, DraStic, melonDS and similar apps (matched by known packages plus a cautious "emu" / "emulator" heuristic) are hidden from Kids and Kids 12+ app and games lists. They stay on the adult home. Dreamcast and PSP rows in Kids mode list only the player's own game files, not the emulator tile.
+
+**Parent PIN (Android).** A wrong or empty PIN, or Cancel / Back / a tap outside the dialog, no longer lets a home-screen app open. OK, keyboard Enter and controller A all use the same check, and the dialog stays open after a wrong PIN so the key press cannot reach the tile underneath.
+
+**Tile art (Android).** Bundled "Duat Realm" pictures and labels have been removed from tiles. Covers are the game's own picture at runtime (or the app icon / a plain title card when there isn't one). Linux never shipped that art.
+
+**Lock phone to CodeAque in Kids mode (Android).** A Settings toggle (adult, parent PIN, off by default) tries to screen-pin CodeAque while Kids mode is on, so the Recents / Home swipe is blocked. Android may show its own "pin this screen" confirmation the first time. Leaving Kids mode with the parent PIN calls stopLockTask(). Games opened from the Kids home are allowed to stay in front (pinning is paused for that app). If the child swipes to Recents or another app that was not just launched, CodeAque tries to come back the same way as Strict screen time. Without device owner, a child can usually unpin with Back + Recents, and Android 10+ may block the bounce unless "Display over other apps" and Usage access are granted. Status bar, power menu and a safe-mode boot cannot be fully blocked without device owner. Not tried yet on a real phone.
+
+**Lock phone to CodeAque (optional device owner, Android).** A Settings item (adult, parent PIN) can make CodeAque the device owner so Kids mode is a real kiosk: no Recents swipe, no notifications, and no app installs until a parent leaves with the PIN. On a rooted phone (the K56 has `su` at `/system/xbin/su`) it runs `dpm set-device-owner com.codeaque.launcher/.AdminReceiver` after you allow the superuser prompt. If there is no root, or if Android refuses because a Google account is already on the phone, CodeAque shows the same steps as `docs/android-kiosk-setup.md` (USB debugging and `adb` from Linux Mint on the Dell). This only works on a factory-reset phone with no accounts. **Remove device owner** (Settings, parent PIN) clears it so the phone is not stuck. Root is not required for anything else. Not tried on a real phone.
+
+**Hide other launchers (Android).** Settings (parent PIN) can turn off the other Home apps so Android stops asking which one to use. Nothing is uninstalled, and Undo is in the same menu. If CodeAque is the device owner, it hides them with Android's `setApplicationHidden` (no root). On a rooted phone it uses `su -c 'pm disable-user --user 0 <package>'` and looks for any `su` (including `/system/xbin/su` on the K56, not only Magisk). If the phone is neither rooted nor the device owner, the menu says so in plain language. Not tried on a real phone.
+
+
 ## What's new in 0.10.36
 
 **Parent PIN dialog on short landscape screens.** The PIN prompt is compact so OK and Cancel stay on screen on a wide, short handheld. The message is one short line (for example "Enter the parent PIN (default 1234)."), and "Forgot PIN?" shows the reset hint. IME Done / Enter and controller A / DPAD_CENTER submit the PIN on every parent PIN dialog (Settings, Adult mode, Change PIN, and the rest).
@@ -152,9 +175,9 @@ Not tried yet on a real CodeAque phone: Lock Mode, the 7-tap parent menu, Safe c
   PIN; phone, contacts, messages and Android settings apps are hidden and won't open from CodeAque; if CodeAque stops
   being the Home app, a PIN prompt appears. Wrong PINs make you wait longer each time. Forgot the PIN? Clear CodeAque's
   data in Android's app settings to reset it (this also resets CodeAque's other settings).
-- Optional full kiosk (untested on a real device): if a parent makes CodeAque the device owner with
-  `adb shell dpm set-device-owner com.codeaque.launcher/.CodeAqueAdmin` on a device with no accounts, Lock mode also
-  pins CodeAque on screen (lock task, games still open), keeps it as Home and blocks factory reset, safe boot, new users,
+- Optional full kiosk (untested on a real device): see `docs/android-kiosk-setup.md`. Settings > Lock phone to CodeAque (parent PIN) uses `su` when it is present, otherwise adb:
+  `adb shell dpm set-device-owner com.codeaque.launcher/.AdminReceiver` on a device with no accounts. Kids mode and Lock mode then also
+  pin CodeAque on screen (lock task, games still open), keeps it as Home and blocks factory reset, safe boot, new users,
   calls and SMS. Turning Lock mode off offers "Off + remove full kiosk".
 - What the soft lock (no device owner) can't stop: the notification shade and quick settings, incoming calls and their
   notifications, the power menu, recovery / factory reset, safe mode, and apps opened from outside CodeAque.
@@ -270,8 +293,8 @@ Not tried yet on a real CodeAque phone: Lock Mode, the 7-tap parent menu, Safe c
 
 - **Wide covers on the Featured row** (and the Kids mode Play row). GeForce NOW shows its own Google Play feature
   graphic, fetched while the app runs and cached; nothing is bundled. Until it arrives, or offline, the tile shows the
-  icon. Roblox, Minecraft and Marvel Rivals use Hoodlum Asylum Studio's own "Duat Realm" art, cropped so that no game
-  logos or game characters are shown.
+  icon. Roblox, Minecraft and Marvel Rivals use a runtime cover or the app icon (or a plain title card). No bundled
+  "Duat Realm" art.
 
 ## What's new in 0.10.5
 

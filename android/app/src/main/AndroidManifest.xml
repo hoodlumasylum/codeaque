@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="136" android:versionName="0.10.36">
+    android:versionCode="137" android:versionName="0.10.37">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Settings > Update: install the new CodeAque APK (Android shows its own prompt first) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 0.10.37 Screen time / Strict mode: keep a timer while a game is open, optionally bring Kids home back -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <!-- 0.10.22 Safe contacts: each asked only when first used (Call / Import from phone) -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -78,8 +84,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        <!-- 0.10.21 Lock mode: optional full kiosk, only if a parent runs
-             adb shell dpm set-device-owner com.codeaque.launcher/.CodeAqueAdmin -->
+        <!-- 0.10.37: optional device owner kiosk. On a freshly reset phone with no accounts:
+             adb shell dpm set-device-owner com.codeaque.launcher/.AdminReceiver
+             (or Settings > Lock phone to CodeAque, which uses su on a rooted phone). -->
+        <receiver android:name=".AdminReceiver" android:exported="true" android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+        </receiver>
+        <!-- Older adb command still works: dpm set-device-owner com.codeaque.launcher/.CodeAqueAdmin -->
         <receiver android:name=".CodeAqueAdmin" android:exported="true" android:permission="android.permission.BIND_DEVICE_ADMIN">
             <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
             <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
@@ -91,5 +103,7 @@
         <service android:name=".SafeCallRedirection" android:exported="true" android:permission="android.permission.BIND_CALL_REDIRECTION_SERVICE">
             <intent-filter><action android:name="android.telecom.CallRedirectionService" /></intent-filter>
         </service>
+        <!-- 0.10.37: Kids screen time and Strict-mode watcher. Not exported. -->
+        <service android:name=".ScreenTimeService" android:exported="false" android:foregroundServiceType="specialUse" />
     </application>
 </manifest>
