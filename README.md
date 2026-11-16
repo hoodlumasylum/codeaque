@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.46
+
+**Scrolling category tabs (Android).** Adult mode has many tabs, and on a small landscape screen the old equal-width labels ran into each other ("Puzzle Racing Adventure Learning Roblox-style…"). The tab strip now scrolls sideways. Each tab keeps a fixed minimum gap and is wide enough for its full name, so labels never overlap, clip or merge. The selected tab is always scrolled fully into view, including when you change tabs with L1/R1. You can also drag the strip itself.
+
+**Covers and icons that actually load.** Game tiles (including Cloud / Xbox Cloud / GeForce NOW / Luna / RetroArch) use the installed app's own icon from PackageManager when the app is on the device, otherwise the official Play Store icon (or Roblox thumbnail / Steam cover) fetched at runtime. A small queue of three parallel downloads, with retries and backoff, means scrolling queues work instead of dropping it, and a failed first try is not remembered as a permanent miss. Pictures are cached on disk and looked up by package (or place / Steam id), never by a recycled tile index, so a late download cannot appear on the wrong game. If no picture is available, the tile is a styled name-card — not a blank bar. Nothing third-party is bundled.
+
 ## What's new in 0.10.45
 
 **Big tiles on the tabbed Kids home (Android).** The Puzzle, Racing, Adventure, Learning, Roblox-style, Roblox (and, in adult mode, Cloud) tabs still sit along the top, with the same controller hints at the bottom, but each tab is now a grid of large cover/icon tiles — about two rows on a small landscape screen such as the Win600/K56 — with the game name under each tile and a small GET badge when it isn't installed. A focused tile keeps the gold glow. Lists still page as you reach the end, and D-pad / stick movement follows the grid (up from the first row returns to the category tabs). Adult mode's default home uses the same grid; Settings → Classic home layout still switches back to the old busy tile row. Icons and covers come from the official Play listing at runtime; nothing third-party is bundled.

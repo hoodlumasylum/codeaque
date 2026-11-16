@@ -83,7 +83,9 @@ public class HomeView extends View {
     }
     private int cat = 0, tile = 0;       // 0.10.1: start on the Featured row, Roblox first
     private boolean inCats = false;
-    private float catAnim = 0, scrollAnim = 0, t = 0;
+    private float catAnim = 0, scrollAnim = 0, t = 0, tabScroll, tabScrollTo, tabTotal;
+    private float[] tabX, tabW;
+    private boolean tabDrag, tabFollow = true;
     private long last = 0, lastFrame = 0;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -139,6 +141,7 @@ public class HomeView extends View {
     private void setCat(int c) {
         c = (c + cats.size()) % cats.size();
         if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; host.sound("hhcat"); }
+        tabFollow = true;
         invalidate();
         notifyRoblox(false);
     }
@@ -402,9 +405,10 @@ public class HomeView extends View {
         if (onInstallBtn(x, y)) { confirmInstall(); return; }
         if (backBtn.contains(x, y)) { goBack(); return; }
         if (logoTop.contains(x, y) || logoCenter.contains(x, y)) { logoHit(); return; }
-        if (!boxset && y < catsBottom() && y > H * 0.12f) {
-            float cw = getWidth() / (float) Math.max(1, cats.size());
-            setCat((int) (x / cw)); inCats = false; return;
+        if (!boxset && y <= catsBottom() && y >= tabStripTop()) {
+            int i = hitTab(x, y);
+            if (i >= 0) { setCat(i); inCats = false; }
+            return;
         }
         if (browseList() && y >= browseTop() && y <= browseBottom()) {
             int i = hitBrowseItem(x, y);
@@ -425,7 +429,7 @@ public class HomeView extends View {
             case MotionEvent.ACTION_DOWN:
                 if (splash != null) { splash = null; invalidate(); return true; }
                 downX = x; downY = y; lastTouchX = x; lastTouchY = y; downTime = e.getEventTime();
-                rowDrag = false; sectionSwipe = false; gestureChose = false;
+                rowDrag = false; sectionSwipe = false; gestureChose = false; tabDrag = false;
                 longPressFired = false; holdTile = -1; holdAt = 0;
                 if (velocity != null) velocity.recycle();
                 velocity = VelocityTracker.obtain();
@@ -445,7 +449,9 @@ public class HomeView extends View {
                     boolean horiz = Math.abs(dx) > Math.abs(dy) * 1.2f;
                     boolean onList = browseList() && downY >= browseTop() && downY <= browseBottom();
                     boolean onTiles = downY > tilesTop() && downY < tilesTop() + tileH();
-                    if (onList && !horiz) rowDrag = true;
+                    boolean onTabs = !boxset && downY >= tabStripTop() && downY <= catsBottom();
+                    if (onTabs && horiz) { tabDrag = true; tabFollow = false; }
+                    else if (onList && !horiz) rowDrag = true;
                     else if (!horiz) { /* a vertical rub is not a tap and not a section change */ }
                     else if ((!onTiles && !onList) || maxScroll() < 0.5f) sectionSwipe = true;
                     else {
@@ -454,7 +460,12 @@ public class HomeView extends View {
                         else rowDrag = true;
                     }
                 }
-                if (rowDrag) {
+                if (tabDrag) {
+                    layoutTabs();
+                    tabScroll = tabScrollTo = clampTabScroll(tabScroll + (lastTouchX - x));
+                    lastTouchX = x;
+                    invalidate();
+                } else if (rowDrag) {
                     userScroll = true; flingV = 0;
                     if (browseList()) {
                         float step = Math.max(1f, browseRowH());
@@ -489,17 +500,56 @@ public class HomeView extends View {
                     invalidate();
                 }
                 if (velocity != null) { velocity.recycle(); velocity = null; }
-                rowDrag = false; sectionSwipe = false;
+                rowDrag = false; sectionSwipe = false; tabDrag = false;
                 return true;
         }
         return super.onTouchEvent(e);
     }
 
-    public void showCloud() { setCat(Catalog.indexOf(cats, "cloud")); tile = 0; inCats = false; invalidate(); }
-    public void focus(String catId, int i) { cat = Math.max(0, Catalog.indexOf(cats, catId)); tile = i; catAnim = cat; inCats = false; invalidate(); notifyRoblox(false); }
+    public void showCloud() { setCat(Catalog.indexOf(cats, "cloud")); tile = 0; inCats = false; tabFollow = true; invalidate(); }
+    public void focus(String catId, int i) { cat = Math.max(0, Catalog.indexOf(cats, catId)); tile = i; catAnim = cat; inCats = false; tabFollow = true; invalidate(); notifyRoblox(false); }
 
     // ---------- geometry (scaled from the 1280x720 design) ----------
     private float catsBottom() { return getHeight() * 0.26f; }
+    private float tabStripTop() { return getHeight() * 0.11f; }
+    private float tabMinGap() { return 16 * s; }
+    private float tabPad() { return 14 * s; }
+    private float tabMaxScroll() { return Math.max(0, tabTotal - getWidth()); }
+    private float clampTabScroll(float v) { float m = tabMaxScroll(); return v < 0 ? 0 : v > m ? m : v; }
+
+    /** Each tab is at least wide enough for its full label; gaps never shrink. */
+    private void layoutTabs() {
+        int n = cats.size();
+        if (n == 0) { tabX = new float[0]; tabW = new float[0]; tabTotal = 0; return; }
+        if (tabX == null || tabX.length != n) { tabX = new float[n]; tabW = new float[n]; }
+        p.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        p.setTextSize(20 * s);
+        float x = tabPad();
+        for (int i = 0; i < n; i++) {
+            float tw = p.measureText(cats.get(i).label);
+            tabW[i] = Math.max(72 * s, tw + 2 * tabPad());
+            tabX[i] = x;
+            x += tabW[i] + tabMinGap();
+        }
+        tabTotal = x - tabMinGap() + tabPad();
+        if (tabFollow) ensureTabInView(cat);
+        tabScrollTo = clampTabScroll(tabScrollTo);
+        tabScroll = clampTabScroll(tabScroll);
+    }
+    private void ensureTabInView(int i) {
+        if (tabX == null || i < 0 || i >= tabX.length) return;
+        float margin = 12 * s, left = tabX[i], right = tabX[i] + tabW[i], visL = tabScrollTo, visR = tabScrollTo + getWidth();
+        if (left < visL + margin) tabScrollTo = left - margin;
+        else if (right > visR - margin) tabScrollTo = right - getWidth() + margin;
+        tabScrollTo = clampTabScroll(tabScrollTo);
+    }
+    private int hitTab(float x, float y) {
+        if (boxset || y < tabStripTop() || y > catsBottom() || tabX == null) return -1;
+        float px = x + tabScroll;
+        for (int i = 0; i < tabX.length; i++)
+            if (px >= tabX[i] && px < tabX[i] + tabW[i]) return i;
+        return -1;
+    }
     // 0.10.2 Kids mode: bigger tiles and labels (readable at 640x480), hold Select to reach the grown-up switch
     private boolean kids;
     public void setKids(boolean k) { kids = k; invalidate(); }
@@ -590,6 +640,13 @@ public class HomeView extends View {
             if (Math.abs(focusTarget - scrollAnim) < 0.002f) scrollAnim = focusTarget;
         }
 
+        layoutTabs();
+        if (!tabDrag) {
+            if (tabFollow) ensureTabInView(cat);
+            float tdist = tabScrollTo - tabScroll;
+            tabScroll += tdist * Math.min(1f, dt * 12f);
+            if (Math.abs(tabScrollTo - tabScroll) < 0.5f) tabScroll = tabScrollTo;
+        }
         background(c, W, H, anim);
         topBar(c, W, H);
         notifyRoblox(true);
@@ -602,7 +659,8 @@ public class HomeView extends View {
         if (kids && host.timeUpScreen()) timeUpPanel(c, W, H);
         if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
 
-        boolean settling = coast || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f;
+        boolean settling = coast || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f
+                || Math.abs(tabScrollTo - tabScroll) > 0.5f;
         if (anim || settling) {
             if ("on".equals(fx) || settling) postInvalidateOnAnimation();
             else postInvalidateDelayed(33);                 // auto: 30 fps background on weak chips
@@ -835,20 +893,33 @@ public class HomeView extends View {
         }
     }
 
+    /** 0.10.46: horizontally scrolling tab strip. Each label keeps its full width and a fixed gap, so
+     *  tabs never overlap or merge; the selected tab is scrolled fully into view (L1/R1 / setCat). */
     private void categories(Canvas c, int W, int H) {
-        float cw = W / (float) cats.size(), y = H * 0.17f;
+        layoutTabs();
+        float y = H * 0.16f, top = tabStripTop(), bot = catsBottom();
+        c.save();
+        c.clipRect(0, top, W, bot);
         for (int i = 0; i < cats.size(); i++) {
-            float x = cw * (i + 0.5f);
+            float x = tabX[i] - tabScroll + tabW[i] / 2f;
+            if (x + tabW[i] < -20 * s || x - tabW[i] > W + 20 * s) continue;
             float sel = Math.max(0, 1 - Math.abs(catAnim - i));
-            float size = (40 + 12 * sel) * s;
+            float size = (36 + 10 * sel) * s;
             if (sel > 0.05f) {
-                p.setShader(new RadialGradient(x, y, 60 * s, (((int) (0x55 * sel)) << 24) | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
-                c.drawCircle(x, y, 60 * s, p); p.setShader(null);
+                p.setShader(new RadialGradient(x, y, 50 * s, (((int) (0x55 * sel)) << 24) | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
+                c.drawCircle(x, y, 50 * s, p); p.setShader(null);
             }
             int col = i == cat ? (inCats ? GOLD : T.accent) : 0xFFDDE7E1;
             icon(c, cats.get(i).icon, x, y, size, col, i == cat ? 2.6f : 2.2f);
-            text(c, cats.get(i).label, x, y + size * 0.5f + (i == cat ? 32 : 26) * s, (i == cat ? 24 : 18) * s, i == cat ? 0xFFFFFFFF : 0xFFC9D6CF, Paint.Align.CENTER, i == cat);
+            // Full, unclipped label (the strip clips only at the screen edges as it scrolls).
+            text(c, cats.get(i).label, x, y + size * 0.5f + 20 * s, (i == cat ? 20 : 16) * s, i == cat ? 0xFFFFFFFF : 0xFFC9D6CF, Paint.Align.CENTER, i == cat);
+            if (i == cat) {
+                float uw = Math.min(tabW[i] - 8 * s, p.measureText(cats.get(i).label) + 8 * s);
+                p.setShader(null); p.setColor(GOLD);
+                c.drawRoundRect(new RectF(x - uw / 2, bot - 6 * s, x + uw / 2, bot - 3 * s), 2 * s, 2 * s, p);
+            }
         }
+        c.restore();
     }
 
     private void mark(Canvas c, int W, int H) {
@@ -1047,7 +1118,8 @@ public class HomeView extends View {
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
             src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
             p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(cov, null, src, p);
-        } else if (it.isRom()) {
+        } else if (it.isRom() || ai == null) {
+            // 0.10.46: styled name-tile when no cover or Play / package icon is available.
             titleCard(c, it, sel);
             c.restore(); drawCoverFrame(c, sel);
             timeUpBadge(c, it);

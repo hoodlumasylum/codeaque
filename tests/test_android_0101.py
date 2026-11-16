@@ -131,6 +131,12 @@ def test_kids_mode_big_and_locked_down():
     assert "coverTile(c, it, sel, false)" in h and "nameInside" in h
     ma = (SRC / "MainActivity.java").read_text()
     assert "void installPicked(" in ma and 'askPin("Parent PIN: install games"' in ma and "startStoreQueue(copy)" in ma
+    # 0.10.46: scrolling tab strip; no overlapping labels; robust art loader
+    assert "layoutTabs()" in h and "tabMinGap()" in h and "ensureTabInView(" in h and "hitTab(" in h
+    assert "horizontally scrolling tab strip" in h and "tabFollow" in h
+    assert "KEYCODE_BUTTON_L1" in h  # L1/R1 already change category; setCat now scrolls the tab into view
+    assert "styled name-tile" in h and "titleCard(c, it, sel)" in h
+    assert "installedIcon(" in ma and "PlayArt.isFreshMiss(" in ma
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
     assert 'Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus)' in m and 'getBoolean("kidsMode", false)' in m
@@ -148,8 +154,10 @@ def test_play_listing_art_runtime_only():
     a = (SRC / "PlayArt.java").read_text()
     assert 'PLAY = "https://play.google.com"' in a and 'IMG_HOST = "https://play-lh.googleusercontent.com/"' in a
     m = (SRC / "MainActivity.java").read_text()
-    assert 'new java.io.File(getCacheDir(), "playart")' in m and "PlayArt.fetch(PlayArt.PLAY, pkg, dir)" in m
-    assert "if (!it.isDeviceApp()) return playArt(it, false);" in m
+    assert 'new java.io.File(getCacheDir(), "playart")' in m and "requestPlayArt(" in m
+    assert "installedIcon(" in m and "artLoader.requestPlay(" in m
+    pa = m.split("private android.graphics.Bitmap playArt(", 1)[1].split("private final Map<String, android.graphics.Bitmap> coverCache", 1)[0]
+    assert "it.webUrl != null" not in pa and "requestPlayArt(" in pa
     t = (AND / "app/src/test/java/com/codeaque/launcher/CatalogTest.java").read_text()
     assert "com.sun.net.httpserver.HttpServer" in t and "playArtChecks();" in t
     for p in (AND / "app/src/main").rglob("*"):
@@ -245,8 +253,9 @@ def test_featured_wide_covers_and_roblox_art():
     assert 'id.equals("steam") || id.equals("kplay")' in h and "(wide() ? (kids ? 220 : 292)" in h
     assert "blockyArt" not in h and "buddy(" not in h
     m = (SRC / "MainActivity.java").read_text()
-    assert "if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it)" in m
+    assert "it == Catalog.GEFORCE_NOW || it == Catalog.GFN || it == Catalog.XBOX" in m
     assert "ownFeature(html, i)" in (SRC / "PlayArt.java").read_text()
+    assert "ArtLoader" in (SRC / "ArtLoader.java").read_text() and "PARALLEL = 3" in (SRC / "ArtLoader.java").read_text()
 
 
 def test_rivals_tile_has_no_bundled_duat_art():

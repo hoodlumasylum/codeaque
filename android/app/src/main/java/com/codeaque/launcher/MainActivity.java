@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 /** CodeAque HOME launcher. Android stays the system underneath; this is just the home screen. */
-public class MainActivity extends Activity implements HomeView.Host {
+public class MainActivity extends Activity implements HomeView.Host, ArtLoader.Listener {
     private HomeView view;
     private SoundPool pool;
     private final Map<String, Integer> sounds = new HashMap<>();
@@ -57,6 +57,11 @@ public class MainActivity extends Activity implements HomeView.Host {
         edgeToEdge();
         view = new HomeView(this, this);
         setContentView(view);
+        if (artLoader == null) {
+            artLoader = new ArtLoader();
+            artLoader.setListener(this);
+            artLoader.start();
+        }
         immersive();
         rescan();
         IntentFilter pf = new IntentFilter();         // an app or game installed / removed while CodeAque is open
@@ -289,18 +294,53 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     @Override public android.graphics.Bitmap appIcon(Catalog.Item it) {
         if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
-        if (!it.isDeviceApp()) return playArt(it, false);
-        String k = it.key();
-        if (icons.containsKey(k)) return icons.get(k);
-        final String pkg = it.pkg, cls = it.cls;
-        final int px = (int) (64 * getResources().getDisplayMetrics().density);
-        return decodeLater(icons, k, () -> {
-            android.graphics.drawable.Drawable d = getPackageManager().getActivityIcon(new android.content.ComponentName(pkg, cls));
-            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
-            android.graphics.Canvas cv = new android.graphics.Canvas(b);
-            d.setBounds(0, 0, px, px); d.draw(cv);
-            return b;
-        });
+        android.graphics.Bitmap inst = installedIcon(it);
+        if (inst != null) return inst;
+        return playArt(it, false);
+    }
+
+    /** Installed app icon from PackageManager for any of the item's packages. Cached by package, never by tile index. */
+    private android.graphics.Bitmap installedIcon(Catalog.Item it) {
+        if (it == null) return null;
+        java.util.ArrayList<String> pkgs = new java.util.ArrayList<>();
+        if (it.pkg != null) pkgs.add(it.pkg);
+        if (it.storePackage() != null) pkgs.add(it.storePackage());
+        if (it.packages != null) for (String p : it.packages) if (p != null) pkgs.add(p);
+        for (int i = 0; i < pkgs.size(); i++) {
+            String pkg = pkgs.get(i);
+            String k = "pm:" + pkg;
+            if (icons.containsKey(k)) {
+                android.graphics.Bitmap b = icons.get(k);
+                if (b != null) return b;
+                continue;
+            }
+            try {
+                getPackageManager().getPackageInfo(pkg, 0);
+            } catch (Exception e) { continue; }
+            final String p2 = pkg;
+            final int px = (int) (64 * getResources().getDisplayMetrics().density);
+            return decodeLater(icons, k, () -> {
+                android.graphics.drawable.Drawable d = getPackageManager().getApplicationIcon(p2);
+                android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas cv = new android.graphics.Canvas(b);
+                d.setBounds(0, 0, px, px); d.draw(cv);
+                return b;
+            });
+        }
+        if (it.isDeviceApp() && it.pkg != null && it.cls != null) {
+            String k = it.key();
+            if (icons.containsKey(k)) return icons.get(k);
+            final String pkg = it.pkg, cls = it.cls;
+            final int px = (int) (64 * getResources().getDisplayMetrics().density);
+            return decodeLater(icons, k, () -> {
+                android.graphics.drawable.Drawable d = getPackageManager().getActivityIcon(new android.content.ComponentName(pkg, cls));
+                android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas cv = new android.graphics.Canvas(b);
+                d.setBounds(0, 0, px, px); d.draw(cv);
+                return b;
+            });
+        }
+        return null;
     }
 
     // ---------- 0.10.3: pictures from the game's own Google Play listing (runtime only, cached, never bundled) ----------
@@ -314,12 +354,23 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (playArtCache.containsKey(k)) return playArtCache.get(k);
         java.io.File dir = new java.io.File(getCacheDir(), "playart"), f = PlayArt.featureFile(dir, pkg);
         if (f.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(f));
-        if (!PlayArt.missFile(dir, pkg).exists() && online() && fetching.add("play:" + pkg))
-            new Thread(() -> {
-                boolean ok = PlayArt.fetch(PlayArt.PLAY, pkg, dir);
-                runOnUiThread(() -> { fetching.remove("play:" + pkg); if (!ok || !f.isFile()) playArtCache.put(k, null); view.invalidate(); });
-            }).start();
+        if (!PlayArt.isFreshMiss(dir, pkg) && online()) requestPlayArt(pkg, dir);
         return null;
+    }
+
+    private ArtLoader artLoader;
+    @Override public void artUpdated(String key) { if (view != null) view.postInvalidate(); }
+    private void requestPlayArt(String pkg, java.io.File dir) {
+        if (artLoader == null || pkg == null) return;
+        artLoader.requestPlay(pkg, dir);
+    }
+    private void artLoaderRequestSteam(String appid, java.io.File dir) {
+        if (artLoader == null || appid == null) return;
+        artLoader.requestSteam(appid, dir);
+    }
+    private void artLoaderRequestRoblox(String place, java.io.File dir) {
+        if (artLoader == null || place == null) return;
+        artLoader.requestRoblox(place, dir);
     }
 
     /** 0.10.17: Kids Games tiles. The game's own Play listing feature graphic (fetched at runtime like GeForce NOW's,
@@ -360,23 +411,20 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private android.graphics.Bitmap playArt(Catalog.Item it, boolean feature) {
-        if (it.isAction() || it.isRom() || it.webUrl != null || it.storePackage() == null) return null;
-        Intent li = launchIntent(it);
-        if (li != null && li.getComponent() != null)
-            return feature ? null : appIcon(Catalog.deviceApp(it.label, li.getComponent().getPackageName(), li.getComponent().getClassName()));
+        // 0.10.46: web tiles (Xbox / GeForce NOW / Luna / Boosteroid) still have a Play package — fetch their icon.
+        if (it == null || it.isRom() || it.storePackage() == null) return null;
+        if (it.isAction() && it.storePackage() == null) return null;
+        android.graphics.Bitmap inst = installedIcon(it);
+        if (inst != null && !feature) return inst;
         String pkg = it.storePackage(), k = pkg + (feature ? "#f" : "#i");
         if (playArtCache.containsKey(k)) return playArtCache.get(k);
         java.io.File dir = new java.io.File(getCacheDir(), "playart");
         java.io.File f = feature ? PlayArt.featureFile(dir, pkg) : PlayArt.iconFile(dir, pkg);
-        if (f.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(f));
-        android.graphics.Bitmap b = null;
-        if (!PlayArt.missFile(dir, pkg).exists() && online() && fetching.add("play:" + pkg))
-            new Thread(() -> {
-                boolean ok = PlayArt.fetch(PlayArt.PLAY, pkg, dir);
-                runOnUiThread(() -> { fetching.remove("play:" + pkg); if (ok) { playArtCache.remove(pkg + "#i"); playArtCache.remove(pkg + "#f"); } else { playArtCache.put(pkg + "#i", null); playArtCache.put(pkg + "#f", null); } view.invalidate(); });
-            }).start();
-        if (b != null || f.isFile() || PlayArt.missFile(dir, pkg).exists()) playArtCache.put(k, b);
-        return b;
+        if (!f.isFile() && feature) f = PlayArt.iconFile(dir, pkg);   // feature graphic optional; use the icon
+        final java.io.File pic = f;
+        if (pic.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(pic));
+        if (!PlayArt.isFreshMiss(dir, pkg) && online()) requestPlayArt(pkg, dir);
+        return null;
     }
 
     // ---------- 0.9.5: game pictures ----------
@@ -390,9 +438,15 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (store != null || Catalog.steamAppId(it) != null || Catalog.robloxPlaceId(it) != null || Catalog.modeAsset(it) != null)
             return store;   // 0.10.32: runtime Steam / Roblox art, original mode fallback
         if (Catalog.isDreamcastRom(it) || Catalog.isPspRom(it)) return gameCover(it);   // 0.10.12: the player's own cover, else a title card
-        if (it == Catalog.GEFORCE_NOW) { android.graphics.Bitmap w = playFeature(it); if (w != null) return w; }   // 0.10.6 wide covers
+        if (it == Catalog.GEFORCE_NOW || it == Catalog.GFN || it == Catalog.XBOX || it == Catalog.LUNA || it == Catalog.BOOST || it == Catalog.RETROARCH)
+            { android.graphics.Bitmap w = playArt(it, true); if (w != null) return w; android.graphics.Bitmap ic = installedIcon(it); if (ic != null) return ic; }
         if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();   // 0.10.37: official Steam header at runtime, no bundled Duat art
-        if (!it.isRom() && !it.isAction() && !it.isDeviceApp() && launchIntent(it) == null) return playArt(it, true);   // 0.10.3
+        if (!it.isRom() && !it.isAction()) {
+            android.graphics.Bitmap w = playArt(it, true);
+            if (w != null) return w;
+            android.graphics.Bitmap ic = installedIcon(it);
+            if (ic != null) return ic;
+        }
         android.graphics.Bitmap b = null;
         if (!it.isRom() && !it.isAction() && !it.isDeviceApp()) {     // a catalogue tile (Steam, Steam Link): the installed app's own banner
             Intent li = launchIntent(it);
@@ -415,7 +469,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (f.isFile()) return decodeLater(coverCache, k, () -> decodeCover(f));
             fetchCover(it, f); return null;           // not cached yet: fetched in the background, shown when it arrives
         }
-        coverCache.put(k, b);
+        // 0.10.46: do not cache a null cover — a later Play / PackageManager result can still arrive.
         return b;
     }
 
@@ -497,7 +551,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             android.graphics.Bitmap b = null;
             try { b = job.call(); } catch (Exception ignored) { }
             android.graphics.Bitmap fb = b;
-            runOnUiThread(() -> { cache.put(key, fb); fetching.remove("dec:" + key); if (view != null) view.invalidate(); });
+            runOnUiThread(() -> { if (fb != null) cache.put(key, fb); fetching.remove("dec:" + key); if (view != null) view.invalidate(); });
         }).start();
         return null;
     }
@@ -1677,15 +1731,13 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (appid != null) {
             File f = StoreArt.steamFile(dir, appid);
             if (f.isFile()) return decodeLater(coverCache, it.key(), () -> android.graphics.BitmapFactory.decodeFile(f.getPath()));
-            if (online() && fetching.add("steam:" + appid))
-                new Thread(() -> { boolean ok = StoreArt.fetchSteam(appid, dir); fetching.remove("steam:" + appid); if (ok) runOnUiThread(() -> { coverCache.remove(it.key()); view.invalidate(); }); }).start();
+            if (online()) artLoaderRequestSteam(appid, dir);
             return modeBitmap(asset);
         }
         if (place != null) {
             File f = StoreArt.robloxFile(dir, place);
             if (f.isFile()) return decodeLater(coverCache, it.key(), () -> android.graphics.BitmapFactory.decodeFile(f.getPath()));
-            if (online() && fetching.add("roblox:" + place))
-                new Thread(() -> { boolean ok = StoreArt.fetchRoblox(place, dir); fetching.remove("roblox:" + place); if (ok) runOnUiThread(() -> { coverCache.remove(it.key()); view.invalidate(); }); }).start();
+            if (online()) artLoaderRequestRoblox(place, dir);
             return modeBitmap(asset);
         }
         return modeBitmap(asset);

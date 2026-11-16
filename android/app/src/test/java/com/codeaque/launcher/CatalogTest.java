@@ -205,6 +205,27 @@ public class CatalogTest {
             String[] a = PlayArt.parse("<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/abc=s0-br30\">", false);
             check(a[0] == null && "https://play-lh.googleusercontent.com/abc=s256".equals(a[1]), "real Play icon url " + a[1]);
             check(PlayArt.listingUrl(PlayArt.PLAY, "com.roblox.client").equals("https://play.google.com/store/apps/details?id=com.roblox.client&hl=en_GB"), "listing url");
+            check(ArtLoader.PARALLEL == 3 && ArtLoader.MAX_TRIES == 3, "art loader bounds");
+            check(ArtLoader.backoffMs(0) == 400 && ArtLoader.backoffMs(1) == 1200 && ArtLoader.backoffMs(2) == 3600, "art backoff");
+            check(ArtLoader.OK == 1 && ArtLoader.NONE == 0 && ArtLoader.RETRY == -1, "art status");
+            {
+                final int[] plays = {0};
+                ArtLoader.Backend back = new ArtLoader.Backend() {
+                    public int play(String pkg, java.io.File dir) { plays[0]++; return ArtLoader.OK; }
+                    public int roblox(String place, java.io.File dir) { return ArtLoader.NONE; }
+                    public int steam(String appid, java.io.File dir) { return ArtLoader.NONE; }
+                };
+                ArtLoader loader = new ArtLoader(back, null);
+                java.io.File artDir = java.io.File.createTempFile("art", "d"); artDir.delete(); artDir.mkdirs();
+                for (int i = 0; i < 20; i++) loader.requestPlay("com.example.game" + i, artDir);
+                check(loader.queued() == 20, "scroll does not drop art requests: " + loader.queued());
+                loader.requestPlay("com.example.game0", artDir);   // already queued — still 20, not dropped, not duplicated
+                check(loader.queued() == 20, "duplicate play request is not a second slot");
+                int ran = 0;
+                while (loader.step()) ran++;
+                check(ran == 20 && plays[0] == 20 && loader.queued() == 0, "all queued art jobs run");
+            }
+
         } catch (java.io.IOException e) { throw new AssertionError(e); }
     }
 

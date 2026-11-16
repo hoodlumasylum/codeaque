@@ -65,31 +65,54 @@ public final class PlayArt {
     public static File featureFile(File dir, String pkg) { return new File(dir, pkg + ".feature.png"); }
     public static File missFile(File dir, String pkg) { return new File(dir, pkg + ".miss"); }
 
+    /** A miss file younger than this is treated as "no art"; older ones are retried. */
+    public static final long MISS_TTL_MS = 24L * 60 * 60 * 1000;
+    public static boolean isFreshMiss(File dir, String pkg) {
+        File m = missFile(dir, pkg);
+        if (!m.isFile()) return false;
+        return System.currentTimeMillis() - m.lastModified() < MISS_TTL_MS;
+    }
+
     /** Fetch the listing once and cache its pictures in dir. Returns true when at least the icon was saved.
      *  Offline or on any error nothing is saved and the tile keeps CodeAque's own icon and label. */
     public static boolean fetch(String base, String pkg, File dir) {
+        return fetchStatus(base, pkg, dir) == ArtLoader.OK;
+    }
+
+    /** {@link ArtLoader#OK} icon saved, {@link ArtLoader#NONE} confirmed no usable art (a miss may be stored),
+     *  {@link ArtLoader#RETRY} a transient error — do not write a miss. */
+    public static int fetchStatus(String base, String pkg, File dir) {
         boolean test = !PLAY.equals(base);
-        if (test && !allowed(base + "/", true)) return false;
+        if (test && !allowed(base + "/", true)) return ArtLoader.NONE;
         String url = listingUrl(base, pkg);
-        if (url == null) return false;
+        if (url == null) return ArtLoader.NONE;
+        if (!test && url.indexOf("gl=") < 0) url = url + "&gl=GB";
         dir.mkdirs();
         try {
             String[] art = parse(get(url, 2L << 20), test);
-            if (art[1] == null) { missFile(dir, pkg).createNewFile(); return false; }
+            if (art[1] == null) { missFile(dir, pkg).createNewFile(); return ArtLoader.NONE; }
             boolean ok = save(art[1], iconFile(dir, pkg));
             if (art[0] != null) save(art[0], featureFile(dir, pkg));
-            return ok;
-        } catch (Exception e) { return false; }
+            if (ok) { File miss = missFile(dir, pkg); if (miss.isFile()) miss.delete(); }
+            return ok ? ArtLoader.OK : ArtLoader.RETRY;
+        } catch (Exception e) { return ArtLoader.RETRY; }
     }
 
     static String get(String url, long max) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setConnectTimeout(8000); c.setReadTimeout(15000); c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36");
-        try (InputStream in = c.getInputStream()) {
-            if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
-            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream(); byte[] b = new byte[16384]; int n;
-            while ((n = in.read(b)) > 0) { o.write(b, 0, n); if (o.size() > max) throw new java.io.IOException("too big"); }
-            return o.toString("UTF-8");
+        c.setConnectTimeout(8000); c.setReadTimeout(15000);
+        c.setInstanceFollowRedirects(true);
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36");
+        c.setRequestProperty("Accept-Language", "en-GB,en;q=0.9");
+        try {
+            int code = c.getResponseCode();
+            InputStream raw = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            if (code != 200 || raw == null) throw new java.io.IOException("HTTP " + code);
+            try (InputStream in = raw) {
+                java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream(); byte[] b = new byte[16384]; int n;
+                while ((n = in.read(b)) > 0) { o.write(b, 0, n); if (o.size() > max) throw new java.io.IOException("too big"); }
+                return o.toString("UTF-8");
+            }
         } finally { c.disconnect(); }
     }
 
