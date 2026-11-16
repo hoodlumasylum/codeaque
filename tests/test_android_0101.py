@@ -112,6 +112,10 @@ def test_kids_mode_big_and_locked_down():
     c = (SRC / "Catalog.java").read_text()
     km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
     assert "addGameTabs(" in c and '"kcloud"' in c and "allowedEmus" in c
+    assert 'if (adult) c.add(new Category("kcloud"' in c
+    assert 'else c.add(new Category("kcloud"' not in c
+    assert "cloudGaming(" in c and "if (cloudGaming(it)) return true;" in c
+    assert "cloudGamingPkg(" in (SRC / "MainActivity.java").read_text()
     kp = (SRC / "KidsPlay.java").read_text()
     assert '"kpuzzle"' in kp and '"kstyle"' in kp and "KidsPlay.CAT_IDS" in c
     for bad in ("RETROARCH", "romfolder", "settings", "ask", "projector", "k56", "bios"):

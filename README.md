@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.44
+
+**No Cloud gaming in Kids mode (Android).** Kids and Kids 12+ no longer show a Cloud tab, or Xbox Cloud, GeForce NOW, Amazon Luna, Boosteroid, or Marvel Rivals tiles. Those stay in adult mode. Kids shows only Android games (including Roblox, Roblox-style, and the kids categories) plus any emulators a parent ticked in Emulators in Kids mode.
+
 ## What's new in 0.10.43
 
 **Kids-style home is the adult default (Android).** Adult mode now uses the same tabbed, vertical scrolling layout as Kids mode (icon, name and description under each category). The old busy tile layout is still available from Settings → Classic home layout. Anyone who already turned that toggle on keeps the classic layout; everyone else gets the new default.

@@ -1113,8 +1113,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         java.util.Set<String> allow = new java.util.TreeSet<>();
         allow.add(getPackageName());
         java.util.List<Catalog.Item> games = new java.util.ArrayList<>();
-        games.add(Catalog.ROBLOX); games.add(Catalog.MINECRAFT); games.add(Catalog.GEFORCE_NOW);
-        games.add(Catalog.XBOX); games.add(Catalog.GFN); games.add(Catalog.LUNA); games.add(Catalog.BOOST);
+        games.add(Catalog.ROBLOX); games.add(Catalog.MINECRAFT);
         for (Catalog.Item k : Catalog.KIDS) games.add(k);
         for (KidsPlay.Game g : KidsPlay.ALL) {
             if (KidsPlay.allowed(g.pegi, KidsPlay.maxPegi(kids12()))) games.add(g.item());
@@ -1124,14 +1123,17 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (it == null) continue;
             if (Catalog.kidsEmulator(it) && !Catalog.emuAllowed(it, emusOk)) continue;
             for (String p : it.packages) if (p != null && !ScreenTime.blockedKidPackage(p)
+                    && !Catalog.cloudGamingPkg(p)
                     && (!Catalog.emulatorPkg(p) || emusOk.contains(p))) allow.add(p);
         }
         for (String p : prefs.getStringSet("kidsApproved", java.util.Collections.<String>emptySet()))
-            if (p != null && !ScreenTime.blockedKidPackage(p) && (!Catalog.emulatorPkg(p) || emusOk.contains(p))) allow.add(p);
+            if (p != null && !ScreenTime.blockedKidPackage(p) && !Catalog.cloudGamingPkg(p)
+                    && (!Catalog.emulatorPkg(p) || emusOk.contains(p))) allow.add(p);
         for (String p : emusOk)
-            if (p != null && !ScreenTime.blockedKidPackage(p)) allow.add(p);
+            if (p != null && !ScreenTime.blockedKidPackage(p) && !Catalog.cloudGamingPkg(p)) allow.add(p);
         String fg = prefs.getString("kidsFgPkg", null);
-        if (fg != null && !ScreenTime.blockedKidPackage(fg) && !Catalog.emulatorPkg(fg)) allow.add(fg);
+        if (fg != null && !ScreenTime.blockedKidPackage(fg) && !Catalog.emulatorPkg(fg)
+                && !Catalog.cloudGamingPkg(fg)) allow.add(fg);
         return allow;
     }
 

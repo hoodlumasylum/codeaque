@@ -66,16 +66,15 @@ public class CatalogTest {
         check(kp == km.size() - 1 && kth > 0 && kdc < 0 && kpsp < 0 && kg < 0
                 && Catalog.indexOf(km, "kpuzzle") == 0 && Catalog.indexOf(km, "kracing") == 1
                 && Catalog.indexOf(km, "kadventure") == 2 && Catalog.indexOf(km, "klearning") == 3
-                && Catalog.indexOf(km, "kstyle") == 4 && kr == 5 && Catalog.indexOf(km, "kcloud") == 6
+                && Catalog.indexOf(km, "kstyle") == 4 && kr == 5 && Catalog.indexOf(km, "kcloud") < 0
                 && km.get(kw).items.size() == 2 && km.get(kw).items.get(0) == Catalog.KIDS_WIFI
                 && km.get(kw).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action)
                 && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(kr).items.get(0) == Catalog.ROBLOX
-                && !km.get(Catalog.indexOf(km, "kcloud")).items.contains(Catalog.MARVEL_RIVALS)
                 && kst < 0 && Catalog.kidsBlocked(Catalog.PLAY_STORE), "kids mode rows");
         for (Catalog.Category k : km) for (Catalog.Item i : k.items)
-            check(!i.isRom() && (!i.isAction() || i.action.startsWith("gfn:") || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")), "kids mode has only Android/cloud games: " + i.label);
+            check(!i.isRom() && !Catalog.cloudGaming(i) && (!i.isAction() || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")), "kids mode has only Android games: " + i.label);
         playArtChecks();
-        check(c.get(0).items.get(7) == Catalog.MARVEL_RIVALS && !km.get(Catalog.indexOf(km, "kcloud")).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured, not in Kids Cloud");
+        check(c.get(0).items.get(7) == Catalog.MARVEL_RIVALS && Catalog.indexOf(km, "kcloud") < 0, "Marvel Rivals on Featured, not in Kids");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
         check(Catalog.RIVALS_HEADER.startsWith("https://") && Catalog.RIVALS_HEADER.contains("/2767030/"), "Steam header");
         check("Home".equals(Catalog.cleanSsid("\"Home\"")) && Catalog.cleanSsid("<unknown ssid>") == null && Catalog.cleanSsid(null) == null, "ssid");
@@ -330,14 +329,15 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.containsAll(java.util.List.of("kpuzzle", "kracing", "kadventure", "klearning", "kstyle", "kroblox", "kcloud", "kadded", "kthemes", "kwifi", "kparent"))
-                            && !ids.contains("kplay") && !ids.contains("kgames") && !ids.contains("retro") && !ids.contains("dreamcast") && !ids.contains("psp"), "kids rows exact " + ids);
+                    check(ids.containsAll(java.util.List.of("kpuzzle", "kracing", "kadventure", "klearning", "kstyle", "kroblox", "kadded", "kthemes", "kwifi", "kparent"))
+                            && !ids.contains("kcloud") && !ids.contains("kplay") && !ids.contains("kgames") && !ids.contains("retro") && !ids.contains("dreamcast") && !ids.contains("psp"), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
                     check(Catalog.kidsBlocked(Catalog.act("All apps", "grid", "allapps")) && Catalog.streamingPkg("tv.twitch.android.app") && Catalog.streamingPkg("com.zhiliaoapp.musically") && Catalog.streamingPkg("tv.pluto.android"), "blocked");
                     for (Catalog.Item k : Catalog.KIDS) check(!Catalog.kidsBlocked(k), "kids game allowed " + k.label);
-                    for (Catalog.Item k : new Catalog.Item[]{Catalog.ROBLOX, Catalog.MINECRAFT, Catalog.GEFORCE_NOW, Catalog.XBOX, Catalog.GFN, Catalog.LUNA, Catalog.BOOST}) check(!Catalog.kidsBlocked(k), "allowed " + k.label);
-                    check(!Catalog.kidsBlocked(Catalog.MARVEL_RIVALS), "Marvel Rivals tile itself is not a blocked type");
+                    for (Catalog.Item k : new Catalog.Item[]{Catalog.ROBLOX, Catalog.MINECRAFT}) check(!Catalog.kidsBlocked(k), "allowed " + k.label);
+                    for (Catalog.Item k : new Catalog.Item[]{Catalog.GEFORCE_NOW, Catalog.XBOX, Catalog.GFN, Catalog.LUNA, Catalog.BOOST, Catalog.MARVEL_RIVALS})
+                        check(Catalog.kidsBlocked(k) && Catalog.cloudGaming(k), "cloud blocked in kids " + k.label);
                     check(Catalog.kidsBlocked(Catalog.PLAY_STORE), "play store blocked in kids");
                     // 0.10.37: emulator apps hidden in Kids / Kids 12+, still listed in adult mode
                     Catalog.Item ra = Catalog.deviceApp("RetroArch", "com.retroarch", "x.Main");

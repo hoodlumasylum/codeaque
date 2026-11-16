@@ -272,10 +272,27 @@ public final class Catalog {
     }
     /** 0.10.24: things Kids mode never shows or opens: All Apps, and streaming / video apps. */
     public static boolean kidsBlocked(Item it) { return kidsBlocked(it, java.util.Collections.<String>emptySet()); }
-    /** 0.10.42: ROM tiles stay hidden in Kids. Emulators stay hidden unless a parent ticked them for this profile. */
+    /** 0.10.44: Cloud gaming is hidden in Kids / Kids 12+ (Xbox Cloud, GeForce NOW, Luna, Boosteroid, Marvel Rivals). */
+    public static boolean cloudGamingPkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase(java.util.Locale.ROOT);
+        return p.contains("boosteroid") || p.contains("geforcenow") || p.contains("xcloud")
+                || p.contains("gamepass") || p.contains("amazon.luna");
+    }
+    public static boolean cloudGaming(Item it) {
+        if (it == null) return false;
+        if (it == XBOX || it == GFN || it == LUNA || it == BOOST || it == GEFORCE_NOW || it == MARVEL_RIVALS) return true;
+        if (it.action != null && (it.action.equals("goto:cloud") || it.action.startsWith("gfn:"))) return true;
+        if (cloudGamingPkg(it.pkg)) return true;
+        for (String p : it.packages) if (cloudGamingPkg(p)) return true;
+        return false;
+    }
+    /** 0.10.42: ROM tiles stay hidden in Kids. Emulators stay hidden unless a parent ticked them for this profile.
+     *  0.10.44: cloud gaming tiles are also blocked. */
     public static boolean kidsBlocked(Item it, java.util.Set<String> allowedEmus) {
         if (it == null) return false;
         if (it.isRom()) return true;
+        if (cloudGaming(it)) return true;
         if (it == PLAY_STORE) return true;   // 0.10.37: no Play Store tile or shortcut in Kids mode
         if ("allapps".equals(it.action) || "downloads".equals(it.action) || "filemgr".equals(it.action) || "settings".equals(it.action) || "browser".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
         if ("boxset".equals(it.action) || "boxsetboot".equals(it.action) || "goto:trilogies".equals(it.action) || "goto:coop".equals(it.action)) return true;
@@ -507,9 +524,10 @@ public final class Catalog {
         return kidsMode(roms, added, approved, false, java.util.Collections.<String>emptySet());
     }
     /**
-     * 0.10.42 Kids / Kids 12+ home: Android game category tabs + Cloud, never Retro / Dreamcast / PSP /
+     * 0.10.42 Kids / Kids 12+ home: Android game category tabs, never Retro / Dreamcast / PSP /
      * Streams / Media / Trilogies / Co-op / Box Set / ROM tiles. Emulators only if a parent ticked them
-     * for this profile. {@code roms} is ignored (kept so older callers still compile).
+     * for this profile. 0.10.44: no Cloud tab either — Android games plus ticked emulators only.
+     * {@code roms} is ignored (kept so older callers still compile).
      */
     public static List<Category> kidsMode(List<Item> roms, List<Item> added, java.util.Set<String> approved,
                                          boolean kids12, java.util.Set<String> allowedEmus) {
@@ -524,6 +542,7 @@ public final class Catalog {
                 if (emuAllowed(a, allowedEmus)) emuItems.add(a);
                 continue;
             }
+            if (cloudGaming(a)) continue;
             if (!kidsBlocked(a, allowedEmus) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
         }
         if (!newGames.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", newGames.toArray(new Item[0])));
@@ -556,7 +575,6 @@ public final class Catalog {
         else { for (Item it : ROBLOX_ITEMS) rbx.add(it); }
         c.add(new Category("kroblox", "Roblox", "cube", rbx.toArray(new Item[0])));
         if (adult) c.add(new Category("kcloud", "Cloud", "cloud", XBOX, GFN, LUNA, BOOST, GEFORCE_NOW, MARVEL_RIVALS));
-        else c.add(new Category("kcloud", "Cloud", "cloud", XBOX, GFN, LUNA, BOOST));
     }
 
     /** Kids row (package, PEGI): PEGI 3, except Subway Surfers (PEGI 7) and the three Bandai Namco games below (PEGI 16, 0.10.2). */
