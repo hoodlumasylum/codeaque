@@ -45,12 +45,14 @@ public class HomeView extends View {
         void timeUpAskParent();
         /** 0.10.37: while a parent PIN dialog is open, tiles must not activate (wrong PIN / A / Enter must not launch). */
         boolean pinDialogOpen();
-        /** 0.10.42 / 0.10.43: vertical list layout (Kids always; adult default unless Classic home is on). */
+        /** 0.10.42 / 0.10.43 / 0.10.45: tabbed big-tile grid (Kids always; adult default unless Classic home is on). */
         boolean browseLayout();
         /** Description under a browse-list title; empty if none. */
         String itemBlurb(Catalog.Item item);
         /** Load the next page of a paged Kids/adult game tab when the list is near its end. */
         void kidsBrowseMore(String catId);
+        /** 0.10.45: parent-PIN, then open Play Store pages for the ticked games (skip installed). */
+        void installPicked(java.util.List<String> pkgs);
     }
 
     private Palette T = Palette.NEON;
@@ -102,6 +104,9 @@ public class HomeView extends View {
     private VelocityTracker velocity;
     private int logoTaps; private long logoTapAt;
     private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
+    private final RectF installBtn = new RectF();
+    private final java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
+    private long holdAt; private int holdTile = -1; private boolean longPressFired, activateHeld;
     private final RectF promptOpen = new RectF(), promptBack = new RectF(), pill = new RectF();
     private long clockAt; private String clockTxt = "";
 
@@ -181,10 +186,20 @@ public class HomeView extends View {
                 setCat(cat + 1); return true;
             case KeyEvent.KEYCODE_DPAD_LEFT: if (inCats) setCat(cat - 1); else setTile(tile - 1); return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT: if (inCats) setCat(cat + 1); else setTile(tile + 1); return true;
-            case KeyEvent.KEYCODE_DPAD_UP: if (!inCats) { inCats = true; host.sound("hhmove"); invalidate(); } return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN: if (inCats) { inCats = false; host.sound("hhmove"); invalidate(); } return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (!inCats) {
+                    if (browseList() && tile >= browseCols()) { setTile(tile - browseCols()); return true; }
+                    inCats = true; host.sound("hhmove"); invalidate();
+                }
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (inCats) { inCats = false; host.sound("hhmove"); invalidate(); }
+                else if (browseList()) setTile(tile + browseCols());
+                return true;
             case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_DPAD_CENTER:
-                if (inCats) { inCats = false; host.sound("hhselect"); invalidate(); } else activate(); return true;
+                // 0.10.45: short press opens; hold A / Enter ticks the tile for multi-select install
+                if (e.getRepeatCount() == 0) e.startTracking();
+                return true;
             case KeyEvent.KEYCODE_BUTTON_START:
                 if (boxset) { if (e.getRepeatCount() == 0) e.startTracking(); return true; }
                 if (inCats) { inCats = false; host.sound("hhselect"); invalidate(); } else activate(); return true;
@@ -205,7 +220,23 @@ public class HomeView extends View {
         if (kids && (code == KeyEvent.KEYCODE_BUTTON_SELECT || code == KeyEvent.KEYCODE_BUTTON_Y || code == KeyEvent.KEYCODE_MENU)) {
             host.open(Catalog.KIDS_OFF); return true;
         }
+        if ((code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_DPAD_CENTER)
+                && !inCats && browseList()) {
+            togglePick(tile); activateHeld = true; return true;
+        }
         return super.onKeyLongPress(code, e);
+    }
+
+    @Override public boolean onKeyUp(int code, KeyEvent e) {
+        if (code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_DPAD_CENTER) {
+            if (activateHeld) { activateHeld = false; return true; }
+            if (e.isTracking() && !e.isCanceled()) {
+                if (inCats) { inCats = false; host.sound("hhselect"); invalidate(); }
+                else activate();
+            }
+            return true;
+        }
+        return super.onKeyUp(code, e);
     }
 
     @Override public boolean onGenericMotionEvent(MotionEvent e) {   // left stick / hat as a D-pad, with repeat delay
@@ -237,7 +268,9 @@ public class HomeView extends View {
             float rh = browseRowH(), span = browseBottom() - browseTop();
             if (rh <= 1) return 0;
             float vis = Math.max(1, span / rh);
-            return Math.max(0, items().size() - vis);
+            int cols = Math.max(1, browseCols());
+            int rows = (items().size() + cols - 1) / cols;
+            return Math.max(0, rows - vis);
         }
         float step = tileW() + tileGap();
         if (step <= 1) return 0;
@@ -252,10 +285,65 @@ public class HomeView extends View {
         if ("kthemes".equals(id) || "kwifi".equals(id) || "kparent".equals(id) || "settings".equals(id) || "power".equals(id)) return false;
         return true;
     }
-    private float browseRowH() { return 92 * s; }
-    private float browseTop() { return Math.max(catsBottom() + 10 * s, getHeight() * 0.28f); }
+    /** 0.10.45: a 2-row grid of large tiles under the category tabs (3 wide on a 640x480 handheld). */
+    private float browsePad() { return 16 * s; }
+    private int browseCols() {
+        int w = getWidth();
+        if (w >= 1500) return 5;
+        if (w >= 1100) return 4;
+        return 3;
+    }
+    private float browseGap() { return 10 * s; }
+    private float browseNameH() { return 22 * s; }
+    private float browseTileW() {
+        int cols = Math.max(1, browseCols());
+        float avail = Math.max(40 * s, getWidth() - 2 * browsePad());
+        return Math.max(40 * s, (avail - (cols - 1) * browseGap()) / cols);
+    }
+    private float browseTileH() {
+        float span = Math.max(80 * s, browseBottom() - browseTop());
+        float h = span / 2.08f - browseNameH() - browseGap();
+        float w = browseTileW();
+        if (h > w * 1.2f) h = w * 1.2f;
+        if (h < 64 * s) h = 64 * s;
+        return h;
+    }
+    private float browseRowH() { return browseTileH() + browseNameH() + browseGap(); }
+    private float browseTop() { return catsBottom() + 8 * s; }
     private float browseBottom() { return getHeight() - footH(); }
     private float clampScroll(float v) { float m = maxScroll(); return v < 0 ? 0 : v > m ? m : v; }
+
+    private String pickKey(Catalog.Item it) {
+        if (it == null) return null;
+        String p = it.storePackage();
+        if (p != null && !p.isEmpty()) return p;
+        return null;
+    }
+    private boolean isPicked(Catalog.Item it) {
+        String k = pickKey(it);
+        return k != null && picked.contains(k);
+    }
+    private void togglePick(int i) {
+        if (i < 0 || i >= items().size()) return;
+        String k = pickKey(items().get(i));
+        if (k == null) return;
+        if (!picked.remove(k)) picked.add(k);
+        host.sound("hhselect");
+        invalidate();
+    }
+    public void clearPicks() { picked.clear(); installBtn.setEmpty(); invalidate(); }
+    private int hitBrowseItem(float x, float y) {
+        if (!browseList() || y < browseTop() || y > browseBottom()) return -1;
+        int cols = Math.max(1, browseCols());
+        float left = browsePad(), tw = browseTileW(), gap = browseGap(), rh = browseRowH();
+        int col = (int) Math.floor((x - left) / (tw + gap));
+        if (col < 0 || col >= cols || x > left + col * (tw + gap) + tw) return -1;
+        int row = (int) Math.floor((y - browseTop()) / rh + scrollAnim);
+        if (row < 0) return -1;
+        int i = row * cols + col;
+        return (i >= 0 && i < items().size()) ? i : -1;
+    }
+    private boolean onInstallBtn(float x, float y) { return !picked.isEmpty() && installBtn.contains(x, y); }
 
     private boolean onRobloxRow() {
         if (boxset || cats.isEmpty()) return false;
@@ -286,8 +374,10 @@ public class HomeView extends View {
     private boolean nearBrowseEnd() {
         int n = items().size();
         if (n == 0) return false;
-        int pos = Math.max(tile, (int) Math.ceil(scrollAnim));
-        return n - pos <= 3;
+        int cols = Math.max(1, browseCols());
+        int row = Math.max(tile / cols, (int) Math.ceil(scrollAnim));
+        int pos = (row + 2) * cols;
+        return n - pos <= cols * 2;
     }
 
     /** Seven taps, each within 0.9 s of the last, open the hidden parent menu (only useful while Lock mode is on). */
@@ -309,6 +399,7 @@ public class HomeView extends View {
             else { prompt = null; host.sound("hhback"); }
             invalidate(); return;
         }
+        if (onInstallBtn(x, y)) { confirmInstall(); return; }
         if (backBtn.contains(x, y)) { goBack(); return; }
         if (logoTop.contains(x, y) || logoCenter.contains(x, y)) { logoHit(); return; }
         if (!boxset && y < catsBottom() && y > H * 0.12f) {
@@ -316,8 +407,8 @@ public class HomeView extends View {
             setCat((int) (x / cw)); inCats = false; return;
         }
         if (browseList() && y >= browseTop() && y <= browseBottom()) {
-            int i = (int) Math.floor((y - browseTop()) / browseRowH() + scrollAnim);
-            if (i >= 0 && i < items().size()) { inCats = false; tile = i; activate(); }
+            int i = hitBrowseItem(x, y);
+            if (i >= 0) { inCats = false; tile = i; activate(); }
             return;
         }
         if (y > tilesTop() && y < tilesTop() + tileH()) {
@@ -335,16 +426,22 @@ public class HomeView extends View {
                 if (splash != null) { splash = null; invalidate(); return true; }
                 downX = x; downY = y; lastTouchX = x; lastTouchY = y; downTime = e.getEventTime();
                 rowDrag = false; sectionSwipe = false; gestureChose = false;
+                longPressFired = false; holdTile = -1; holdAt = 0;
                 if (velocity != null) velocity.recycle();
                 velocity = VelocityTracker.obtain();
                 velocity.addMovement(e);
                 userScroll = false; flingV = 0;
+                if (!onInstallBtn(x, y)) {
+                    int hi = hitBrowseItem(x, y);
+                    if (hi >= 0) { holdTile = hi; holdAt = e.getEventTime() + 450; postInvalidateDelayed(450); }
+                }
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (velocity != null) velocity.addMovement(e);
                 float dx = x - downX, dy = y - downY;
                 if (!gestureChose && Math.hypot(dx, dy) > 28 * s) {
                     gestureChose = true;
+                    holdTile = -1; holdAt = 0;
                     boolean horiz = Math.abs(dx) > Math.abs(dy) * 1.2f;
                     boolean onList = browseList() && downY >= browseTop() && downY <= browseBottom();
                     boolean onTiles = downY > tilesTop() && downY < tilesTop() + tileH();
@@ -373,8 +470,9 @@ public class HomeView extends View {
                 return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                holdTile = -1; holdAt = 0;
                 if (velocity != null) { velocity.addMovement(e); velocity.computeCurrentVelocity(1000); }
-                boolean tap = e.getActionMasked() == MotionEvent.ACTION_UP && !gestureChose && Math.hypot(x - downX, y - downY) < 28 * s;
+                boolean tap = e.getActionMasked() == MotionEvent.ACTION_UP && !gestureChose && !longPressFired && Math.hypot(x - downX, y - downY) < 28 * s;
                 if (tap) onTap(x, y, H);
                 else if (sectionSwipe && !boxset && e.getActionMasked() == MotionEvent.ACTION_UP) {
                     if (x - downX < -40 * s) setCat(cat + 1);
@@ -410,7 +508,8 @@ public class HomeView extends View {
     private boolean covers() {
         if (boxset) return true;
         String id = cats.get(cat).id;
-        if (kids) return id.equals("kplay") || id.equals("kgames") || id.equals("kroblox") || gameRow(id);
+        if (Catalog.kidsBrowseId(id)) return true;
+        if (kids) return id.equals("kplay") || id.equals("kgames") || gameRow(id);
         return id.equals("mygames") || id.equals("steam") || id.equals("trilogies") || id.equals("coop") || id.equals("roblox") || gameRow(id);
     }
     /** 0.10.12: the Dreamcast and handheld game rows use portrait covers (player's own picture or a title card). */
@@ -455,9 +554,24 @@ public class HomeView extends View {
         if (anim) t += dt;
         float k = anim ? Math.min(1, dt * 12) : 1;          // easing towards the target
         catAnim += (cat - catAnim) * k;
-        float vis = Math.max(1, (W - 2 * tilesLeft()) / (tileW() + tileGap()));
-        float maxScroll = Math.max(0, items().size() - vis);
-        float focusTarget = Math.max(0, Math.min(tile - (vis - 1) / 2f, maxScroll));
+        fireTileHold();
+        float vis, maxScroll, focusTarget;
+        if (browseList()) {
+            int cols = Math.max(1, browseCols());
+            int rows = (items().size() + cols - 1) / cols;
+            float span = Math.max(1f, browseBottom() - browseTop());
+            vis = Math.max(1, span / Math.max(1f, browseRowH()));
+            maxScroll = Math.max(0, rows - vis);
+            int focusRow = Math.max(0, tile / cols);
+            if (focusRow < scrollAnim) focusTarget = focusRow;
+            else if (focusRow > scrollAnim + vis - 1f) focusTarget = focusRow - vis + 1f;
+            else focusTarget = scrollAnim;
+            focusTarget = Math.max(0, Math.min(focusTarget, maxScroll));
+        } else {
+            vis = Math.max(1, (W - 2 * tilesLeft()) / (tileW() + tileGap()));
+            maxScroll = Math.max(0, items().size() - vis);
+            focusTarget = Math.max(0, Math.min(tile - (vis - 1) / 2f, maxScroll));
+        }
         boolean coast = userScroll;
         if (userScroll) {
             // Natural deceleration: speed falls off smoothly instead of stopping in one step.
@@ -467,7 +581,8 @@ public class HomeView extends View {
             if (scrollAnim > maxScroll) { scrollAnim = maxScroll; flingV = 0; }
             if (Math.abs(flingV) < 0.08f) {
                 userScroll = false; flingV = 0;
-                tile = Math.max(0, Math.min(items().size() - 1, Math.round(scrollAnim + (vis - 1) / 2f)));
+                if (!browseList())
+                    tile = Math.max(0, Math.min(items().size() - 1, Math.round(scrollAnim + (vis - 1) / 2f)));
             }
         } else {
             float dist = focusTarget - scrollAnim;          // controller focus-follow: always ease, never jump
@@ -482,6 +597,7 @@ public class HomeView extends View {
         if (!browseList() && !boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
         if (browseList()) browseList(c, W, H); else tiles(c, W, H);
         hints(c, W, H);
+        if (browseList()) installFab(c, W, H);
         if (prompt != null) prompt(c, W, H);
         if (kids && host.timeUpScreen()) timeUpPanel(c, W, H);
         if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
@@ -748,49 +864,77 @@ public class HomeView extends View {
         else if (!covers()) spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
     }
 
+    private void fireTileHold() {
+        if (holdTile < 0 || holdAt == 0 || longPressFired) return;
+        if (android.os.SystemClock.uptimeMillis() < holdAt) return;
+        int i = holdTile;
+        holdTile = -1; holdAt = 0; longPressFired = true; gestureChose = true;
+        inCats = false; tile = i;
+        togglePick(i);
+    }
+    private void confirmInstall() {
+        if (picked.isEmpty()) return;
+        java.util.ArrayList<String> pkgs = new java.util.ArrayList<>(picked);
+        host.installPicked(pkgs);
+    }
+    private void installFab(Canvas c, int W, int H) {
+        if (picked.isEmpty()) { installBtn.setEmpty(); return; }
+        String lab = "Install (" + picked.size() + ")";
+        p.setShader(null); p.setFakeBoldText(true); p.setTextSize(18 * s); p.setTextAlign(Paint.Align.CENTER);
+        float tw = p.measureText(lab) + 36 * s, th = 40 * s;
+        float cx = W / 2f, bot = browseBottom() - 6 * s;
+        installBtn.set(cx - tw / 2, bot - th, cx + tw / 2, bot);
+        p.setColor(0xF2E53935); c.drawRoundRect(installBtn, th / 2, th / 2, p);
+        p.setColor(0xFFFFFFFF);
+        c.drawText(lab, installBtn.centerX(), installBtn.centerY() + p.getTextSize() * 0.36f, p);
+        p.setFakeBoldText(false);
+    }
+    private void getBadge(Canvas c, Catalog.Item it) {
+        if (it.isAction() || host.installed(it)) return;
+        String b = it.webUrl != null ? "WEB" : "GET";
+        p.setShader(null); p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
+        RectF br = new RectF(r.right - 44 * s, r.top + 7 * s, r.right - 7 * s, r.top + 23 * s);
+        c.drawRoundRect(br, 8 * s, 8 * s, p);
+        text(c, b, br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+    }
+    private void tickBadge(Canvas c, Catalog.Item it) {
+        if (!isPicked(it)) return;
+        float cx = r.left + 14 * s, cy = r.top + 14 * s, rad = 11 * s;
+        p.setShader(null); p.setColor(0xFF2E7D32);
+        c.drawCircle(cx, cy, rad, p);
+        stroke.setShader(null); stroke.setColor(0xFFFFFFFF); stroke.setStrokeWidth(2.4f * s);
+        c.drawLine(cx - 5 * s, cy, cx - 1.5f * s, cy + 4.5f * s, stroke);
+        c.drawLine(cx - 1.5f * s, cy + 4.5f * s, cx + 6 * s, cy - 4 * s, stroke);
+    }
+
+    /** 0.10.45: old Kids-style big cover tiles in a grid (~2 rows on a small landscape screen). */
     private void browseList(Canvas c, int W, int H) {
         List<Catalog.Item> its = items();
-        float top = browseTop(), bot = browseBottom(), rh = browseRowH(), left = 20 * s, width = W - 40 * s;
+        float top = browseTop(), bot = browseBottom(), rh = browseRowH();
+        float tw = browseTileW(), th = browseTileH(), gap = browseGap(), left = browsePad();
+        int cols = Math.max(1, browseCols());
+        c.save();
+        c.clipRect(0, top - 2 * s, W, bot + 2 * s);
         for (int i = 0; i < its.size(); i++) {
-            float y = top + (i - scrollAnim) * rh;
+            int col = i % cols, row = i / cols;
+            float x = left + col * (tw + gap);
+            float y = top + (row - scrollAnim) * rh;
             if (y + rh < top || y > bot) continue;
             boolean sel = i == tile && !inCats;
-            Catalog.Item it = its.get(i);
-            float pad = 6 * s;
-            r.set(left, y + pad, left + width, y + rh - pad);
-            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
-            c.drawRoundRect(r, 12 * s, 12 * s, p); p.setShader(null);
-            stroke.setStrokeWidth((sel ? 3 : 1.4f) * s);
-            stroke.setColor(sel ? GOLD : T.border);
-            c.drawRoundRect(r, 12 * s, 12 * s, stroke);
-            float isz = 56 * s;
-            iconRect.set(r.left + 12 * s, r.centerY() - isz / 2, r.left + 12 * s + isz, r.centerY() + isz / 2);
-            Bitmap ai = host.appIcon(it);
-            if (ai != null) { p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(ai, null, iconRect, p); }
-            else icon(c, it.icon, iconRect.centerX(), iconRect.centerY(), 26 * s, sel ? T.accentLight : T.accentMid, 2.2f);
-            float tx = iconRect.right + 14 * s, ty = r.top + 22 * s;
-            String lab = it.label;
-            p.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-            text(c, lab, tx, ty, 20 * s, 0xFFFFFFFF, Paint.Align.LEFT, true);
-            String bl = host.itemBlurb(it);
-            if (bl == null) bl = "";
-            if (bl.isEmpty()) bl = host.installed(it) ? "Installed — tap to open." : (it.webUrl != null ? "Opens in the browser, or the app once installed." : "Tap to open the Play Store page.");
-            p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-            float maxW = r.right - tx - 70 * s;
-            if (p.measureText(bl) > maxW) {
-                while (bl.length() > 4 && p.measureText(bl + "…") > maxW) bl = bl.substring(0, bl.length() - 1);
-                bl = bl + "…";
+            Catalog.Item it = its.get(i); badgeItem = it;
+            float grow = sel ? 6 * s : 0;
+            r.set(x - grow, y - grow, x + tw + grow, y + th + grow);
+            if (sel) {
+                p.setShader(new RadialGradient(r.centerX(), r.centerY(), tw * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
+                c.drawCircle(r.centerX(), r.centerY(), tw * 0.85f, p); p.setShader(null);
             }
-            text(c, bl, tx, ty + 22 * s, 13 * s, DIM, Paint.Align.LEFT, false);
-            if (!it.isAction() && !host.installed(it)) {
-                String b = it.webUrl != null ? "WEB" : "GET";
-                p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
-                RectF br = new RectF(r.right - 52 * s, r.top + 10 * s, r.right - 10 * s, r.top + 28 * s);
-                c.drawRoundRect(br, 8 * s, 8 * s, p);
-                text(c, b, br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
-            }
-            timeUpBadge(c, it);
+            coverTile(c, it, sel, false);
+            getBadge(c, it);
+            tickBadge(c, it);
+            updBadge(c);
+            tileName(c, it.label.toUpperCase(Locale.ROOT), x + tw / 2, y + th + browseNameH() - 4 * s, tw - 4 * s, (kids ? 16 : 13) * s, 9 * s);
         }
+        c.restore();
         if (its.isEmpty()) text(c, "Nothing in this list yet.", W / 2f, (top + bot) / 2, 16 * s, DIM, Paint.Align.CENTER, false);
     }
 
@@ -808,7 +952,7 @@ public class HomeView extends View {
                 p.setShader(new RadialGradient(r.centerX(), r.centerY(), w * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), w * 0.85f, p); p.setShader(null);
             }
-            if (covers()) { coverTile(c, it, sel); updBadge(c); continue; }
+            if (covers()) { coverTile(c, it, sel, true); updBadge(c); continue; }
             p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
             c.drawRoundRect(r, 12 * s, 12 * s, p); p.setShader(null);
             stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
@@ -892,7 +1036,8 @@ public class HomeView extends View {
     private final Path clip = new Path();
     private final RectF src = new RectF();
     /** A portrait My Games tile in r: the game's picture (centre-cropped), else CodeAque's own generic art with the app icon. */
-    private void coverTile(Canvas c, Catalog.Item it, boolean sel) {
+    private void coverTile(Canvas c, Catalog.Item it, boolean sel) { coverTile(c, it, sel, true); }
+    private void coverTile(Canvas c, Catalog.Item it, boolean sel, boolean nameInside) {
         float rad = 12 * s;
         boolean kg = kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
         Bitmap cov = kg ? host.wideCover(it) : host.cover(it), ai = cov == null ? host.appIcon(it) : null;
@@ -928,8 +1073,10 @@ public class HomeView extends View {
         stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
         c.drawRoundRect(r, rad, rad, stroke); stroke.setShader(null);
         if (T.snow) { p.setColor(0xF2FFFFFF); r2.set(r.left + 6 * s, r.top - 4 * s, r.right - 6 * s, r.top + 5 * s); c.drawRoundRect(r2, 5 * s, 5 * s, p); }
-        String lab = it.label.toUpperCase(Locale.ROOT);
-        tileName(c, lab, r.centerX(), r.bottom - 10 * s, r.width() - 12 * s, 26 * s * big(), 11 * s);   // 0.10.19 bigger, bolder, up to 2 lines
+        if (nameInside) {
+            String lab = it.label.toUpperCase(Locale.ROOT);
+            tileName(c, lab, r.centerX(), r.bottom - 10 * s, r.width() - 12 * s, 26 * s * big(), 11 * s);   // 0.10.19 bigger, bolder, up to 2 lines
+        }
         timeUpBadge(c, it);
     }
     private final RectF r2 = new RectF();

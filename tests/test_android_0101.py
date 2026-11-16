@@ -123,6 +123,14 @@ def test_kids_mode_big_and_locked_down():
     h = (SRC / "HomeView.java").read_text()
     assert "KIDS_SCALE = 1.7f" in h and "(kids ? 34 : 20) * s" in h
     assert "onKeyLongPress" in h and "host.open(Catalog.KIDS_OFF)" in h and "e.startTracking()" in h
+    # 0.10.45: tabbed big-tile grid (~2 rows), hold A / long-press ticks, Install (N)
+    assert "browseCols()" in h and "span / 2.08f" in h and "installFab(" in h
+    assert "togglePick(" in h and '"Install ("' in h and "tickBadge(" in h and "getBadge(" in h
+    assert "KEYCODE_BUTTON_A" in h and "activateHeld" in h and "holdAt" in h
+    assert "void installPicked(" in h
+    assert "coverTile(c, it, sel, false)" in h and "nameInside" in h
+    ma = (SRC / "MainActivity.java").read_text()
+    assert "void installPicked(" in ma and 'askPin("Parent PIN: install games"' in ma and "startStoreQueue(copy)" in ma
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
     assert 'Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus)' in m and 'getBoolean("kidsMode", false)' in m

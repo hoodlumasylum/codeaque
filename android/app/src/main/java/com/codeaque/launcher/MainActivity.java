@@ -3200,6 +3200,14 @@ public class MainActivity extends Activity implements HomeView.Host {
         have.addAll(more);
         view.replaceRow(catId, have);
     }
+    @Override public void installPicked(java.util.List<String> pkgs) {
+        if (pkgs == null || pkgs.isEmpty()) return;
+        final java.util.ArrayList<String> copy = new java.util.ArrayList<>(pkgs);
+        askPin("Parent PIN: install games", () -> {
+            startStoreQueue(copy);
+            if (view != null) view.clearPicks();
+        });
+    }
     private java.util.Set<String> allowedEmus() {
         String key = kids12() ? "kidsEmu12" : "kidsEmu";
         return new java.util.HashSet<>(prefs.getStringSet(key, java.util.Collections.<String>emptySet()));

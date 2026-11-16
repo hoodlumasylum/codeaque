@@ -31,6 +31,22 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.45
+
+**Big tiles on the tabbed Kids home (Android).** The Puzzle, Racing, Adventure, Learning, Roblox-style, Roblox (and, in adult mode, Cloud) tabs still sit along the top, with the same controller hints at the bottom, but each tab is now a grid of large cover/icon tiles — about two rows on a small landscape screen such as the Win600/K56 — with the game name under each tile and a small GET badge when it isn't installed. A focused tile keeps the gold glow. Lists still page as you reach the end, and D-pad / stick movement follows the grid (up from the first row returns to the category tabs). Adult mode's default home uses the same grid; Settings → Classic home layout still switches back to the old busy tile row. Icons and covers come from the official Play listing at runtime; nothing third-party is bundled.
+
+**Tick and install several games at once.** A long-press on a big game tile, or holding A (or Enter / D-pad centre) on the controller, toggles a green tick on that tile. While any games are ticked, a floating **Install (N)** button appears. It asks for the parent PIN, then opens each ticked game's Play Store page in turn (skips already-installed; shows "Next game (3 of 10)" when you return). A normal tap still opens or gets a single game. Works in Kids, Kids 12+ and adult.
+
+**Many more verified Play Store games.** Each kids category now has well over 100 games with a checked en_GB PEGI rating (PEGI 3 and 7 for Kids; up to 12 for Kids 12+). Adult mode shows every rating. Counts on 16 Nov 2026:
+
+- Puzzle: 747 in Kids, 769 in Kids 12+, 798 in adult
+- Racing: 279 in Kids, 296 in Kids 12+, 331 in adult
+- Adventure: 162 in Kids, 189 in Kids 12+, 228 in adult
+- Learning: 470 in Kids, Kids 12+ and adult
+- Roblox-style: 390 in Kids, 404 in Kids 12+, 438 in adult
+
+Only real Play Store IDs are listed. PEGI 16/18 titles stay out of Kids / Kids 12+.
+
 ## What's new in 0.10.44
 
 **No Cloud gaming in Kids mode (Android).** Kids and Kids 12+ no longer show a Cloud tab, or Xbox Cloud, GeForce NOW, Amazon Luna, Boosteroid, or Marvel Rivals tiles. Those stay in adult mode. Kids shows only Android games (including Roblox, Roblox-style, and the kids categories) plus any emulators a parent ticked in Emulators in Kids mode.

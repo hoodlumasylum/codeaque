@@ -725,7 +725,10 @@ public class CatalogTest {
             check(!KidsPlay.list(g.cat, 7).isEmpty() || g.pegi > 7, "kids categories have PEGI 3/7 titles");
         }
         check(KidsPlay.byPkg("com.mojang.minecraftpe").pegi == 7 && KidsPlay.byPkg("com.sandboxol.blockymods").pegi == 16, "minecraft / blockman go");
-        check(KidsPlay.page(KidsPlay.PUZZLE, 7, 0, 8).size() == 8 && KidsPlay.page(KidsPlay.PUZZLE, 7, 800, 8).isEmpty(), "paging");
+        check(KidsPlay.page(KidsPlay.PUZZLE, 7, 0, 8).size() == 8 && KidsPlay.page(KidsPlay.PUZZLE, 7, 80000, 8).isEmpty(), "paging");
+        check(KidsPlay.count(KidsPlay.PUZZLE, 7) >= 100 && KidsPlay.count(KidsPlay.RACING, 7) >= 100
+                && KidsPlay.count(KidsPlay.ADVENTURE, 7) >= 100 && KidsPlay.count(KidsPlay.LEARNING, 7) >= 100
+                && KidsPlay.count(KidsPlay.STYLE, 7) >= 100, "100+ verified kids games per tab");
         java.util.List<String> q = KidsPlay.storeQueue(java.util.List.of("com.king.candycrushsaga", "com.king.candycrushsaga", "com.bad!", "com.mojang.minecraftpe"), p -> "com.mojang.minecraftpe".equals(p));
         check(q.size() == 1 && q.get(0).equals("com.king.candycrushsaga"), "store queue skips installed and dupes");
         // PEGI 16 titles stay out of Kids / Kids 12+ lists
