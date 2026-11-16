@@ -45,12 +45,13 @@ public class CatalogTest {
         // 0.10.26: the big Kids Mode tile comes first, then Roblox, Minecraft, Play Store
         check(c.get(0).items.get(0) == Catalog.KIDS_ON && "kidson".equals(Catalog.KIDS_ON.action) && !LockPin.needsPin("kidson") && LockPin.needsPin("kidsoff"), "Kids Mode tile first, no PIN to go in");
         check(c.get(0).items.get(1) == Catalog.SETTINGS_TILE && "goto:settings".equals(Catalog.SETTINGS_TILE.action) && !LockPin.needsPin("goto:settings"), "0.10.30: Settings tile second on Featured");
-        check(c.get(0).items.get(2).label.equals("Roblox") && c.get(0).items.get(3).label.equals("Minecraft"), "Roblox, Minecraft next");
-        check("com.roblox.client".equals(c.get(0).items.get(2).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(3).storePackage()), "featured packages");
-        check(c.get(0).items.get(4) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store third on Featured");
-        check(c.get(0).items.get(5) == Catalog.GEFORCE_NOW && Catalog.GEFORCE_NOW.webUrl == null && "com.nvidia.geforcenow".equals(Catalog.GEFORCE_NOW.storePackage()), "GeForce NOW fourth, Play page fallback");
+        check(c.get(0).items.get(2) == Catalog.INSTALL_KIDS && "installkids".equals(Catalog.INSTALL_KIDS.action), "Install kids games tile");
+        check(c.get(0).items.get(3).label.equals("Roblox") && c.get(0).items.get(4).label.equals("Minecraft"), "Roblox, Minecraft next");
+        check("com.roblox.client".equals(c.get(0).items.get(3).storePackage()) && "com.mojang.minecraftpe".equals(c.get(0).items.get(4).storePackage()), "featured packages");
+        check(c.get(0).items.get(5) == Catalog.PLAY_STORE && "com.android.vending".equals(Catalog.PLAY_STORE.storePackage()), "Play Store on Featured");
+        check(c.get(0).items.get(6) == Catalog.GEFORCE_NOW && Catalog.GEFORCE_NOW.webUrl == null && "com.nvidia.geforcenow".equals(Catalog.GEFORCE_NOW.storePackage()), "GeForce NOW on Featured, Play page fallback");
         check(Catalog.GFN_WEB.equals("https://play.geforcenow.com") && Catalog.gfnInBrowser(true) && !Catalog.gfnInBrowser(false), "GFN web on handhelds");
-        check(c.get(0).items.get(1).webUrl == null && c.get(0).items.get(2).webUrl == null, "featured fall back to the Play Store");
+        check(c.get(0).items.get(1).webUrl == null && c.get(0).items.get(3).webUrl == null, "featured fall back to the Play Store");
         List<Catalog.Item> kids = c.get(Catalog.indexOf(c, "kids")).items;
         check(kids.size() >= 8 && kids.get(0) == Catalog.KIDS[0], "Kids row");
         for (Catalog.Item i : kids) check(i.webUrl == null && i.storePackage() != null && !i.isAction() && !i.icon.contains("logo"), i.label + " is a Play Store app tile");
@@ -62,16 +63,19 @@ public class CatalogTest {
         int kdc = Catalog.indexOf(km, "kdc"), kpsp = Catalog.indexOf(km, "kpsp"), kth = Catalog.indexOf(km, "kthemes"),
             kw = Catalog.indexOf(km, "kwifi"), kp = Catalog.indexOf(km, "kparent"), kst = Catalog.indexOf(km, "kstore"),
             kg = Catalog.indexOf(km, "kgames"), kr = Catalog.indexOf(km, "kroblox");
-        check(km.size() == 6 && kp == km.size() - 1 && kth > 0 && kdc < 0 && kpsp < 0
+        check(kp == km.size() - 1 && kth > 0 && kdc < 0 && kpsp < 0 && kg < 0
+                && Catalog.indexOf(km, "kpuzzle") == 0 && Catalog.indexOf(km, "kracing") == 1
+                && Catalog.indexOf(km, "kadventure") == 2 && Catalog.indexOf(km, "klearning") == 3
+                && Catalog.indexOf(km, "kstyle") == 4 && kr == 5 && Catalog.indexOf(km, "kcloud") == 6
                 && km.get(kw).items.size() == 2 && km.get(kw).items.get(0) == Catalog.KIDS_WIFI
                 && km.get(kw).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action)
-                && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(0).items.get(0) == Catalog.ROBLOX
-                && !km.get(0).items.contains(Catalog.GEFORCE_NOW) && km.get(0).items.contains(Catalog.MARVEL_RIVALS)
-                && kst < 0 && Catalog.kidsBlocked(Catalog.PLAY_STORE) && kr == 1, "kids mode rows");
-        check(km.get(kg).items.size() == Catalog.KIDS.length, "kids mode games");
-        for (Catalog.Category k : km) for (Catalog.Item i : k.items) check((!i.isAction() || i.action.startsWith("gfn:") || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")) && (!i.isRom() || Catalog.isDreamcastRom(i)), "kids mode has only games: " + i.label);
+                && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(kr).items.get(0) == Catalog.ROBLOX
+                && !km.get(Catalog.indexOf(km, "kcloud")).items.contains(Catalog.MARVEL_RIVALS)
+                && kst < 0 && Catalog.kidsBlocked(Catalog.PLAY_STORE), "kids mode rows");
+        for (Catalog.Category k : km) for (Catalog.Item i : k.items)
+            check(!i.isRom() && (!i.isAction() || i.action.startsWith("gfn:") || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")), "kids mode has only Android/cloud games: " + i.label);
         playArtChecks();
-        check(c.get(0).items.get(6) == Catalog.MARVEL_RIVALS && km.get(0).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured and Kids Play");
+        check(c.get(0).items.get(7) == Catalog.MARVEL_RIVALS && !km.get(Catalog.indexOf(km, "kcloud")).items.contains(Catalog.MARVEL_RIVALS), "Marvel Rivals on Featured, not in Kids Cloud");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
         check(Catalog.RIVALS_HEADER.startsWith("https://") && Catalog.RIVALS_HEADER.contains("/2767030/"), "Steam header");
         check("Home".equals(Catalog.cleanSsid("\"Home\"")) && Catalog.cleanSsid("<unknown ssid>") == null && Catalog.cleanSsid(null) == null, "ssid");
@@ -326,12 +330,14 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.equals(new java.util.HashSet<>(java.util.List.of("kplay", "kroblox", "kadded", "kgames", "kthemes", "kwifi", "kparent"))), "kids rows exact " + ids);
+                    check(ids.containsAll(java.util.List.of("kpuzzle", "kracing", "kadventure", "klearning", "kstyle", "kroblox", "kcloud", "kadded", "kthemes", "kwifi", "kparent"))
+                            && !ids.contains("kplay") && !ids.contains("kgames") && !ids.contains("retro") && !ids.contains("dreamcast") && !ids.contains("psp"), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
                     check(Catalog.kidsBlocked(Catalog.act("All apps", "grid", "allapps")) && Catalog.streamingPkg("tv.twitch.android.app") && Catalog.streamingPkg("com.zhiliaoapp.musically") && Catalog.streamingPkg("tv.pluto.android"), "blocked");
                     for (Catalog.Item k : Catalog.KIDS) check(!Catalog.kidsBlocked(k), "kids game allowed " + k.label);
-                    for (Catalog.Item k : new Catalog.Item[]{Catalog.ROBLOX, Catalog.MINECRAFT, Catalog.MARVEL_RIVALS, Catalog.GEFORCE_NOW}) check(!Catalog.kidsBlocked(k), "allowed " + k.label);
+                    for (Catalog.Item k : new Catalog.Item[]{Catalog.ROBLOX, Catalog.MINECRAFT, Catalog.GEFORCE_NOW, Catalog.XBOX, Catalog.GFN, Catalog.LUNA, Catalog.BOOST}) check(!Catalog.kidsBlocked(k), "allowed " + k.label);
+                    check(!Catalog.kidsBlocked(Catalog.MARVEL_RIVALS), "Marvel Rivals tile itself is not a blocked type");
                     check(Catalog.kidsBlocked(Catalog.PLAY_STORE), "play store blocked in kids");
                     // 0.10.37: emulator apps hidden in Kids / Kids 12+, still listed in adult mode
                     Catalog.Item ra = Catalog.deviceApp("RetroArch", "com.retroarch", "x.Main");
@@ -359,7 +365,13 @@ public class CatalogTest {
                     // approved package still cannot bring an emulator into Kids mode
                     java.util.Set<String> appr = new java.util.HashSet<>(java.util.List.of("com.retroarch"));
                     java.util.List<Catalog.Category> kap = Catalog.kidsMode(java.util.List.of(), java.util.List.of(ra), appr);
-                    check(Catalog.indexOf(kap, "kadded") < 0, "approved emulator still hidden");
+                    check(Catalog.indexOf(kap, "kadded") < 0 && Catalog.indexOf(kap, "kemu") < 0, "approved emulator still hidden by default");
+                    java.util.Set<String> allowEmu = new java.util.HashSet<>(java.util.List.of("com.retroarch"));
+                    java.util.List<Catalog.Category> kemuOn = Catalog.kidsMode(java.util.List.of(), java.util.List.of(ra, game), java.util.Collections.emptySet(), false, allowEmu);
+                    check(Catalog.indexOf(kemuOn, "kemu") >= 0 && kemuOn.get(Catalog.indexOf(kemuOn, "kemu")).items.get(0) == ra, "ticked emulator appears");
+                    check(!Catalog.kidsBlocked(ra, allowEmu) && Catalog.kidsBlocked(ra, java.util.Collections.emptySet()), "kidsBlocked respects allow list");
+                    java.util.List<Catalog.Category> kemu12 = Catalog.kidsMode(java.util.List.of(), java.util.List.of(ra), java.util.Collections.emptySet(), true, java.util.Collections.emptySet());
+                    check(Catalog.indexOf(kemu12, "kemu") < 0, "Kids 12+ has its own empty allow list");
                     check(Catalog.ALWAYS_KIDS_DEFAULT && "alwayskids".equals(Catalog.ALWAYS_KIDS.action)
                             && "kidslock".equals(Catalog.KIDS_LOCK.action) && "lockphone".equals(Catalog.LOCK_PHONE.action)
                             && "removeowner".equals(Catalog.REMOVE_OWNER.action)
@@ -438,13 +450,13 @@ public class CatalogTest {
                 for (Catalog.Category k : Catalog.kidsMode(pr2)) check(!k.items.contains(Catalog.FILES) && !k.items.contains(Catalog.RESCAN), "no Files in kids mode");
                 check(Catalog.dreamcast(pr2).items.size() == 4, "dc keeps its own chd only");
                 List<Catalog.Category> k2 = Catalog.kidsMode(pr2);
-                check(k2.get(Catalog.indexOf(k2, "kpsp")).items.size() == 4 && !k2.get(Catalog.indexOf(k2, "kpsp")).items.contains(Catalog.PSP), "kids psp games only");
+                check(Catalog.indexOf(k2, "kpsp") < 0 && Catalog.indexOf(k2, "kdc") < 0, "kids hides PSP and Dreamcast ROM tiles");
                 List<Catalog.Category> n2 = Catalog.categories(new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(), pr2, false, false);
                 check(Catalog.indexOf(n2, "psp") > Catalog.indexOf(n2, "dreamcast"), "psp after dreamcast");
             }
             List<Catalog.Category> km = Catalog.kidsMode(roms);
-            check(km.get(Catalog.indexOf(km, "kdc")).items.size() == 4 && !km.get(Catalog.indexOf(km, "kdc")).items.contains(Catalog.DREAMCAST), "kids mode dreamcast games only");
-            for (Catalog.Category k : km) for (Catalog.Item i : k.items) check(!"romfolder".equals(i.action) && !"files".equals(i.action) && !"filemgr".equals(i.action), "no import in kids mode");
+            check(Catalog.indexOf(km, "kdc") < 0 && Catalog.indexOf(km, "kpsp") < 0, "kids mode hides dreamcast and PSP ROM tiles");
+            for (Catalog.Category k : km) for (Catalog.Item i : k.items) check(!"romfolder".equals(i.action) && !"files".equals(i.action) && !"filemgr".equals(i.action) && !i.isRom(), "no import or ROMs in kids mode");
                     java.io.File storage = java.nio.file.Files.createTempDirectory("storage").toFile();
             new java.io.File(storage, "emulated").mkdirs(); new java.io.File(storage, "self").mkdirs(); new java.io.File(storage, "1A2B-3C4D").mkdirs();
             List<java.io.File> vr = DcScan.volumeRoots(storage, new java.io.File("/nonexistent"));
@@ -473,12 +485,11 @@ public class CatalogTest {
         }
         check(piggy && !strucid, "Piggy place id, not Strucid");
         check(Catalog.boxSetItems().length == Catalog.TRILOGY_ITEMS.length + Catalog.COOP_ITEMS.length, "Box Set is Trilogy + Co-op");
-        check(Catalog.kidsBlocked(Catalog.BOXSET_MODE) && Catalog.kidsBlocked(Catalog.TRILOGY_MODE) && Catalog.kidsBlocked(Catalog.COOP_MODE)
-                && !Catalog.kidsBlocked(Catalog.ROBLOX_MODE), "Box Set / Trilogy / Co-op hidden in Kids; Roblox Mode allowed");
+        check(Catalog.kidsBlocked(Catalog.BOXSET_MODE) && Catalog.kidsBlocked(Catalog.TRILOGY_MODE) && Catalog.kidsBlocked(Catalog.COOP_MODE), "Box Set / Trilogy / Co-op hidden in Kids");
         for (Catalog.Item i : Catalog.TRILOGY_ITEMS) check(Catalog.kidsBlocked(i), "Steam box-set hidden in Kids");
         List<Catalog.Category> k32 = Catalog.kidsMode();
-        check(Catalog.indexOf(k32, "kroblox") >= 0 && k32.get(0).items.contains(Catalog.ROBLOX_MODE), "Kids has Roblox Mode");
-        check(!k32.get(0).items.contains(Catalog.BOXSET_MODE) && Catalog.indexOf(k32, "trilogies") < 0, "Kids has no Box Set / Trilogies");
+        check(Catalog.indexOf(k32, "kroblox") >= 0 && k32.get(Catalog.indexOf(k32, "kroblox")).items.get(0) == Catalog.ROBLOX, "Kids has Roblox tab");
+        check(!k32.get(0).items.contains(Catalog.BOXSET_MODE) && Catalog.indexOf(k32, "trilogies") < 0 && Catalog.indexOf(k32, "coop") < 0, "Kids has no Box Set / Trilogies / Co-op");
         check(Catalog.steamAppId(Catalog.TRILOGY_ITEMS[0]).equals("1659420"), "Uncharted Steam id");
         String thumb = StoreArt.parseThumb("{\"data\":[{\"imageUrl\":\"https://tr.rbxcdn.com/abc.png\"}]}");
         check("https://tr.rbxcdn.com/abc.png".equals(thumb), "Roblox thumb parse");
@@ -531,10 +542,12 @@ public class CatalogTest {
         check(swapped.get(Catalog.indexOf(swapped, "roblox")).items.size() == 2
                 && swapped.get(Catalog.indexOf(cats, "steam")).items.size() == cats.get(Catalog.indexOf(cats, "steam")).items.size(), "replace only roblox row");
         List<Catalog.Category> kids = Catalog.kidsMode();
-        check(kids.get(Catalog.indexOf(kids, "kroblox")).items.size() == Catalog.ROBLOX_ITEMS.length, "kids catalog starts on official list");
+        check(kids.get(Catalog.indexOf(kids, "kroblox")).items.size() == Catalog.ROBLOX_ITEMS.length + 1
+                && kids.get(Catalog.indexOf(kids, "kroblox")).items.get(0) == Catalog.ROBLOX, "kids catalog starts with Roblox app plus official list");
         robloxFilterChecks();
         screenTimeChecks();
         pinActionChecks();
+        kidsPlayAndBootAnimChecks();
     }
 
     /** 0.10.37: Kids / Kids 12+ maturity filters. No network. */
@@ -699,5 +712,45 @@ public class CatalogTest {
         check(!PinAction.granted(PinAction.WRONG) && !PinAction.granted(PinAction.EMPTY) && !PinAction.granted(PinAction.INVALID)
                 && PinAction.granted(PinAction.ACCEPTED), "only ACCEPTED grants");
     }
-}
 
+    static void kidsPlayAndBootAnimChecks() {
+        check(KidsPlay.maxPegi(false) == 7 && KidsPlay.maxPegi(true) == 12 && KidsPlay.ADULT == 18, "pegi caps");
+        check(KidsPlay.allowed(3, 7) && KidsPlay.allowed(7, 7) && !KidsPlay.allowed(12, 7) && !KidsPlay.allowed(16, 7), "kids filter");
+        check(KidsPlay.allowed(12, 12) && !KidsPlay.allowed(16, 12), "kids 12 filter");
+        check(KidsPlay.allowed(16, KidsPlay.ADULT) && KidsPlay.allowed(18, KidsPlay.ADULT) && KidsPlay.allowed(3, KidsPlay.ADULT), "adult no age filter");
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (KidsPlay.Game g : KidsPlay.ALL) {
+            check(g.pkg.matches("[A-Za-z0-9_.]+") && seen.add(g.pkg), "unique pkg " + g.pkg);
+            check(g.pegi == 3 || g.pegi == 7 || g.pegi == 12 || g.pegi == 16 || g.pegi == 18, "rating " + g.pkg);
+            check(!KidsPlay.list(g.cat, 7).isEmpty() || g.pegi > 7, "kids categories have PEGI 3/7 titles");
+        }
+        check(KidsPlay.byPkg("com.mojang.minecraftpe").pegi == 7 && KidsPlay.byPkg("com.sandboxol.blockymods").pegi == 16, "minecraft / blockman go");
+        check(KidsPlay.page(KidsPlay.PUZZLE, 7, 0, 8).size() == 8 && KidsPlay.page(KidsPlay.PUZZLE, 7, 800, 8).isEmpty(), "paging");
+        java.util.List<String> q = KidsPlay.storeQueue(java.util.List.of("com.king.candycrushsaga", "com.king.candycrushsaga", "com.bad!", "com.mojang.minecraftpe"), p -> "com.mojang.minecraftpe".equals(p));
+        check(q.size() == 1 && q.get(0).equals("com.king.candycrushsaga"), "store queue skips installed and dupes");
+        // PEGI 16 titles stay out of Kids / Kids 12+ lists
+        for (KidsPlay.Game g : KidsPlay.list(KidsPlay.STYLE, 12)) check(g.pegi <= 12, "style kids12");
+        boolean adultHas16 = false;
+        for (KidsPlay.Game g : KidsPlay.list(KidsPlay.STYLE, KidsPlay.ADULT)) if (g.pegi == 16) adultHas16 = true;
+        check(adultHas16, "adult style includes PEGI 16");
+        java.util.List<Catalog.Category> adult = Catalog.adultBrowse(java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(), false, false, null);
+        check(Catalog.indexOf(adult, "kpuzzle") == 0 && Catalog.indexOf(adult, "kroblox") >= 0 && Catalog.indexOf(adult, "kcloud") >= 0, "adult browse tabs");
+        check(adult.get(Catalog.indexOf(adult, "kcloud")).items.contains(Catalog.MARVEL_RIVALS), "adult cloud includes rivals");
+        check(Catalog.kidsBrowseId("kpuzzle") && Catalog.kidsBrowseId("kroblox") && !Catalog.kidsBrowseId("kthemes"), "browse ids");
+        // BootAnim: backup names, short errors, extract original animation from a tiny module-shaped zip
+        check("system-media-bootanimation.zip".equals(BootAnim.backupName("/system/media/bootanimation.zip"))
+                && "/system/media/bootanimation.zip".equals(BootAnim.targetFromBackupName("system-media-bootanimation.zip")), "backup name");
+        check(BootAnim.shortError("__REMOUNT=fail\nwhatever", 2).contains("could not be unlocked"), "remount short error");
+        check(BootAnim.shortError("The backup could not be verified.", 3).contains("backup could not be verified"), "backup short error");
+        check(BootAnim.dataLocalInstallCmd("/sdcard/Download/codeaque-bootanimation.zip").contains("/data/local/bootanimation.zip")
+                && BootAnim.dataLocalInstallCmd("/sdcard/Download/codeaque-bootanimation.zip").contains("chmod 644"), "data local cmd");
+        check(BootAnim.systemInstallCmd("/sdcard/Download/codeaque-bootanimation.zip").contains("codeaque-bootanim-backup")
+                && BootAnim.restoreCmd().contains("rm -f /data/local/bootanimation.zip"), "system/restore cmds");
+        boolean unsafe = false;
+        try { BootAnim.dataLocalInstallCmd("/sdcard/x';reboot;'.zip"); } catch (IllegalArgumentException e) { unsafe = true; }
+        check(unsafe, "unsafe path refused");
+        check(BootAnim.magiskPresent(true, x -> false) && !BootAnim.magiskPresent(false, x -> false)
+                && BootAnim.magiskPresent(false, x -> "/data/adb/magisk/magisk".equals(x)), "magisk present");
+    }
+
+}

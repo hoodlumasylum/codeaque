@@ -271,16 +271,31 @@ public final class Catalog {
         return false;
     }
     /** 0.10.24: things Kids mode never shows or opens: All Apps, and streaming / video apps. */
-    public static boolean kidsBlocked(Item it) {
+    public static boolean kidsBlocked(Item it) { return kidsBlocked(it, java.util.Collections.<String>emptySet()); }
+    /** 0.10.42: ROM tiles stay hidden in Kids. Emulators stay hidden unless a parent ticked them for this profile. */
+    public static boolean kidsBlocked(Item it, java.util.Set<String> allowedEmus) {
         if (it == null) return false;
+        if (it.isRom()) return true;
         if (it == PLAY_STORE) return true;   // 0.10.37: no Play Store tile or shortcut in Kids mode
         if ("allapps".equals(it.action) || "downloads".equals(it.action) || "filemgr".equals(it.action) || "settings".equals(it.action) || "browser".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
         if ("boxset".equals(it.action) || "boxsetboot".equals(it.action) || "goto:trilogies".equals(it.action) || "goto:coop".equals(it.action)) return true;
         if (it.action != null && it.action.startsWith("steamstore:")) return true;
-        if (kidsEmulator(it)) return true;   // 0.10.37: emulator apps stay in adult mode only
+        if (kidsEmulator(it)) return !emuAllowed(it, allowedEmus);
         if (it.isDeviceApp() && (streamingPkg(it.pkg) || ScreenTime.blockedKidPackage(it.pkg))) return true;
         for (String p : it.packages) if (streamingPkg(p) || ScreenTime.blockedKidPackage(p)) return true;
         return false;
+    }
+    public static boolean emuAllowed(Item it, java.util.Set<String> allowed) {
+        if (it == null || allowed == null || allowed.isEmpty()) return false;
+        if (it.pkg != null && allowed.contains(it.pkg)) return true;
+        for (String p : it.packages) if (p != null && allowed.contains(p)) return true;
+        return false;
+    }
+    /** Tabs that use the vertical Kids-style list (game catalogues, Roblox, Cloud, allowed emulators). */
+    public static boolean kidsBrowseId(String id) {
+        if (id == null) return false;
+        if (id.equals("kroblox") || id.equals("kcloud") || id.equals("kadded") || id.equals("kemu") || id.equals("roblox")) return true;
+        return KidsPlay.catFromId(id) != null;
     }
 
     /** Known Android emulator packages, plus a cautious "emu" / "emulator" heuristic. Not Temu or ordinary games. */
@@ -482,33 +497,66 @@ public final class Catalog {
 
     public static final Item KIDS_UPDATE = act("Update CodeAque", "download", "update");
     public static final Item KIDS_OFF = act("Turn off Kids mode", "gear", "kidsoff");
+    public static final Item INSTALL_KIDS = act("Install kids games", "download", "installkids");
+    public static final Item KIDS_EMUS = act("Emulators in Kids mode", "invader", "kidsemus");
+    public static final Item CLASSIC_HOME = act("Classic home layout", "grid", "classichome");
     public static List<Category> kidsMode() { return kidsMode(Collections.<Item>emptyList()); }
-    /** roms = the player's own game files; only the Dreamcast ones are shown, and no folder-import tiles. */
     public static List<Category> kidsMode(List<Item> roms) { return kidsMode(roms, Collections.<Item>emptyList()); }
-    /** added = games installed during a Kids mode session (0.10.6), shown as their own row. */
     public static List<Category> kidsMode(List<Item> roms, List<Item> added) { return kidsMode(roms, added, Collections.<String>emptySet()); }
-    /** approved = packages a parent added to Kids mode on purpose (0.10.27): shown even if they are video apps. */
     public static List<Category> kidsMode(List<Item> roms, List<Item> added, java.util.Set<String> approved) {
+        return kidsMode(roms, added, approved, false, java.util.Collections.<String>emptySet());
+    }
+    /**
+     * 0.10.42 Kids / Kids 12+ home: Android game category tabs + Cloud, never Retro / Dreamcast / PSP /
+     * Streams / Media / Trilogies / Co-op / Box Set / ROM tiles. Emulators only if a parent ticked them
+     * for this profile. {@code roms} is ignored (kept so older callers still compile).
+     */
+    public static List<Category> kidsMode(List<Item> roms, List<Item> added, java.util.Set<String> approved,
+                                         boolean kids12, java.util.Set<String> allowedEmus) {
+        int max = KidsPlay.maxPegi(kids12);
         List<Category> c = new ArrayList<>();
-        c.add(new Category("kplay", "Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS, ROBLOX_MODE));
-        c.add(new Category("kroblox", "Roblox", "cube", ROBLOX_ITEMS));
-        List<Item> newGames = new ArrayList<>();   // 0.10.24: no streaming / TV / video apps in Kids mode
+        addGameTabs(c, max, ROBLOX_ITEMS, false);
+        List<Item> newGames = new ArrayList<>();
+        if (allowedEmus == null) allowedEmus = java.util.Collections.emptySet();
+        List<Item> emuItems = new ArrayList<>();
         for (Item a : added) {
-            if (kidsEmulator(a)) continue;   // 0.10.37: never list emulator apps, even if a parent approved the package
-            if (!kidsBlocked(a) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
+            if (kidsEmulator(a)) {
+                if (emuAllowed(a, allowedEmus)) emuItems.add(a);
+                continue;
+            }
+            if (!kidsBlocked(a, allowedEmus) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
         }
         if (!newGames.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", newGames.toArray(new Item[0])));
-        c.add(new Category("kgames", "Kids Games", "invader", KIDS));
-        Category dc = dreamcast(roms, false);
-        Item[] dci = kidsGamesOnly(dc.items);
-        if (dci.length > 0) c.add(new Category("kdc", dc.label, dc.icon, dci));   // 0.10.37: omit empty / emulator-only rows
-        Category ps = psp(roms, false);
-        Item[] psi = kidsGamesOnly(ps.items);
-        if (psi.length > 0) c.add(new Category("kpsp", ps.label, ps.icon, psi));
-        c.add(new Category("kthemes", "Themes", "palette", KIDS_THEMES));   // 0.10.27: kids can change the look, nothing else
-        c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));   // Wi-Fi (0.10.5) and Update CodeAque (0.10.6), nothing else
-        c.add(new Category("kparent", "Grown-ups", "gear", KIDS_PARENT));   // 0.10.30: Adult mode and the grown-up menu, both behind the PIN
+        if (!emuItems.isEmpty()) c.add(new Category("kemu", "Emulators", "invader", emuItems.toArray(new Item[0])));
+        c.add(new Category("kthemes", "Themes", "palette", KIDS_THEMES));
+        c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));
+        c.add(new Category("kparent", "Grown-ups", "gear", KIDS_PARENT));
         return c;
+    }
+    /** 0.10.43 adult default home: the same game tabs with no age filter, Roblox unfiltered, plus adult rows. */
+    public static List<Category> adultBrowse(List<Item> games, List<Item> apps, List<Item> emus, List<Item> roms,
+                                            boolean projector, boolean bootanim, Item[] robloxItems) {
+        List<Category> c = new ArrayList<>();
+        addGameTabs(c, KidsPlay.ADULT, robloxItems != null ? robloxItems : ROBLOX_ITEMS, true);
+        List<Category> full = categories(games, apps, emus, roms, projector, bootanim);
+        for (Category row : full) {
+            if ("steam".equals(row.id) || "kids".equals(row.id) || "roblox".equals(row.id) || "cloud".equals(row.id)) continue;
+            c.add(row);
+        }
+        return c;
+    }
+    static void addGameTabs(List<Category> c, int maxPegi, Item[] robloxItems, boolean adult) {
+        for (int i = 0; i < KidsPlay.CATS.length; i++) {
+            List<Item> items = KidsPlay.items(KidsPlay.CATS[i], maxPegi, 0, KidsPlay.PAGE);
+            c.add(new Category(KidsPlay.CAT_IDS[i], KidsPlay.CAT_LABELS[i], "cube", items.toArray(new Item[0])));
+        }
+        List<Item> rbx = new ArrayList<>();
+        rbx.add(ROBLOX);
+        if (robloxItems != null) { for (Item it : robloxItems) if (it != ROBLOX) rbx.add(it); }
+        else { for (Item it : ROBLOX_ITEMS) rbx.add(it); }
+        c.add(new Category("kroblox", "Roblox", "cube", rbx.toArray(new Item[0])));
+        if (adult) c.add(new Category("kcloud", "Cloud", "cloud", XBOX, GFN, LUNA, BOOST, GEFORCE_NOW, MARVEL_RIVALS));
+        else c.add(new Category("kcloud", "Cloud", "cloud", XBOX, GFN, LUNA, BOOST));
     }
 
     /** Kids row (package, PEGI): PEGI 3, except Subway Surfers (PEGI 7) and the three Bandai Namco games below (PEGI 16, 0.10.2). */
@@ -691,7 +739,7 @@ public final class Catalog {
         List<Category> c = new ArrayList<>();
         // 0.9.5: Steam at the top: Steam Link (play from your PC) and the Steam app; Play Store page when not installed
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
-        c.add(new Category("steam", "Featured", "display", KIDS_ON, SETTINGS_TILE, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
+        c.add(new Category("steam", "Featured", "display", KIDS_ON, SETTINGS_TILE, INSTALL_KIDS, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community"),
                 TRILOGY_MODE, COOP_MODE, ROBLOX_MODE, BOXSET_MODE));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
@@ -746,7 +794,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                PHONE_SETTINGS, PHONE_ACCOUNTS, HOME_APP, act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), EXIT_CODEAQUE, act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly")));
+                PHONE_SETTINGS, PHONE_ACCOUNTS, HOME_APP, act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), EXIT_CODEAQUE, act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), INSTALL_KIDS, KIDS_EMUS, CLASSIC_HOME, act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly")));
         c.add(new Category("power", "Power", "gear", EXIT_CODEAQUE));
         return c;
     }

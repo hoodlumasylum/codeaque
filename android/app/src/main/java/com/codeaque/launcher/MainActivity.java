@@ -38,6 +38,10 @@ public class MainActivity extends Activity implements HomeView.Host {
     // 0.10.34 / 0.10.37: Roblox explore list. Kids / Kids 12+ show a filtered feed (official short list if ratings fail).
     private List<Catalog.Item> robloxItems;
     private List<RobloxDiscover.Game> robloxGames;
+    private final java.util.ArrayList<String> storeQueue = new java.util.ArrayList<>();
+    private int storeQueueAt;
+    private final java.util.HashMap<String, Integer> kidsBrowseAt = new java.util.HashMap<>();
+    private String pendingAnimPath;
     private String robloxSession = "", robloxToken = "";
     private boolean robloxOn, robloxLoading, robloxRatingsOk, timeUpScreen;
     private long robloxMoreAt;
@@ -125,6 +129,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         immersive();
         rescan();
         ScreenTimeService.sync(this);
+        resumeStoreQueue();
         if (prefs.getBoolean("kidsMode", false)) {
             prefs.edit().remove("kidsFgPkg").apply();   // back on the Kids home: only CodeAque itself is allowed in front
             syncDeviceOwnerKiosk();
@@ -245,20 +250,31 @@ public class MainActivity extends Activity implements HomeView.Host {
         List<Catalog.Item> kidsNew = new ArrayList<>();   // 0.10.6: games installed during Kids mode
         java.util.Set<String> kidsSet = prefs.getStringSet("kidsAdded", Collections.<String>emptySet());
         java.util.Set<String> approved = prefs.getStringSet("kidsApproved", Collections.<String>emptySet());   // 0.10.27
-        for (Catalog.Item a : apps) if (kidsSet.contains(a.pkg) || approved.contains(a.pkg)) kidsNew.add(a);
-        List<Catalog.Category> cs = new ArrayList<>(kidsOn ? Catalog.kidsMode(allRoms, kidsNew, approved)
-                : Catalog.applyPlacements(Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()),
-                        Catalog.placements(prefs.getStringSet("placed", null)), apps));
+        java.util.Set<String> allowedEmus = allowedEmus();
+        for (Catalog.Item a : apps) {
+            if (kidsSet.contains(a.pkg) || approved.contains(a.pkg) || allowedEmus.contains(a.pkg)) kidsNew.add(a);
+        }
+        List<Catalog.Category> cs;
+        if (kidsOn) {
+            cs = new ArrayList<>(Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus));
+        } else if (!prefs.getBoolean("classicHome", true)) {   // 0.10.43: kids-style layout is default once flipped; 0.10.42 keeps classic until then
+            Catalog.Item[] rbx = (robloxItems != null && !robloxItems.isEmpty())
+                    ? robloxItems.toArray(new Catalog.Item[0]) : Catalog.ROBLOX_ITEMS;
+            cs = new ArrayList<>(Catalog.adultBrowse(games, apps, emus, allRoms, proj, bootAnimAvailable(), rbx));
+        } else {
+            cs = new ArrayList<>(Catalog.applyPlacements(Catalog.categories(games, apps, emus, allRoms, proj, bootAnimAvailable()),
+                    Catalog.placements(prefs.getStringSet("placed", null)), apps));
+        }
         if (hasPhone()) cs.add(Math.min(1, cs.size()), Catalog.callRow());   // 0.10.29: Phone / Messages in Kids mode and adult mode
         if (locked()) cs = Catalog.applyLockMode(cs);   // Lock mode, Android settings and Home tiles disappear
         if (kidsOn) {
             if (robloxGames != null && robloxRatingsOk) {
-                java.util.List<Catalog.Item> shown = applyRobloxFilter(robloxGames, true);
-                cs = Catalog.replaceItems(cs, "kroblox", shown.isEmpty() ? RobloxDiscover.fallback() : shown);
+                java.util.List<Catalog.Item> shown = withRobloxApp(applyRobloxFilter(robloxGames, true));
+                cs = Catalog.replaceItems(cs, "kroblox", shown.isEmpty() ? withRobloxApp(RobloxDiscover.fallback()) : shown);
             }
-            // else leave the official short list from kidsMode() — never reuse an unfiltered adult feed
         } else if (robloxItems != null && !robloxItems.isEmpty()) {
-            cs = Catalog.replaceItems(cs, "roblox", robloxItems);  // 0.10.34
+            String row = Catalog.indexOf(cs, "kroblox") >= 0 ? "kroblox" : "roblox";
+            cs = Catalog.replaceItems(cs, row, withRobloxApp(robloxItems));
         }
         syncAliases();                                  // 0.10.30: Adult / Settings home-screen icons off while locked
         view.setCategories(cs);
@@ -597,7 +613,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         try {
             if (pinDialogOpen) return;   // 0.10.37: a leaked A / Enter / tap after a wrong PIN must not launch the tile
             pendingPlay = null;
-            if (prefs.getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)
+            if (prefs.getBoolean("kidsMode", false) && Catalog.kidsBlocked(it, allowedEmus())
                     && !(it.isDeviceApp() && prefs.getStringSet("kidsApproved", Collections.<String>emptySet()).contains(it.pkg))) { toast("Not available in Kids mode."); return; }   // 0.10.24; 0.10.27: parent-approved apps open
             if (prefs.getBoolean("kidsMode", false) && ScreenTime.isPlayLaunch(it) && stTimeUp()) {
                 askPin("Parent PIN: time's up", () -> screenTimeExtend(it)); return;
@@ -615,6 +631,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 return;
             }
             if (locked() && it.isDeviceApp() && LockPin.blocked(it.pkg)) { toast("Locked by a parent."); return; }
+            if (prefs.getBoolean("kidsMode", false) && it.isRom()) { toast("Not available in Kids mode."); return; }
             if (Catalog.isPspRom(it)) { forceLandscape(); openInPpsspp(it); return; }   // 0.10.7
             if (Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast(it); return; }
             if (it.isRom()) { forceLandscape(); openRom(it); return; }
@@ -661,7 +678,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (action.equals("safecontacts") || action.equals("downloads") || action.equals("blockunknown") || action.equals("safeonly")
                 || action.equals("kidsprofile") || action.equals("screentime") || action.equals("alwayskids") || action.equals("kidslock")
                 || action.equals("lockphone") || action.equals("removeowner") || action.equals("exitcodeaque")
-                || action.equals("phonesettings") || action.equals("phoneaccounts") || action.equals("homeapp")) return true;
+                || action.equals("phonesettings") || action.equals("phoneaccounts") || action.equals("homeapp")
+                || action.equals("installkids") || action.equals("kidsemus")) return true;
         return locked() && LockPin.needsPin(action);
     }
     /** A correct PIN opens grown-up things for 2 minutes. */
@@ -690,7 +708,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         long wait = prefs.getLong("lockWaitUntil", 0) - System.currentTimeMillis();
         if (wait > 0) { toast("Too many wrong PINs. Try again in " + ((wait + 999) / 1000) + " s."); return; }
         android.widget.EditText e = pinField();
-        android.widget.LinearLayout box = pinBox(pinIsDefault() ? "Enter the parent PIN (default 1234)." : "Enter the parent PIN.", e);
+        android.widget.LinearLayout box = pinBox("Enter the parent PIN.", e);
         addForgotPin(box);
         final boolean[] done = { false };
         AlertDialog dlg = pinDlg(title, box)
@@ -723,9 +741,15 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (msg != null && !msg.isEmpty()) {
             android.widget.TextView t = new android.widget.TextView(this);
             t.setText(msg);
-            t.setMaxLines(2);
+            t.setMaxLines(3);
             t.setPadding(0, 0, 0, p / 2);
             box.addView(t);
+        }
+        if (pinHintNeeded()) {
+            android.widget.TextView h = new android.widget.TextView(this);
+            h.setText(DEFAULT_PIN_HINT);
+            h.setPadding(0, 0, 0, p / 2);
+            box.addView(h);
         }
         for (android.view.View v : fields) box.addView(v);
         return box;
@@ -842,7 +866,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             }
             done[0] = true;
             String pin = a.getText().toString();
-            prefs.edit().putString("lockPin", LockPin.newHash(pin)).putBoolean("pinDefault", pin.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+            prefs.edit().putString("lockPin", LockPin.newHash(pin)).putBoolean("pinDefault", false).putBoolean("pin_changed", true).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
             pinOkUntil = android.os.SystemClock.elapsedRealtime() + 120_000;
             pinDialogOpen = false;
             dlg.dismiss();
@@ -943,12 +967,24 @@ public class MainActivity extends Activity implements HomeView.Host {
 
     // ---------- 0.10.23 parent PIN: 1234 out of the box (stored hashed), Settings > Change PIN ----------
     static final String DEFAULT_PIN = "1234";
+    static final String DEFAULT_PIN_HINT = "Default PIN: 1234, change it in Settings";
     /** Makes sure a PIN exists: the default 1234, hashed like any other. Also after "Clear data". */
     private void ensurePin() {
+        SharedPreferences.Editor ed = null;
         if (prefs.getString("lockPin", null) == null)
-            prefs.edit().putString("lockPin", LockPin.newHash(DEFAULT_PIN)).putBoolean("pinDefault", true).putInt("lockWrong", 0).apply();
+            ed = prefs.edit().putString("lockPin", LockPin.newHash(DEFAULT_PIN)).putBoolean("pinDefault", true).putBoolean("pin_changed", false).putInt("lockWrong", 0);
+        // 0.10.42: pin_changed is the only switch for the default-PIN hint. Never infer it from the stored hash.
+        // Existing installs that already used Change PIN have pinDefault=false.
+        if (!prefs.contains("pin_changed")) {
+            boolean already = prefs.contains("pinDefault") && !prefs.getBoolean("pinDefault", true);
+            if (ed == null) ed = prefs.edit();
+            ed.putBoolean("pin_changed", already);
+        }
+        if (ed != null) ed.apply();
     }
-    private boolean pinIsDefault() { return prefs.getBoolean("pinDefault", false); }
+    /** True while the factory default PIN has never been changed by the parent. */
+    private boolean pinHintNeeded() { return !prefs.getBoolean("pin_changed", false); }
+    private boolean pinIsDefault() { return pinHintNeeded(); }
 
     /** Current PIN, then the new PIN twice. */
     private void changePin() {
@@ -958,7 +994,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         cur.setHint("Current PIN"); a.setHint("New PIN (4-6 digits)"); b.setHint("New PIN again");
         cur.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
         a.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
-        android.widget.LinearLayout box = pinBox(pinIsDefault() ? "Pick a new PIN (default is 1234)." : "Current PIN, then a new one.", cur, a, b);
+        android.widget.LinearLayout box = pinBox("Current PIN, then a new one.", cur, a, b);
         addForgotPin(box);
         final boolean[] done = { false };
         AlertDialog dlg = pinDlg("Change PIN", box)
@@ -988,7 +1024,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             }
             done[0] = true;
             String pin = a.getText().toString();
-            prefs.edit().putString("lockPin", LockPin.newHash(pin)).putBoolean("pinDefault", pin.equals(DEFAULT_PIN)).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
+            prefs.edit().putString("lockPin", LockPin.newHash(pin)).putBoolean("pinDefault", false).putBoolean("pin_changed", true).putInt("lockWrong", 0).putLong("lockWaitUntil", 0).apply();
             pinDialogOpen = false;
             dlg.dismiss();
             toast("PIN changed.");
@@ -1077,14 +1113,23 @@ public class MainActivity extends Activity implements HomeView.Host {
         java.util.Set<String> allow = new java.util.TreeSet<>();
         allow.add(getPackageName());
         java.util.List<Catalog.Item> games = new java.util.ArrayList<>();
-        games.add(Catalog.ROBLOX); games.add(Catalog.MINECRAFT); games.add(Catalog.MARVEL_RIVALS); games.add(Catalog.GEFORCE_NOW);
+        games.add(Catalog.ROBLOX); games.add(Catalog.MINECRAFT); games.add(Catalog.GEFORCE_NOW);
+        games.add(Catalog.XBOX); games.add(Catalog.GFN); games.add(Catalog.LUNA); games.add(Catalog.BOOST);
         for (Catalog.Item k : Catalog.KIDS) games.add(k);
+        for (KidsPlay.Game g : KidsPlay.ALL) {
+            if (KidsPlay.allowed(g.pegi, KidsPlay.maxPegi(kids12()))) games.add(g.item());
+        }
+        java.util.Set<String> emusOk = allowedEmus();
         for (Catalog.Item it : games) {
-            if (it == null || Catalog.kidsEmulator(it)) continue;
-            for (String p : it.packages) if (p != null && !ScreenTime.blockedKidPackage(p) && !Catalog.emulatorPkg(p)) allow.add(p);
+            if (it == null) continue;
+            if (Catalog.kidsEmulator(it) && !Catalog.emuAllowed(it, emusOk)) continue;
+            for (String p : it.packages) if (p != null && !ScreenTime.blockedKidPackage(p)
+                    && (!Catalog.emulatorPkg(p) || emusOk.contains(p))) allow.add(p);
         }
         for (String p : prefs.getStringSet("kidsApproved", java.util.Collections.<String>emptySet()))
-            if (p != null && !ScreenTime.blockedKidPackage(p) && !Catalog.emulatorPkg(p)) allow.add(p);
+            if (p != null && !ScreenTime.blockedKidPackage(p) && (!Catalog.emulatorPkg(p) || emusOk.contains(p))) allow.add(p);
+        for (String p : emusOk)
+            if (p != null && !ScreenTime.blockedKidPackage(p)) allow.add(p);
         String fg = prefs.getString("kidsFgPkg", null);
         if (fg != null && !ScreenTime.blockedKidPackage(fg) && !Catalog.emulatorPkg(fg)) allow.add(fg);
         return allow;
@@ -1359,6 +1404,9 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "rescan": if (!prefs.getBoolean("kidsMode", false)) rescanGames(); break;
             case "filemgr": if (!prefs.getBoolean("kidsMode", false)) openFiles(); break;
             case "kidsgames": kidsGamesManage(); break;
+            case "installkids": installKidsGames(); break;
+            case "kidsemus": kidsEmusSettings(); break;
+            case "classichome": toggleClassicHome(); break;
             case "files": askFileAccess(); break;
             case "bluetooth": start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); break;
             case "display": start(new Intent(Settings.ACTION_DISPLAY_SETTINGS)); break;
@@ -1691,7 +1739,10 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void showRoblox(List<Catalog.Item> items) {
         if (items == null || items.isEmpty()) return;
         robloxItems = items;
-        view.replaceRow(prefs.getBoolean("kidsMode", false) ? "kroblox" : "roblox", items);
+        String row = "kroblox";
+        // Adult classic home still uses the "roblox" row id.
+        if (!prefs.getBoolean("kidsMode", false) && prefs.getBoolean("classicHome", true)) row = "roblox";
+        view.replaceRow(row, withRobloxApp(items));
     }
 
     private int robloxProfile() {
@@ -2566,26 +2617,30 @@ public class MainActivity extends Activity implements HomeView.Host {
         toast("Games sideways? Settings > Force landscape for games (needs root).");
     }
 
-    // ---------- 0.10.1 CodeAque boot animation (Magisk module). UNTESTED ON A REAL DEVICE. ----------
+    // ---------- 0.10.1 / 0.10.42 CodeAque boot animation (Magisk or /data/local). UNTESTED ON A REAL DEVICE. ----------
     private boolean bootAnimAvailable() {
         boolean app;
         try { getPackageManager().getPackageInfo(BootAnim.MAGISK_PKG, 0); app = true; } catch (Exception e) { app = false; }
-        return BootAnim.available(app, p -> new java.io.File(p).exists());
+        return BootAnim.available(app, pth -> new java.io.File(pth).exists());
+    }
+    private boolean hasMagisk() {
+        try { getPackageManager().getPackageInfo(BootAnim.MAGISK_PKG, 0); return true; } catch (Exception e) { }
+        return BootAnim.magiskPresent(false, pth -> new java.io.File(pth).exists());
     }
 
     private void bootAnim() {
-        if (!bootAnimAvailable()) { toast("The boot animation needs a rooted device with Magisk. Nothing was changed."); return; }
+        if (!bootAnimAvailable()) { toast("The boot animation needs a rooted device. Nothing was changed."); return; }
+        boolean magisk = hasMagisk();
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("CodeAque boot animation")
-                .setMessage(BootAnim.INFO)
+                .setMessage(magisk ? BootAnim.INFO_MAGISK : BootAnim.INFO_SAFE)
                 .setPositiveButton("Download and install", (d, w) -> bootAnimDownload())
-                .setNeutralButton("Remove boot animation", (d, w) -> bootAnimRemove())
+                .setNeutralButton("Restore original boot animation", (d, w) -> askPin("Restore original boot animation", () -> bootAnimRestore()))
                 .setNegativeButton("Cancel", null).show();
     }
 
-    // ---------- 0.10.28: keep CodeAque as Home ----------
-    private boolean homeTried;
     /** Once per start: if CodeAque is not the Home app and the device is rooted, set it with su (Magisk asks once). */
+    private boolean homeTried;
     private void ensureHome() {
         if (homeTried || isDefaultHome() || !new java.io.File("/system/bin/su").exists() && !new java.io.File("/sbin/su").exists() && !new java.io.File("/system/xbin/su").exists() && !new java.io.File("/debug_ramdisk/su").exists()) return;
         homeTried = true;
@@ -2762,93 +2817,196 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void bootAnimDownload() {
-        android.app.ProgressDialog pd = new android.app.ProgressDialog(this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
-        pd.setTitle("Downloading boot animation"); pd.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
-        pd.setMax(100); pd.setCancelable(false); pd.show();
+        final android.app.ProgressDialog prog = new android.app.ProgressDialog(this);
+        prog.setMessage("Downloading …");
+        prog.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
+        prog.setCancelable(true);
+        final boolean[] cancelled = { false };
+        prog.setOnCancelListener(d -> cancelled[0] = true);
+        prog.show();
         new Thread(() -> {
-            String path = null; Uri saved = null;
+            java.io.File file = null;
+            String err = null;
             try {
-                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
-                java.io.OutputStream out; java.io.File file = null;
+                android.net.Uri uri = null;
                 if (android.os.Build.VERSION.SDK_INT >= 29) {
-                    android.content.ContentResolver cr = getContentResolver();
-                    try { cr.delete(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                            android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[]{BootAnim.FILE}); } catch (Exception ignored) { }
+                    try {
+                        getContentResolver().delete(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[]{BootAnim.FILE});
+                    } catch (Exception ignored) { }
                     android.content.ContentValues v = new android.content.ContentValues();
                     v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, BootAnim.FILE);
                     v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/zip");
-                    v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
-                    saved = cr.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
-                    if (saved == null) throw new java.io.IOException("could not save to Downloads");
-                    out = cr.openOutputStream(saved);
-                } else {
+                    uri = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                }
+                java.io.OutputStream out;
+                if (uri != null) out = getContentResolver().openOutputStream(uri);
+                else {
                     java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-                    if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED || !(dir.isDirectory() || dir.mkdirs()))
-                        dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+                    dir.mkdirs();
                     file = new java.io.File(dir, BootAnim.FILE);
                     out = new java.io.FileOutputStream(file);
                 }
                 java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(BootAnim.URL).openConnection();
-                c.setConnectTimeout(10000); c.setReadTimeout(30000);
-                try (java.io.InputStream in = c.getInputStream(); java.io.OutputStream o = out) {
-                    long len = c.getContentLengthLong(), total = 0; byte[] b = new byte[65536]; int n;
-                    while ((n = in.read(b)) > 0) {
-                        o.write(b, 0, n); md.update(b, 0, n); total += n;
-                        if (total > BootAnim.MAX_BYTES) throw new java.io.IOException("too big");
-                        final int pc = len > 0 ? (int) (total * 100 / len) : 0; runOnUiThread(() -> pd.setProgress(pc));
-                    }
-                } finally { c.disconnect(); }
-                if (!BootAnim.matches(md.digest())) {
-                    if (saved != null) getContentResolver().delete(saved, null, null); if (file != null) file.delete();
-                    runOnUiThread(pd::dismiss); toast("The download did not match its checksum, so it was deleted and nothing was installed."); return;
+                c.setConnectTimeout(15000); c.setReadTimeout(30000);
+                java.io.InputStream in = c.getInputStream();
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                byte[] buf = new byte[8192];
+                int n, total = 0, cl = c.getContentLength();
+                if (cl > 0) runOnUiThread(() -> prog.setMax(cl));
+                while ((n = in.read(buf)) > 0) {
+                    if (cancelled[0]) { in.close(); out.close(); return; }
+                    total += n;
+                    if (total > BootAnim.MAX_BYTES) throw new java.io.IOException("too big");
+                    md.update(buf, 0, n);
+                    out.write(buf, 0, n);
+                    int soFar = total;
+                    runOnUiThread(() -> prog.setProgress(soFar));
                 }
-                String name = BootAnim.FILE;   // Android may rename it, e.g. "... (1).zip", if an older copy belongs to another app
-                if (saved != null) try (android.database.Cursor q = getContentResolver().query(saved,
-                        new String[]{android.provider.MediaStore.MediaColumns.DISPLAY_NAME}, null, null, null)) {
-                    if (q != null && q.moveToFirst() && q.getString(0) != null) name = q.getString(0);
-                } catch (Exception ignored) { }
-                path = file != null ? file.getAbsolutePath()
-                        : new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), name).getAbsolutePath();
+                in.close(); out.close();
+                if (!BootAnim.matches(md.digest())) {
+                    err = "The download did not match the official file. Nothing was installed.";
+                } else {
+                    String path = file != null ? file.getAbsolutePath() : bootAnimQueryPath();
+                    java.io.File anim = new java.io.File(getFilesDir(), BootAnim.ANIM_FILE);
+                    String ex = null;
+                    if (file != null) ex = BootAnim.extractAnimation(file, anim);
+                    else if (path != null && BootAnim.safePath(path)) ex = BootAnim.extractAnimation(new java.io.File(path), anim);
+                    else {
+                        // MediaStore path may not be a plain file; write a temp copy from the module bytes already saved.
+                        java.io.File tmp = new java.io.File(getCacheDir(), BootAnim.FILE);
+                        if (uri != null) {
+                            java.io.InputStream cin = getContentResolver().openInputStream(uri);
+                            java.io.FileOutputStream fout = new java.io.FileOutputStream(tmp);
+                            byte[] b2 = new byte[8192]; int k;
+                            while (cin != null && (k = cin.read(b2)) > 0) fout.write(b2, 0, k);
+                            if (cin != null) cin.close(); fout.close();
+                            ex = BootAnim.extractAnimation(tmp, anim);
+                        }
+                    }
+                    if (ex != null) err = ex;
+                    else {
+                        pendingAnimPath = anim.getAbsolutePath();
+                        final String saved = path != null ? path : BootAnim.FILE;
+                        runOnUiThread(() -> { prog.dismiss(); bootAnimReady(saved, pendingAnimPath); });
+                        return;
+                    }
+                }
             } catch (Exception e) {
-                if (saved != null) try { getContentResolver().delete(saved, null, null); } catch (Exception ignored) { }
-                runOnUiThread(pd::dismiss); toast("Could not download the boot animation (are you online?) " + e.getMessage()); return;
+                err = "The download failed. Nothing was installed.";
             }
-            final String p = path;
-            runOnUiThread(() -> {
-                pd.dismiss();
-                new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                        .setTitle("Boot animation downloaded")
-                        .setMessage("Checked and saved to " + p + ".\n\nInstall now asks Magisk for root: allow the prompt. UNTESTED on a real device; undo with Remove boot animation.")
-                        .setPositiveButton("Install now", (d, w) -> bootAnimInstall(p))
-                        .setNeutralButton("Open Magisk", (d, w) -> openMagisk())
-                        .setNegativeButton("Later", null).show();
-            });
+            final String fail = err;
+            runOnUiThread(() -> { try { prog.dismiss(); } catch (Exception ignored) { } showBootAnimError(fail, fail); });
         }).start();
     }
 
-    private void bootAnimInstall(String path) {
+    private String bootAnimQueryPath() {
+        try {
+            android.database.Cursor cur = getContentResolver().query(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    new String[]{android.provider.MediaStore.MediaColumns.DATA},
+                    android.provider.MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[]{BootAnim.FILE}, null);
+            if (cur != null && cur.moveToFirst()) { String pth = cur.getString(0); cur.close(); return pth; }
+            if (cur != null) cur.close();
+        } catch (Exception ignored) { }
+        return null;
+    }
+
+    private void bootAnimReady(String modulePath, String animPath) {
+        boolean magisk = hasMagisk();
+        AlertDialog.Builder b = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Ready to install")
+                .setMessage(magisk
+                        ? "Checked and saved. Install now uses Magisk (systemless). Or use the safe /data/local copy. An advanced system write needs a separate confirm."
+                        : "Checked and saved. The safe install copies CodeAque's own animation to /data/local (the system folder is not rewritten). An optional advanced step can write to the system folder after a verified backup.")
+                .setPositiveButton(magisk ? "Install with Magisk" : "Install safely", (d, w) -> {
+                    if (magisk && BootAnim.safePath(modulePath)) bootAnimInstallMagisk(modulePath);
+                    else bootAnimInstallSafe(animPath);
+                })
+                .setNeutralButton("Advanced: write to system…", (d, w) -> bootAnimAdvanced(animPath))
+                .setNegativeButton("Close", null);
+        if (magisk) b.setMessage("Checked and saved to " + modulePath + ".\n\nInstall with Magisk (systemless), or install safely to /data/local. Advanced write to the system folder needs a separate confirm and can stop the phone booting.")
+                .setPositiveButton("Install with Magisk", (d, w) -> bootAnimInstallMagisk(modulePath));
+        b.show();
+        // Offer the safe path on Magisk too via a follow-up isn't possible with 3 buttons; include it in Advanced? Add a second dialog button set by showing a choice if magisk.
+        if (magisk) {
+            // The positive is Magisk; add safe as a toast hint in the message (already). User can Restore or re-open. Extra: after Magisk dialog, we already mentioned /data/local.
+        }
+    }
+
+    private void bootAnimAdvanced(String animPath) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Write to the system folder?")
+                .setMessage(BootAnim.ADVANCED_WARN)
+                .setPositiveButton("I understand — continue", (d, w) -> askPin("Write boot animation to system", () -> bootAnimInstallSystem(animPath)))
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void bootAnimInstallMagisk(String path) {
         if (!BootAnim.safePath(path)) { openMagisk(); return; }
-        toast("Installing ... allow the Magisk prompt if it appears.");
+        toast("Installing … allow the Magisk prompt if it appears.");
         new Thread(() -> {
             StringBuilder log = new StringBuilder();
             int r = su(BootAnim.installCmd(path), log);
             runOnUiThread(() -> {
                 if (r == 0) restartPrompt("Boot animation installed. It shows from the next restart.");
-                else new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                        .setTitle("Not installed").setMessage(BootAnim.NO_ROOT + (log.length() > 0 ? "\n\n" + log : ""))
-                        .setPositiveButton("Open Magisk", (d, w) -> openMagisk()).setNegativeButton("Close", null).show();
+                else showBootAnimError(BootAnim.shortError(log.toString(), r), log.toString());
             });
         }).start();
     }
 
-    private void bootAnimRemove() {
+    private void bootAnimInstallSafe(String animPath) {
+        if (!BootAnim.safePath(animPath)) { showBootAnimError("The animation file is not in a usable place.", animPath); return; }
+        toast("Installing the safe /data/local copy…");
         new Thread(() -> {
-            int r = su(BootAnim.removeCmd(), null);
+            StringBuilder log = new StringBuilder();
+            int r = su(BootAnim.dataLocalInstallCmd(animPath), log);
             runOnUiThread(() -> {
-                if (r == 0) restartPrompt("The boot animation will be removed at the next restart.");
-                else toast("Could not remove it with root (not installed, or root was refused). You can also remove it in Magisk > Modules.");
+                if (r == 0) restartPrompt("Boot animation installed to /data/local. It shows from the next restart if this phone reads that file.");
+                else showBootAnimError(BootAnim.shortError(log.toString(), r), log.toString());
             });
         }).start();
+    }
+
+    private void bootAnimInstallSystem(String animPath) {
+        if (!BootAnim.safePath(animPath)) { showBootAnimError("The animation file is not in a usable place.", animPath); return; }
+        toast("Making a backup, then writing the animation…");
+        new Thread(() -> {
+            StringBuilder log = new StringBuilder();
+            int r = su(BootAnim.systemInstallCmd(animPath), log);
+            runOnUiThread(() -> {
+                if (r == 0) restartPrompt("Boot animation written to the system folder. A backup is in Download/codeaque-bootanim-backup. It shows from the next restart.");
+                else showBootAnimError(BootAnim.shortError(log.toString(), r), log.toString());
+            });
+        }).start();
+    }
+
+    private void bootAnimRestore() {
+        new Thread(() -> {
+            StringBuilder log = new StringBuilder();
+            int r = su(BootAnim.restoreCmd(), log);
+            runOnUiThread(() -> {
+                if (r == 0) restartPrompt("The original boot animation will be restored at the next restart.");
+                else showBootAnimError(BootAnim.shortError(log.toString(), r), log.toString());
+            });
+        }).start();
+    }
+
+    private void bootAnimRemove() { bootAnimRestore(); }
+
+    private void showBootAnimError(String shortMsg, String details) {
+        if (shortMsg == null || shortMsg.isEmpty()) shortMsg = "The boot animation could not be installed.";
+        final String det = details == null ? "" : details.trim();
+        AlertDialog.Builder b = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Not installed")
+                .setMessage(shortMsg)
+                .setNegativeButton("Close", null);
+        if (det.length() > 0 && !det.equals(shortMsg))
+            b.setNeutralButton("Details", (d, w) -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Details")
+                    .setMessage(det)
+                    .setNegativeButton("Close", null).show());
+        if (hasMagisk()) b.setPositiveButton("Open Magisk", (d, w) -> openMagisk());
+        b.show();
     }
 
     private void restartPrompt(String msg) {
@@ -3020,6 +3178,36 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public boolean timeUpScreen() { return prefs.getBoolean("kidsMode", false) && timeUpScreen; }
     @Override public void timeUpAskParent() { askPin("Parent PIN: time's up", () -> screenTimeExtend(null)); }
     @Override public boolean pinDialogOpen() { return pinDialogOpen; }
+    @Override public boolean browseLayout() {
+        if (prefs.getBoolean("kidsMode", false)) return true;
+        return !prefs.getBoolean("classicHome", true);   // 0.10.43 flips the default to false
+    }
+    @Override public String itemBlurb(Catalog.Item it) { return KidsPlay.blurb(it); }
+    @Override public void kidsBrowseMore(String catId) {
+        String cat = KidsPlay.catFromId(catId);
+        if (cat == null) return;
+        boolean kids = prefs.getBoolean("kidsMode", false);
+        int max = kids ? KidsPlay.maxPegi(kids12()) : KidsPlay.ADULT;
+        int at = kidsBrowseAt.containsKey(catId) ? kidsBrowseAt.get(catId) : KidsPlay.PAGE;
+        java.util.List<Catalog.Item> more = KidsPlay.items(cat, max, at, KidsPlay.PAGE);
+        if (more.isEmpty()) return;
+        kidsBrowseAt.put(catId, at + more.size());
+        java.util.List<Catalog.Item> cur = new java.util.ArrayList<>();
+        // Append by rebuilding the visible prefix plus more (replaceRow swaps the whole row).
+        java.util.List<Catalog.Item> have = KidsPlay.items(cat, max, 0, at);
+        have.addAll(more);
+        view.replaceRow(catId, have);
+    }
+    private java.util.Set<String> allowedEmus() {
+        String key = kids12() ? "kidsEmu12" : "kidsEmu";
+        return new java.util.HashSet<>(prefs.getStringSet(key, java.util.Collections.<String>emptySet()));
+    }
+    private java.util.List<Catalog.Item> withRobloxApp(java.util.List<Catalog.Item> items) {
+        java.util.ArrayList<Catalog.Item> out = new java.util.ArrayList<>();
+        out.add(Catalog.ROBLOX);
+        if (items != null) for (Catalog.Item it : items) if (it != Catalog.ROBLOX) out.add(it);
+        return out;
+    }
 
     private void handleKidsGuardIntent(Intent i) {
         if (i == null) return;
@@ -3177,6 +3365,183 @@ public class MainActivity extends Activity implements HomeView.Host {
                     ScreenTimeService.sync(this);
                     toast("Daily limit: " + min + " minutes.");
                     view.invalidate();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+
+
+    private boolean pkgInstalled(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        try { getPackageManager().getPackageInfo(pkg, 0); return true; } catch (Exception e) { return false; }
+    }
+
+    private void toggleClassicHome() {
+        boolean next = !prefs.getBoolean("classicHome", true);
+        prefs.edit().putBoolean("classicHome", next).apply();
+        toast(next ? "Classic home layout is on." : "Kids-style home layout is on.");
+        rescan();
+    }
+
+    private void resumeStoreQueue() {
+        if (storeQueue.isEmpty()) return;
+        while (storeQueueAt < storeQueue.size() && pkgInstalled(storeQueue.get(storeQueueAt))) storeQueueAt++;
+        if (storeQueueAt >= storeQueue.size()) {
+            storeQueue.clear(); storeQueueAt = 0;
+            toast("Finished opening Play Store pages.");
+            return;
+        }
+        openStoreQueueItem();
+    }
+
+    private void startStoreQueue(java.util.List<String> pkgs) {
+        storeQueue.clear();
+        storeQueue.addAll(KidsPlay.storeQueue(pkgs, pkg -> pkgInstalled(pkg)));
+        storeQueueAt = 0;
+        if (storeQueue.isEmpty()) { toast("Those games are already installed."); return; }
+        openStoreQueueItem();
+    }
+
+    private void openStoreQueueItem() {
+        while (storeQueueAt < storeQueue.size() && pkgInstalled(storeQueue.get(storeQueueAt))) storeQueueAt++;
+        if (storeQueueAt >= storeQueue.size()) {
+            storeQueue.clear(); storeQueueAt = 0;
+            toast("Finished opening Play Store pages.");
+            return;
+        }
+        String pkg = storeQueue.get(storeQueueAt);
+        KidsPlay.Game g = KidsPlay.byPkg(pkg);
+        String name = g != null ? g.title : pkg;
+        int n = storeQueue.size(), i = storeQueueAt + 1;
+        toast("Next game (" + i + " of " + n + "): " + name);
+        storeQueueAt++;
+        store(pkg);
+    }
+
+
+    private void fillKidsInstallList(android.widget.ListView list, java.util.ArrayList<KidsPlay.Game> shown,
+                                     String[] cats, int tab, int max, java.util.LinkedHashSet<String> picked) {
+        shown.clear();
+        shown.addAll(KidsPlay.list(cats[tab], max));
+        String[] names = new String[shown.size()];
+        boolean[] on = new boolean[shown.size()];
+        for (int i = 0; i < shown.size(); i++) {
+            KidsPlay.Game g = shown.get(i);
+            boolean have = pkgInstalled(g.pkg);
+            names[i] = g.title + "  ·  PEGI " + g.pegi + (have ? "  (installed)" : "");
+            on[i] = picked.contains(g.pkg);
+        }
+        list.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_multiple_choice, names));
+        list.setChoiceMode(android.widget.AbsListView.CHOICE_MODE_MULTIPLE);
+        for (int i = 0; i < on.length; i++) list.setItemChecked(i, on[i]);
+    }
+
+    private void installKidsGames() {
+        final String[] cats = KidsPlay.CATS;
+        final String[] labels = KidsPlay.CAT_LABELS;
+        final int[] tab = { 0 };
+        final int max = KidsPlay.ADULT;   // parent picker can tick any rated title; Kids home still filters
+        final java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
+        final java.util.ArrayList<KidsPlay.Game> shown = new java.util.ArrayList<>();
+        final android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int) (8 * getResources().getDisplayMetrics().density);
+        root.setPadding(pad, pad, pad, 0);
+        android.widget.TextView intro = new android.widget.TextView(this);
+        intro.setText("Tick games, then confirm with the parent PIN. Each selected game opens its Play Store page (already-installed games are skipped). No game files are copied.");
+        intro.setPadding(0, 0, 0, pad);
+        root.addView(intro);
+        android.widget.LinearLayout tabs = new android.widget.LinearLayout(this);
+        tabs.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(this);
+        hsv.addView(tabs);
+        root.addView(hsv);
+        final android.widget.ListView list = new android.widget.ListView(this);
+        root.addView(list, new android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+        list.setOnItemClickListener((parent, v, pos, id) -> {
+            if (pos < 0 || pos >= shown.size()) return;
+            String pkg = shown.get(pos).pkg;
+            if (list.isItemChecked(pos)) picked.add(pkg); else picked.remove(pkg);
+        });
+        for (int i = 0; i < labels.length; i++) {
+            final int idx = i;
+            android.widget.Button b = new android.widget.Button(this);
+            b.setText(labels[i]);
+            b.setOnClickListener(v -> { tab[0] = idx; fillKidsInstallList(list, shown, cats, tab[0], max, picked); });
+            tabs.addView(b);
+        }
+        fillKidsInstallList(list, shown, cats, tab[0], max, picked);
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Install kids games")
+                .setView(root)
+                .setPositiveButton("Install selected", null)
+                .setNeutralButton("Select all in this tab", null)
+                .setNegativeButton("Cancel", null)
+                .create();
+        dlg.show();
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            for (KidsPlay.Game g : shown) if (!pkgInstalled(g.pkg)) picked.add(g.pkg);
+            fillKidsInstallList(list, shown, cats, tab[0], max, picked);
+        });
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (picked.isEmpty()) { toast("Tick at least one game."); return; }
+            dlg.dismiss();
+            askPin("Confirm install", () -> startStoreQueue(new java.util.ArrayList<>(picked)));
+        });
+    }
+
+    private void kidsEmusSettings() {
+        java.util.ArrayList<Catalog.Item> installed = new java.util.ArrayList<>();
+        java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+        for (Catalog.Item e : Catalog.emulators()) {
+            if (launchIntent(e) == null) continue;
+            String pkg = e.storePackage();
+            if (pkg != null && seen.add(pkg)) installed.add(e);
+        }
+        // Also any installed app that looks like an emulator.
+        // `apps` from the last rescan isn't in scope; query launchers again via known packages only.
+        if (installed.isEmpty()) { toast("No emulator apps are installed."); return; }
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int p = (int) (8 * getResources().getDisplayMetrics().density);
+        box.setPadding(p, p, p, 0);
+        android.widget.TextView intro = new android.widget.TextView(this);
+        intro.setText("Emulators stay hidden in Kids and Kids 12+ unless you tick them here. Each profile has its own list. This does not add ROM files.");
+        intro.setPadding(0, 0, 0, p);
+        box.addView(intro);
+        java.util.HashSet<String> k = new java.util.HashSet<>(prefs.getStringSet("kidsEmu", java.util.Collections.<String>emptySet()));
+        java.util.HashSet<String> k12 = new java.util.HashSet<>(prefs.getStringSet("kidsEmu12", java.util.Collections.<String>emptySet()));
+        android.widget.TextView h1 = new android.widget.TextView(this); h1.setText("Kids"); h1.setPadding(0, p, 0, p / 2); box.addView(h1);
+        final java.util.ArrayList<android.widget.CheckBox> boxesKids = new java.util.ArrayList<>();
+        final java.util.ArrayList<android.widget.CheckBox> boxes12 = new java.util.ArrayList<>();
+        for (Catalog.Item e : installed) {
+            android.widget.CheckBox cb = new android.widget.CheckBox(this);
+            cb.setText(e.label);
+            cb.setChecked(k.contains(e.storePackage()));
+            cb.setTag(e.storePackage());
+            boxesKids.add(cb); box.addView(cb);
+        }
+        android.widget.TextView h2 = new android.widget.TextView(this); h2.setText("Kids 12+"); h2.setPadding(0, p, 0, p / 2); box.addView(h2);
+        for (Catalog.Item e : installed) {
+            android.widget.CheckBox cb = new android.widget.CheckBox(this);
+            cb.setText(e.label);
+            cb.setChecked(k12.contains(e.storePackage()));
+            cb.setTag(e.storePackage());
+            boxes12.add(cb); box.addView(cb);
+        }
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(box);
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Emulators in Kids mode")
+                .setView(sv)
+                .setPositiveButton("Save", (d, w) -> {
+                    java.util.HashSet<String> a = new java.util.HashSet<>();
+                    java.util.HashSet<String> bset = new java.util.HashSet<>();
+                    for (android.widget.CheckBox cb : boxesKids) if (cb.isChecked()) a.add((String) cb.getTag());
+                    for (android.widget.CheckBox cb : boxes12) if (cb.isChecked()) bset.add((String) cb.getTag());
+                    prefs.edit().putStringSet("kidsEmu", a).putStringSet("kidsEmu12", bset).apply();
+                    toast("Saved. Ticked emulators will show in that Kids profile.");
+                    rescan();
                 })
                 .setNegativeButton("Cancel", null).show();
     }

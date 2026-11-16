@@ -13,9 +13,10 @@ def test_bootanim_constants_and_flow():
     assert "magisk --install-module" in b and "/remove" in b and "UNTESTED" in b
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "bootanim": bootAnim();' in m
-    for s in ("BootAnim.matches(md.digest())", "MediaStore.Downloads", "setProgress", "\"Install now\"",
-              "\"Remove boot animation\"", "\"Restart now\"", "getLaunchIntentForPackage(BootAnim.MAGISK_PKG)",
-              "Install from storage", "bootAnimAvailable()"):
+    for s in ("BootAnim.matches(md.digest())", "MediaStore.Downloads", "setProgress",
+              "Restore original boot animation", "\"Restart now\"", "getLaunchIntentForPackage(BootAnim.MAGISK_PKG)",
+              "Install from storage", "bootAnimAvailable()", "BootAnim.dataLocalInstallCmd",
+              "BootAnim.systemInstallCmd", "showBootAnimError", "\"Details\""):
         assert s in m, s
     assert "SU_PATHS" in m and "SuRun.FORM_IDS" in m and "SuRun.stdinScript(cmd)" in m
     assert "suBatch(" in m and "shouldRetry()" in m
@@ -31,7 +32,7 @@ def test_bootanim_not_bundled_and_manifest_queries():
 
 def test_featured_roblox_minecraft_first_without_logos():
     c = (SRC / "Catalog.java").read_text()
-    assert '"Featured", "display", KIDS_ON, SETTINGS_TILE, ROBLOX, MINECRAFT' in c
+    assert '"Featured", "display", KIDS_ON, SETTINGS_TILE, INSTALL_KIDS, ROBLOX, MINECRAFT' in c
     assert '"com.roblox.client"' in c and '"com.mojang.minecraftpe"' in c
     h = (SRC / "HomeView.java").read_text()
     assert "cat = 0; catAnim = 0;" in h
@@ -95,7 +96,7 @@ def test_force_landscape_is_opt_in_root_only():
 
 def test_play_store_tile_on_featured():
     c = (SRC / "Catalog.java").read_text()
-    assert '"Featured", "display", KIDS_ON, SETTINGS_TILE, ROBLOX, MINECRAFT, PLAY_STORE,' in c and '"com.android.vending"' in c
+    assert '"Featured", "display", KIDS_ON, SETTINGS_TILE, INSTALL_KIDS, ROBLOX, MINECRAFT, PLAY_STORE,' in c and '"com.android.vending"' in c
     m = (SRC / "MainActivity.java").read_text()
     assert "Play Store not installed" in m
     assert '<package android:name="com.android.vending" />' in (AND / "app/src/main/AndroidManifest.xml").read_text()
@@ -110,7 +111,9 @@ def test_geforce_now_on_featured():
 def test_kids_mode_big_and_locked_down():
     c = (SRC / "Catalog.java").read_text()
     km = c.split("public static List<Category> kidsMode()", 1)[1].split("\n    }\n", 1)[0]
-    assert '"Play", "pad", ROBLOX, MINECRAFT, MARVEL_RIVALS, ROBLOX_MODE)' in km and "GEFORCE_NOW" not in km.split("KIDS_WIFI", 1)[0] and '"Kids Games", "invader", KIDS' in km and "PLAY_STORE" not in km
+    assert "addGameTabs(" in c and '"kcloud"' in c and "allowedEmus" in c
+    kp = (SRC / "KidsPlay.java").read_text()
+    assert '"kpuzzle"' in kp and '"kstyle"' in kp and "KidsPlay.CAT_IDS" in c
     for bad in ("RETROARCH", "romfolder", "settings", "ask", "projector", "k56", "bios"):
         assert bad not in km.lower().replace("kids games", "")
     h = (SRC / "HomeView.java").read_text()
@@ -118,7 +121,7 @@ def test_kids_mode_big_and_locked_down():
     assert "onKeyLongPress" in h and "host.open(Catalog.KIDS_OFF)" in h and "e.startTracking()" in h
     m = (SRC / "MainActivity.java").read_text()
     assert 'case "kids": kidsMode(true);' in m and 'case "kidsoff": kidsMode(false);' in m
-    assert 'kidsOn ? Catalog.kidsMode(allRoms, kidsNew, approved)' in m and 'getBoolean("kidsMode", false)' in m
+    assert 'Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus)' in m and 'getBoolean("kidsMode", false)' in m
 
 
 def test_geforce_now_web_client_on_handhelds():
@@ -220,7 +223,7 @@ def test_kids_mode_new_games_and_update_tile():
     m = (SRC / "MainActivity.java").read_text()
     assert "Intent.ACTION_PACKAGE_ADDED.equals(i.getAction()) && !i.getBooleanExtra(Intent.EXTRA_REPLACING, false)" in m
     assert "m.kidsInstalled(" in m and "kidsDiff();" in m and "kidsStoreOpened();" in m
-    assert 'Catalog.kidsMode(allRoms, kidsNew, approved)' in m and "You're up to date!" in m
+    assert "Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus)" in m and "You're up to date!" in m
     ki = m.split("void kidsInstalled(String pkg)", 1)[1].split("\n    }\n", 1)[0]
     assert 'getBoolean("kidsMode", false)' in ki and "getLaunchIntentForPackage(pkg) == null" in ki
 
@@ -251,7 +254,8 @@ def test_rivals_tile_has_no_bundled_duat_art():
 
 def test_files_tile_not_in_kids():
     c = (SRC / "Catalog.java").read_text()
-    assert 'FILES = act("Files", "folder", "filemgr")' in c and "dreamcast(roms, false)" in c
+    assert 'FILES = act("Files", "folder", "filemgr")' in c
+    assert "addGameTabs(" in c and 'new Category("kdc"' not in c
     assert "Copy games to a folder called Dreamcast (PSP games to PSP), BIOS to BIOS" in c and "Copy PSP games to a folder called PSP" in c
     m = (SRC / "MainActivity.java").read_text()
     body = m.split("private void openFiles()", 1)[1].split("private boolean tryStart", 1)[0]
@@ -263,7 +267,8 @@ def test_files_tile_not_in_kids():
 def test_psp_section_mirrors_dreamcast():
     c = (SRC / "Catalog.java").read_text()
     assert 'PSP = app("PSP", "handheld", "org.ppsspp.ppsspp", "org.ppsspp.ppssppgold")' in c
-    assert 'new Category("kpsp"' in c and "psp(roms, false)" in c and "if (files) { l.add(FILES); l.add(RESCAN); }" in c and "c.add(psp(roms));" in c
+    assert "if (files) { l.add(FILES); l.add(RESCAN); }" in c and "c.add(psp(roms));" in c
+    assert 'new Category("kpsp"' not in c
     s = (SRC / "PspScan.java").read_text()
     assert "http" not in s.lower() and '"psp/game"' in s and '"roms/psp"' in s
     m = (SRC / "MainActivity.java").read_text()
@@ -321,13 +326,13 @@ def test_scan_cache_shared_with_kids_rows():
     sd = m.split("private void scanDreamcast()", 1)[1]
     assert sd.index('prefs.getStringSet("gameScanCache"') < sd.index("if (dcScanning || !canReadFiles()) return;")
     assert 'prefs.edit().putStringSet("gameScanCache", cache)' in m and "kept the last good list" in m
-    assert "Catalog.kidsMode(allRoms, kidsNew, approved)" in m and "allRoms.addAll(dcFiles)" in m
+    assert "Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus)" in m and "allRoms.addAll(dcFiles)" in m
 
 
 def test_kids_rows_games_only():
     c = (SRC / "Catalog.java").read_text()
-    assert "kidsGamesOnly(dc.items)" in c and "kidsGamesOnly(ps.items)" in c
-    assert "if (dci.length > 0) c.add(new Category(\"kdc\"" in c and "if (psi.length > 0) c.add(new Category(\"kpsp\"" in c
+    assert "kidsGamesOnly(" in c
+    assert 'new Category("kdc"' not in c and 'new Category("kpsp"' not in c
     assert "return g.toArray(new Item[0]);" in c
     assert "return (g.isEmpty() ? items : g).toArray(new Item[0]);" not in c
 
@@ -409,7 +414,8 @@ def test_kids_pin_play_store_and_exit():
     assert '"kidsoff".equals(it.action)' in g and "Catalog.opensStore(" in g
     st = m.split("private void store(String pkg) {", 1)[1][:300]
     assert 'getBoolean("kidsMode", false) && pinSet() && !pinFresh()' in st
-    assert "default 1234" in m.split("private void askPin(", 1)[1][:4000]
+    assert "DEFAULT_PIN_HINT" in m and "Default PIN: 1234, change it in Settings" in m
+    assert "pin_changed" in m and "pinHintNeeded()" in m
     cp = m.split("private void changePin()", 1)[1].split("private boolean homePromptShown;", 1)[0]
     assert cp.index('PinAction.verify(cur.getText()') < cp.index('putString("lockPin", LockPin.newHash(pin))')
     assert "showPinDlg(" in cp and "addForgotPin(" in cp and "bindPinEnter(" in cp
@@ -421,7 +427,7 @@ def test_kids_pin_play_store_and_exit():
     assert "pinOkUntil = 0" in k
     ap = m.split("private void askPin(", 1)[1].split("private void lockToggle()", 1)[0]
     assert "IME_ACTION_DONE" in ap and "setOnEditorActionListener" in ap and "BUTTON_POSITIVE" in ap
-    assert "createParentPin(" in ap and "default 1234" in ap
+    assert "createParentPin(" in ap and "DEFAULT_PIN_HINT" in m and "pinHintNeeded()" in ap
     # 0.10.36: compact, scrollable PIN dialog; Forgot PIN? help; Enter / A / DPAD_CENTER submit
     assert "Forgot PIN?" in ap and "ScrollView" in ap and "showPinDlg(" in ap and "SOFT_INPUT_ADJUST_RESIZE" in ap
     assert "KEYCODE_BUTTON_A" in ap and "KEYCODE_DPAD_CENTER" in ap and "pinSubmitKey(" in ap
@@ -507,7 +513,7 @@ def test_kids_pin_play_store_and_exit():
 def test_kids_no_streams_or_all_apps():
     m = (SRC / "MainActivity.java").read_text()
     op = m.split("public void open(Catalog.Item it) {", 1)[1][:500]
-    assert 'getBoolean("kidsMode", false) && Catalog.kidsBlocked(it)' in op
+    assert 'getBoolean("kidsMode", false) && Catalog.kidsBlocked(it, allowedEmus())' in op
     assert 'if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }' in m.split("private void allApps() {", 1)[1][:200]
 
 
@@ -543,7 +549,8 @@ def test_new_app_placer_and_sort_apps():
     assert "Catalog.guessSection(" in ap and '"Also add to Kids mode"' in ap and "k.setChecked(false)" in ap and 'askPin("Parent PIN: add to Kids mode"' in ap
     assert '"Save"' in ap and '"Skip"' in ap and "setIcon(icon)" in ap and '"kidsApproved"' in ap and '"placed"' in ap
     assert 'case "sortapps": sortApps();' in m and 'act("Sort apps", "grid", "sortapps")' in c and 'LockPin.needsPin' in m
-    assert "Catalog.applyPlacements(" in m and "Catalog.kidsMode(allRoms, kidsNew, approved)" in m
+    assert "Catalog.applyPlacements(" in m and "Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus)" in m
+    assert 'case "installkids":' in m and 'case "kidsemus":' in m and 'case "classichome":' in m
 
 
 def test_phoenix_theme_and_kids_themes():

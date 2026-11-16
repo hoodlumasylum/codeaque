@@ -45,6 +45,12 @@ public class HomeView extends View {
         void timeUpAskParent();
         /** 0.10.37: while a parent PIN dialog is open, tiles must not activate (wrong PIN / A / Enter must not launch). */
         boolean pinDialogOpen();
+        /** 0.10.42 / 0.10.43: vertical list layout (Kids always; adult default unless Classic home is on). */
+        boolean browseLayout();
+        /** Description under a browse-list title; empty if none. */
+        String itemBlurb(Catalog.Item item);
+        /** Load the next page of a paged Kids/adult game tab when the list is near its end. */
+        void kidsBrowseMore(String catId);
     }
 
     private Palette T = Palette.NEON;
@@ -86,7 +92,7 @@ public class HomeView extends View {
     private Catalog.Item prompt;          // "not installed" panel
     private final float[] motes = new float[36];
     private final SimpleDateFormat clock = new SimpleDateFormat("EEE d MMM  HH:mm", Locale.getDefault());
-    private float downX, downY, lastTouchX, s = 1;
+    private float downX, downY, lastTouchX, lastTouchY, s = 1;
     private long downTime;
     private boolean rowDrag, sectionSwipe, gestureChose;
     /** Tile-units per second while a finger fling is coasting. userScroll means the finger owns the scroll
@@ -227,11 +233,28 @@ public class HomeView extends View {
     }
 
     private float maxScroll() {
+        if (browseList()) {
+            float rh = browseRowH(), span = browseBottom() - browseTop();
+            if (rh <= 1) return 0;
+            float vis = Math.max(1, span / rh);
+            return Math.max(0, items().size() - vis);
+        }
         float step = tileW() + tileGap();
         if (step <= 1) return 0;
         float vis = Math.max(1, (getWidth() - 2 * tilesLeft()) / step);
         return Math.max(0, items().size() - vis);
     }
+    boolean browseList() {
+        if (boxset || cats.isEmpty()) return false;
+        if (!host.browseLayout()) return false;
+        // Utility rows with a handful of actions keep the compact tile row.
+        String id = cats.get(Math.max(0, Math.min(cat, cats.size() - 1))).id;
+        if ("kthemes".equals(id) || "kwifi".equals(id) || "kparent".equals(id) || "settings".equals(id) || "power".equals(id)) return false;
+        return true;
+    }
+    private float browseRowH() { return 92 * s; }
+    private float browseTop() { return Math.max(catsBottom() + 10 * s, getHeight() * 0.28f); }
+    private float browseBottom() { return getHeight() - footH(); }
     private float clampScroll(float v) { float m = maxScroll(); return v < 0 ? 0 : v > m ? m : v; }
 
     private boolean onRobloxRow() {
@@ -254,9 +277,17 @@ public class HomeView extends View {
         if (lastRobloxOn == null || lastRobloxOn.booleanValue() != on) {
             lastRobloxOn = on;
             host.robloxRow(on, near);
-            return;
+        } else if (on && near) host.robloxRow(true, true);
+        if (considerEnd && browseList() && nearBrowseEnd()) {
+            String id = cats.get(Math.max(0, Math.min(cat, cats.size() - 1))).id;
+            if (KidsPlay.catFromId(id) != null) host.kidsBrowseMore(id);
         }
-        if (on && near) host.robloxRow(true, true);
+    }
+    private boolean nearBrowseEnd() {
+        int n = items().size();
+        if (n == 0) return false;
+        int pos = Math.max(tile, (int) Math.ceil(scrollAnim));
+        return n - pos <= 3;
     }
 
     /** Seven taps, each within 0.9 s of the last, open the hidden parent menu (only useful while Lock mode is on). */
@@ -284,6 +315,11 @@ public class HomeView extends View {
             float cw = getWidth() / (float) Math.max(1, cats.size());
             setCat((int) (x / cw)); inCats = false; return;
         }
+        if (browseList() && y >= browseTop() && y <= browseBottom()) {
+            int i = (int) Math.floor((y - browseTop()) / browseRowH() + scrollAnim);
+            if (i >= 0 && i < items().size()) { inCats = false; tile = i; activate(); }
+            return;
+        }
         if (y > tilesTop() && y < tilesTop() + tileH()) {
             float step = tileW() + tileGap();
             int i = (int) Math.floor((x - tilesLeft() + scrollAnim * step) / step);
@@ -297,7 +333,7 @@ public class HomeView extends View {
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (splash != null) { splash = null; invalidate(); return true; }
-                downX = x; downY = y; lastTouchX = x; downTime = e.getEventTime();
+                downX = x; downY = y; lastTouchX = x; lastTouchY = y; downTime = e.getEventTime();
                 rowDrag = false; sectionSwipe = false; gestureChose = false;
                 if (velocity != null) velocity.recycle();
                 velocity = VelocityTracker.obtain();
@@ -310,9 +346,11 @@ public class HomeView extends View {
                 if (!gestureChose && Math.hypot(dx, dy) > 28 * s) {
                     gestureChose = true;
                     boolean horiz = Math.abs(dx) > Math.abs(dy) * 1.2f;
+                    boolean onList = browseList() && downY >= browseTop() && downY <= browseBottom();
                     boolean onTiles = downY > tilesTop() && downY < tilesTop() + tileH();
-                    if (!horiz) { /* a vertical rub is not a tap and not a section change */ }
-                    else if (!onTiles || maxScroll() < 0.5f) sectionSwipe = true;
+                    if (onList && !horiz) rowDrag = true;
+                    else if (!horiz) { /* a vertical rub is not a tap and not a section change */ }
+                    else if ((!onTiles && !onList) || maxScroll() < 0.5f) sectionSwipe = true;
                     else {
                         float vx = Math.abs(dx) / Math.max(1f, e.getEventTime() - downTime);   // px per ms
                         if (vx > 1.15f) sectionSwipe = true;   // a flick changes section
@@ -320,10 +358,16 @@ public class HomeView extends View {
                     }
                 }
                 if (rowDrag) {
-                    float step = tileW() + tileGap();
                     userScroll = true; flingV = 0;
-                    scrollAnim = clampScroll(scrollAnim + (lastTouchX - x) / step);
-                    lastTouchX = x;
+                    if (browseList()) {
+                        float step = Math.max(1f, browseRowH());
+                        scrollAnim = clampScroll(scrollAnim + (lastTouchY - y) / step);
+                        lastTouchY = y;
+                    } else {
+                        float step = tileW() + tileGap();
+                        scrollAnim = clampScroll(scrollAnim + (lastTouchX - x) / step);
+                        lastTouchX = x;
+                    }
                     invalidate();
                 }
                 return true;
@@ -336,8 +380,13 @@ public class HomeView extends View {
                     if (x - downX < -40 * s) setCat(cat + 1);
                     else if (x - downX > 40 * s) setCat(cat - 1);
                 } else if (rowDrag && e.getActionMasked() == MotionEvent.ACTION_UP && velocity != null) {
-                    float step = Math.max(1f, tileW() + tileGap());
-                    flingV = -velocity.getXVelocity() / step;   // finger left -> later tiles
+                    if (browseList()) {
+                        float step = Math.max(1f, browseRowH());
+                        flingV = -velocity.getYVelocity() / step;   // finger up -> later rows
+                    } else {
+                        float step = Math.max(1f, tileW() + tileGap());
+                        flingV = -velocity.getXVelocity() / step;   // finger left -> later tiles
+                    }
                     userScroll = Math.abs(flingV) > 0.15f;
                     invalidate();
                 }
@@ -430,8 +479,8 @@ public class HomeView extends View {
         topBar(c, W, H);
         notifyRoblox(true);
         if (!boxset) categories(c, W, H);
-        if (!boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
-        tiles(c, W, H);
+        if (!browseList() && !boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
+        if (browseList()) browseList(c, W, H); else tiles(c, W, H);
         hints(c, W, H);
         if (prompt != null) prompt(c, W, H);
         if (kids && host.timeUpScreen()) timeUpPanel(c, W, H);
@@ -697,6 +746,52 @@ public class HomeView extends View {
         float ty = ly + lh + 2 * s;
         if (T.embers) { heavy = true; p.setLetterSpacing(0.3f); text(c, "PHOENIX", cx, ty + 52 * s, 46 * s, GOLD, Paint.Align.CENTER, true); p.setLetterSpacing(0); heavy = false; }   // 0.10.27
         else if (!covers()) spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
+    }
+
+    private void browseList(Canvas c, int W, int H) {
+        List<Catalog.Item> its = items();
+        float top = browseTop(), bot = browseBottom(), rh = browseRowH(), left = 20 * s, width = W - 40 * s;
+        for (int i = 0; i < its.size(); i++) {
+            float y = top + (i - scrollAnim) * rh;
+            if (y + rh < top || y > bot) continue;
+            boolean sel = i == tile && !inCats;
+            Catalog.Item it = its.get(i);
+            float pad = 6 * s;
+            r.set(left, y + pad, left + width, y + rh - pad);
+            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
+            c.drawRoundRect(r, 12 * s, 12 * s, p); p.setShader(null);
+            stroke.setStrokeWidth((sel ? 3 : 1.4f) * s);
+            stroke.setColor(sel ? GOLD : T.border);
+            c.drawRoundRect(r, 12 * s, 12 * s, stroke);
+            float isz = 56 * s;
+            iconRect.set(r.left + 12 * s, r.centerY() - isz / 2, r.left + 12 * s + isz, r.centerY() + isz / 2);
+            Bitmap ai = host.appIcon(it);
+            if (ai != null) { p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(ai, null, iconRect, p); }
+            else icon(c, it.icon, iconRect.centerX(), iconRect.centerY(), 26 * s, sel ? T.accentLight : T.accentMid, 2.2f);
+            float tx = iconRect.right + 14 * s, ty = r.top + 22 * s;
+            String lab = it.label;
+            p.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+            text(c, lab, tx, ty, 20 * s, 0xFFFFFFFF, Paint.Align.LEFT, true);
+            String bl = host.itemBlurb(it);
+            if (bl == null) bl = "";
+            if (bl.isEmpty()) bl = host.installed(it) ? "Installed — tap to open." : (it.webUrl != null ? "Opens in the browser, or the app once installed." : "Tap to open the Play Store page.");
+            p.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            float maxW = r.right - tx - 70 * s;
+            if (p.measureText(bl) > maxW) {
+                while (bl.length() > 4 && p.measureText(bl + "…") > maxW) bl = bl.substring(0, bl.length() - 1);
+                bl = bl + "…";
+            }
+            text(c, bl, tx, ty + 22 * s, 13 * s, DIM, Paint.Align.LEFT, false);
+            if (!it.isAction() && !host.installed(it)) {
+                String b = it.webUrl != null ? "WEB" : "GET";
+                p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
+                RectF br = new RectF(r.right - 52 * s, r.top + 10 * s, r.right - 10 * s, r.top + 28 * s);
+                c.drawRoundRect(br, 8 * s, 8 * s, p);
+                text(c, b, br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+            }
+            timeUpBadge(c, it);
+        }
+        if (its.isEmpty()) text(c, "Nothing in this list yet.", W / 2f, (top + bot) / 2, 16 * s, DIM, Paint.Align.CENTER, false);
     }
 
     private void tiles(Canvas c, int W, int H) {
