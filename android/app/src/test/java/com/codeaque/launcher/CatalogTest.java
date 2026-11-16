@@ -140,11 +140,11 @@ public class CatalogTest {
             check("Phone / Messages".equals(Catalog.CALL_TEXT.label) && "calltext".equals(Catalog.CALL_TEXT.action), "phone tile");
             java.util.List<String> parentActs = new java.util.ArrayList<>();
             for (Catalog.Item i : c.get(Catalog.indexOf(c, "settings")).items) parentActs.add(i.action);
-            check(parentActs.contains("downloads") && parentActs.contains("lock") && parentActs.contains("safecontacts") && parentActs.contains("settings"), "parent tiles present before lock");
+            check(parentActs.contains("downloads") && parentActs.contains("lock") && parentActs.contains("safecontacts") && parentActs.contains("phonesettings") && parentActs.contains("phoneaccounts") && parentActs.contains("homeapp"), "parent tiles present before lock");
             java.util.List<Catalog.Category> locked = Catalog.applyLockMode(c);
             java.util.List<String> left = new java.util.ArrayList<>();
             for (Catalog.Item i : locked.get(Catalog.indexOf(locked, "settings")).items) left.add(i.action);
-            check(!left.contains("lock") && !left.contains("settings") && !left.contains("home") && left.contains("downloads") && left.contains("changepin") && left.contains("safecontacts"), "lock hides the exits " + left);
+            check(!left.contains("lock") && left.contains("phonesettings") && left.contains("phoneaccounts") && left.contains("homeapp") && left.contains("downloads") && left.contains("changepin") && left.contains("safecontacts"), "lock hides Lock mode tile; Phone Settings stay (PIN) " + left);
             // 0.10.30 Grown-ups row in Kids mode and the parent entries (home-screen aliases, long-press shortcuts)
             for (Catalog.Category k : Catalog.kidsMode()) if (k.id.equals("kparent")) check(k.items.size() == 2 && k.items.get(0) == Catalog.ADULT_PIN && k.items.get(1) == Catalog.SETTINGS_PIN, "grown-ups row");
             check("adultpin".equals(Catalog.ADULT_PIN.action) && "settingspin".equals(Catalog.SETTINGS_PIN.action) && LockPin.needsPin("adultpin") && LockPin.needsPin("settingspin"), "grown-ups actions need the PIN");
@@ -152,7 +152,7 @@ public class CatalogTest {
             check("adult".equals(Catalog.entryTarget(null, "com.codeaque.launcher.AdultAlias")) && "settings".equals(Catalog.entryTarget(null, "com.codeaque.launcher.SettingsAlias"))
                     && "adult".equals(Catalog.entryTarget(Catalog.OPEN_ADULT, "com.codeaque.launcher.MainActivity")) && "settings".equals(Catalog.entryTarget(Catalog.OPEN_SETTINGS, null))
                     && Catalog.entryTarget("android.intent.action.MAIN", "com.codeaque.launcher.MainActivity") == null && Catalog.entryTarget(null, null) == null, "entry targets");
-            check(Catalog.hiddenInLock("lock") && Catalog.hiddenInLock("settings") && !Catalog.hiddenInLock("wifi") && !Catalog.hiddenInLock("downloads"), "hidden actions");
+            check(Catalog.hiddenInLock("lock") && Catalog.hiddenInLock("settings") && Catalog.hiddenInLock("home") && !Catalog.hiddenInLock("phonesettings") && !Catalog.hiddenInLock("phoneaccounts") && !Catalog.hiddenInLock("homeapp") && !Catalog.hiddenInLock("wifi") && !Catalog.hiddenInLock("downloads"), "hidden actions");
             for (Catalog.Category k : Catalog.kidsMode()) for (Catalog.Item i : k.items) check(!"downloads".equals(i.action), "no downloads row in kids");
             check(LockPin.needsPin("downloads") && LockPin.needsPin("safecontacts") && !LockPin.needsPin("calltext"), "downloads and safe contacts need the PIN when locked");
             java.util.List<SafeContacts.Contact> people = new java.util.ArrayList<>();
@@ -364,6 +364,11 @@ public class CatalogTest {
                             && "kidslock".equals(Catalog.KIDS_LOCK.action) && "lockphone".equals(Catalog.LOCK_PHONE.action)
                             && "removeowner".equals(Catalog.REMOVE_OWNER.action)
                             && "exitcodeaque".equals(Catalog.EXIT_CODEAQUE.action)
+                            && "phonesettings".equals(Catalog.PHONE_SETTINGS.action)
+                            && "phoneaccounts".equals(Catalog.PHONE_ACCOUNTS.action)
+                            && "homeapp".equals(Catalog.HOME_APP.action)
+                            && Catalog.settingsPkg("com.android.settings") && Catalog.settingsPkg("com.android.tv.settings")
+                            && !Catalog.settingsPkg("com.android.vending") && !Catalog.settingsPkg(null)
                             && Catalog.DPM_SET_OWNER.equals("/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver")
                             && Catalog.DPM_SET_OWNER_FALLBACK.equals("cmd device_policy set-device-owner com.codeaque.launcher/.AdminReceiver")
                             && Catalog.DPM_SET_OWNER_ADB.equals("dpm set-device-owner com.codeaque.launcher/.AdminReceiver"), "always start in Kids; lock phone / remove owner");
@@ -628,14 +633,14 @@ public class CatalogTest {
         check(ScreenTime.blockedKidPackage("com.android.settings") && ScreenTime.blockedKidPackage("com.android.vending")
                 && ScreenTime.blockedKidPackage("com.google.android.packageinstaller") && ScreenTime.blockedKidPackage("com.android.documentsui")
                 && !ScreenTime.blockedKidPackage("com.roblox.client") && !ScreenTime.blockedKidPackage(null), "blocked packages");
-        check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && LockPin.needsPin("exitcodeaque") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock, device owner and Exit when locked; Update is gated in Kids mode instead");
+        check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && LockPin.needsPin("exitcodeaque") && LockPin.needsPin("phonesettings") && LockPin.needsPin("phoneaccounts") && LockPin.needsPin("homeapp") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock, device owner, Exit and Phone Settings when locked; Update is gated in Kids mode instead");
         java.util.List<String> settingsActs = new java.util.ArrayList<>();
         java.util.List<Catalog.Category> cats39 = Catalog.categories();
         for (Catalog.Item i : cats39.get(Catalog.indexOf(cats39, "settings")).items) settingsActs.add(i.action);
-        check(settingsActs.contains("exitcodeaque") && "exitcodeaque".equals(cats39.get(Catalog.indexOf(cats39, "power")).items.get(0).action), "Exit CodeAque in Settings and Power");
+        check(settingsActs.contains("exitcodeaque") && settingsActs.contains("phonesettings") && settingsActs.contains("phoneaccounts") && settingsActs.contains("homeapp") && "exitcodeaque".equals(cats39.get(Catalog.indexOf(cats39, "power")).items.get(0).action), "Phone Settings / Accounts / Home app and Exit in Settings");
         for (Catalog.Category k : Catalog.kidsMode()) {
             check(!"power".equals(k.id), "no Power row in Kids mode");
-            for (Catalog.Item i : k.items) check(!"exitcodeaque".equals(i.action), "no Exit in Kids mode: " + k.id);
+            for (Catalog.Item i : k.items) check(!"exitcodeaque".equals(i.action) && !"phonesettings".equals(i.action) && !"phoneaccounts".equals(i.action) && !"homeapp".equals(i.action), "no Exit / Phone Settings in Kids mode: " + k.id);
         }
         String accountsStack = "java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device\n\tat com.android.server.devicepolicy.DevicePolicyManagerServiceShellCommand.runSetDeviceOwner(DevicePolicyManagerServiceShellCommand.java:257)\n\tat com.android.server.devicepolicy.DevicePolicyManagerServiceShellCommand.onCommand(DevicePolicyManagerServiceShellCommand.java:1)\n";
         check(DpmError.firstLine(accountsStack).equals("Not allowed to set the device owner because there are already some accounts on the device"), "dpm first line is the reason, not the stack");

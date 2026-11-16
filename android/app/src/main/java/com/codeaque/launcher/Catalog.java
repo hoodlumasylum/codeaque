@@ -352,6 +352,10 @@ public final class Catalog {
     public static final Item REMOVE_OWNER = act("Remove device owner", "gear", "removeowner");
     /** 0.10.39: adult Settings and the Power row (PIN). Opens Android's Home-app settings so a parent can pick the stock launcher. */
     public static final Item EXIT_CODEAQUE = act("Exit CodeAque", "home", "exitcodeaque");
+    /** 0.10.40: PIN-protected adult Settings buttons that open the system Settings app. */
+    public static final Item PHONE_SETTINGS = act("Phone Settings", "gear", "phonesettings");
+    public static final Item PHONE_ACCOUNTS = act("Phone Accounts", "gear", "phoneaccounts");
+    public static final Item HOME_APP = act("Home app", "home", "homeapp");
     /** Absolute dpm path: some su (K56 /system/xbin/su) have a short PATH, so bare "dpm" fails. */
     public static final String DPM_SET_OWNER = "/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver";
     /** Fallback when /system/bin/dpm is missing: the device_policy command. */
@@ -451,6 +455,12 @@ public final class Catalog {
     /** 0.10.28: packages "Hide other launchers" must never disable (CodeAque itself, Android's Settings / fallback home). */
     public static boolean canHideLauncher(String pkg) {
         return pkg != null && !pkg.equals("com.codeaque.launcher") && !pkg.equals("com.android.settings") && !pkg.equals("android") && !pkg.startsWith("com.android.provision");
+    }
+    /** The system Settings app. Hidden in Kids mode only — adult mode (including Lock mode) still shows it. */
+    public static boolean settingsPkg(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        String p = pkg.toLowerCase(java.util.Locale.ROOT);
+        return p.equals("com.android.settings") || p.startsWith("com.android.settings.") || p.equals("com.android.tv.settings");
     }
     /** 0.10.29: tiles removed while Lock mode is on, so a child has no button for them. The parent way out is
      *  seven quick taps on the CodeAque logo, then the PIN (Turn off Lock Mode, or Open Android Settings). */
@@ -736,7 +746,7 @@ public final class Catalog {
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                act("Home app", "home", "home"), act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), EXIT_CODEAQUE, act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly"), act("Android settings", "gear", "settings")));
+                PHONE_SETTINGS, PHONE_ACCOUNTS, HOME_APP, act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), EXIT_CODEAQUE, act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly")));
         c.add(new Category("power", "Power", "gear", EXIT_CODEAQUE));
         return c;
     }

@@ -219,7 +219,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         for (ResolveInfo r : ri) {
             String pkg = r.activityInfo.packageName;
             if (pkg.equals(getPackageName()) || !seen.add(pkg)) continue;
-            if (locked() && LockPin.blocked(pkg)) continue;   // 0.10.21 hidden while locked
+            if (locked() && LockPin.blocked(pkg) && !Catalog.settingsPkg(pkg)) continue;   // 0.10.21; 0.10.40: Settings stays visible in adult mode
             Catalog.Item it = Catalog.deviceApp(r.loadLabel(pm).toString(), pkg, r.activityInfo.name);
             apps.add(it);
             if (isGame(r.activityInfo.applicationInfo) && !emuPkgs.contains(pkg)) games.add(it);
@@ -608,6 +608,12 @@ public class MainActivity extends Activity implements HomeView.Host {
                 if (mustPin(it.action) && !pinFresh()) { askPin("Parent PIN", () -> action(it.action)); return; }
                 action(it.action); return;
             }
+            if (it.isDeviceApp() && Catalog.settingsPkg(it.pkg)) {
+                if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }
+                if (!pinFresh()) { askPin("Parent PIN", () -> openSystemSettings(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls), new Intent(Settings.ACTION_SETTINGS))); return; }
+                openSystemSettings(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(it.pkg, it.cls), new Intent(Settings.ACTION_SETTINGS));
+                return;
+            }
             if (locked() && it.isDeviceApp() && LockPin.blocked(it.pkg)) { toast("Locked by a parent."); return; }
             if (Catalog.isPspRom(it)) { forceLandscape(); openInPpsspp(it); return; }   // 0.10.7
             if (Catalog.isDreamcastRom(it)) { forceLandscape(); openInFlycast(it); return; }
@@ -654,7 +660,8 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (action == null) return false;
         if (action.equals("safecontacts") || action.equals("downloads") || action.equals("blockunknown") || action.equals("safeonly")
                 || action.equals("kidsprofile") || action.equals("screentime") || action.equals("alwayskids") || action.equals("kidslock")
-                || action.equals("lockphone") || action.equals("removeowner") || action.equals("exitcodeaque")) return true;
+                || action.equals("lockphone") || action.equals("removeowner") || action.equals("exitcodeaque")
+                || action.equals("phonesettings") || action.equals("phoneaccounts") || action.equals("homeapp")) return true;
         return locked() && LockPin.needsPin(action);
     }
     /** A correct PIN opens grown-up things for 2 minutes. */
@@ -1033,8 +1040,9 @@ public class MainActivity extends Activity implements HomeView.Host {
             if (!prefs.getBoolean("kidsMode", false)) {
                 allow.add(getPackageName());
                 for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0))
-                    if (!LockPin.blocked(r.activityInfo.packageName) && !otherHome(r.activityInfo.packageName)) allow.add(r.activityInfo.packageName);
+                    if ((!LockPin.blocked(r.activityInfo.packageName) || Catalog.settingsPkg(r.activityInfo.packageName)) && !otherHome(r.activityInfo.packageName)) allow.add(r.activityInfo.packageName);
                 allow.add("com.android.vending"); allow.add("com.google.android.packageinstaller"); allow.add("com.android.packageinstaller");
+                allow.add("com.android.settings"); allow.add("com.android.tv.settings");
             }
             for (String x : extra) if (x != null && !(prefs.getBoolean("kidsMode", false) && ScreenTime.blockedKidPackage(x))) allow.add(x);   // 0.10.22: the dialer / SMS app, only for a Safe contacts call or text
             dpm.setLockTaskPackages(admin, allow.toArray(new String[0]));
@@ -1354,8 +1362,10 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "files": askFileAccess(); break;
             case "bluetooth": start(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); break;
             case "display": start(new Intent(Settings.ACTION_DISPLAY_SETTINGS)); break;
-            case "settings": start(new Intent(Settings.ACTION_SETTINGS)); break;
-            case "home": if (isDefaultHome()) toast("CodeAque is already your Home app."); else start(new Intent(Settings.ACTION_HOME_SETTINGS)); break;
+            case "phonesettings": case "settings":
+                openSystemSettings(new Intent(Settings.ACTION_SETTINGS), null); break;
+            case "homeapp": case "home":
+                openSystemSettings(new Intent(Settings.ACTION_HOME_SETTINGS), new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)); break;
             case "browser": start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))); break;
             case "effects": {
                 String n = Catalog.nextEffects(effects());
@@ -1365,7 +1375,8 @@ public class MainActivity extends Activity implements HomeView.Host {
             }
             case "allapps": allApps(); break;
             case "romfolder": pickRomFolder(); break;
-            case "accounts": start(new Intent(Settings.ACTION_SYNC_SETTINGS)); break;
+            case "phoneaccounts": case "accounts":
+                openSystemSettings(new Intent(Settings.ACTION_SYNC_SETTINGS), new Intent(Settings.ACTION_SETTINGS)); break;
             case "projector": {
                 boolean on = !prefs.getBoolean("projector", false);
                 prefs.edit().putBoolean("projector", on).apply();
@@ -1393,7 +1404,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 leaveBoxSet();
                 pinOkUntil = 0;                               // 0.10.35: a PIN from before Kids mode must not unlock Settings
-                prefs.edit().putBoolean("kidsMode", true).apply(); timeUpScreen = false;
+                prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").apply(); timeUpScreen = false;
                 ScreenTimeService.sync(this); rescan();
                 syncDeviceOwnerKiosk();
                 syncKidsPinning();
@@ -2267,7 +2278,9 @@ public class MainActivity extends Activity implements HomeView.Host {
     private void applyAlwaysKids() {
         if (!prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT)) return;
         if (!prefs.getBoolean("kidsMode", false))
-            prefs.edit().putBoolean("kidsMode", true).apply();   // last-used kidsProfile (kids / kids12) is left as it is
+            prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").apply();   // last-used kidsProfile (kids / kids12) is left as it is
+        else
+            prefs.edit().remove("parentSettings").apply();
     }
     private void alwaysKidsToggle() {
         boolean on = !prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT);
@@ -2353,6 +2366,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     /** If the child swipes to Recents or another app and pinning is off / was unpinned, try to come back (same path as Strict). */
     private void maybeBounceKidsLeave() {
         if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
+        if (prefs.getBoolean("parentSettings", false)) return;   // 0.10.40: parent opened Settings after the PIN (adult mode should already have kids off)
         if (prefs.getString("kidsFgPkg", null) != null) return;   // leaving for an approved game
         if (pinDialogOpen) return;
         final int gen = ++kidsBounceGen;
@@ -2385,8 +2399,55 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (!openHomeSettings()) toast("Could not open Home settings.");
     }
     private boolean openHomeSettings() {
-        if (tryStart(new Intent(Settings.ACTION_HOME_SETTINGS))) return true;
-        return tryStart(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+        return openSystemSettings(new Intent(Settings.ACTION_HOME_SETTINGS), new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+    }
+
+    /** PIN already asked (or All Apps Settings in adult mode). Stops lock-task if it is on, allows the Settings package
+     *  in the lock-task list for this session, then starts the system screen with FLAG_ACTIVITY_NEW_TASK.
+     *  Does not bounce the parent back: Kids blocking of Settings only applies while Kids mode is on. */
+    private boolean openSystemSettings(Intent primary, Intent fallback) {
+        prefs.edit().putBoolean("parentSettings", true).apply();
+        String pkg = resolveSettingsPackage(primary);
+        if (pkg == null) pkg = resolveSettingsPackage(fallback);
+        allowSettingsInLockTask(pkg);
+        if (inLockTask()) {
+            try { stopLockTask(); } catch (Exception ignored) { }
+        }
+        if (primary != null) {
+            primary.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStart(primary)) return true;
+        }
+        if (fallback != null) {
+            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (tryStart(fallback)) return true;
+        }
+        toast("Could not open Android settings.");
+        return false;
+    }
+    private String resolveSettingsPackage(Intent i) {
+        if (i == null) return null;
+        try {
+            android.content.pm.ResolveInfo r = getPackageManager().resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY);
+            if (r != null && r.activityInfo != null) return r.activityInfo.packageName;
+        } catch (Exception ignored) { }
+        return null;
+    }
+    /** If we are the device owner, add the Settings package to the lock-task allow list for this adult session. Does not start lock-task. */
+    private void allowSettingsInLockTask(String extraPkg) {
+        if (!deviceOwner() || prefs.getBoolean("kidsMode", false)) return;
+        try {
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            java.util.LinkedHashSet<String> allow = new java.util.LinkedHashSet<>();
+            allow.add(getPackageName());
+            allow.add("com.android.settings");
+            allow.add("com.android.tv.settings");
+            if (extraPkg != null && !extraPkg.isEmpty()) allow.add(extraPkg);
+            for (ResolveInfo r : getPackageManager().queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)) {
+                String p = r.activityInfo.packageName;
+                if ((!LockPin.blocked(p) || Catalog.settingsPkg(p)) && !otherHome(p)) allow.add(p);
+            }
+            dpm.setLockTaskPackages(adminComponent(), allow.toArray(new String[0]));
+        } catch (Exception ignored) { }
     }
 
     // ---------- 0.10.37 Lock phone to CodeAque (optional device owner, root or ADB) ----------
@@ -2474,7 +2535,9 @@ public class MainActivity extends Activity implements HomeView.Host {
                         + (Rotation.suggest(android.os.Build.MANUFACTURER, android.os.Build.MODEL, android.os.Build.HARDWARE, android.os.Build.BOARD) ? " Recommended on this handheld." : "")
                         : "This brings back all rows and Settings.")
                 .setPositiveButton(on ? "Turn on" : "Turn off", (d, w) -> {
-                    prefs.edit().putBoolean("kidsMode", on).apply();
+                    android.content.SharedPreferences.Editor ed = prefs.edit().putBoolean("kidsMode", on);
+                    if (on) ed.remove("parentSettings");
+                    ed.apply();
                     if (!on) { timeUpScreen = false; stopKidsPinning(); }
                     if (deviceOwner()) { if (on || locked()) { syncDeviceOwnerKiosk(); } }
                     else if (!on) { /* not owner: screen pin already stopped */ }

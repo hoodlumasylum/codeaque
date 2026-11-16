@@ -227,7 +227,9 @@ final class ScreenTimeTick implements Runnable {
         if (fg != null && !fg.equals(svc.getPackageName())) {
             String allow = p.getString("kidsFgPkg", null);
             boolean blocked = ScreenTime.blockedKidPackage(fg) || Catalog.emulatorPkg(fg);
-            if (kidsLock && (allow == null || !allow.equals(fg)))
+            // 0.10.40: never bounce the parent out of system Settings after a PIN in adult mode
+            if (p.getBoolean("parentSettings", false) && Catalog.settingsPkg(fg)) { /* leave Settings alone */ }
+            else if (kidsLock && (allow == null || !allow.equals(fg)))
                 ScreenTimeService.bringKidsHome(svc, false);
             else if (s.strict && blocked)
                 ScreenTimeService.bringKidsHome(svc, false);

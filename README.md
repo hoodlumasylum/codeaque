@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.40
+
+**Phone Settings (Android).** Adult Settings has parent-PIN **Phone Settings**, **Phone Accounts** and **Home app** buttons. They open the system Settings app (`Settings.ACTION_SETTINGS`), Accounts (`ACTION_SYNC_SETTINGS`, or Settings if that screen is missing), and the Home-app picker (`ACTION_HOME_SETTINGS`). Each starts with `FLAG_ACTIVITY_NEW_TASK`. If screen pinning / lock-task is on, it is stopped first and the Settings app is allowed in the lock-task list for that session, so Android will actually open it. The system Settings app stays visible in adult mode (including Lock mode); only Kids mode hides it. After the PIN, CodeAque will not bounce the parent back out of Settings. Not tried on a real phone.
+
 ## What's new in 0.10.39
 
 **Exit CodeAque (Android).** Adult Settings and the Power row have a parent-PIN **Exit CodeAque** item. It opens Android's Home-app settings (`Settings.ACTION_HOME_SETTINGS`, or Default apps if that screen is missing) so you can pick the stock launcher. If screen pinning / lock-task is on, it is stopped first. Always start in Kids mode is unchanged: the next time you open CodeAque it still starts in Kids or Kids 12+.

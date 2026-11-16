@@ -78,7 +78,8 @@ def test_home_chooser_never_reprompts():
     # never fires a HOME intent; 0.10.21 Lock mode only queries Home apps and pins its own HOME filter (device owner)
     assert "CATEGORY_HOME" not in m.replace("addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY", "").replace(
         "queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)", "").replace("home.addCategory(Intent.CATEGORY_HOME);", "")
-    assert 'case "home": if (isDefaultHome())' in m
+    assert 'case "homeapp": case "home":' in m
+    assert "Settings.ACTION_HOME_SETTINGS" in m and "Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS" in m
     assert m.count("maybeAskHomeOnce();") == 1
 
 
@@ -463,6 +464,19 @@ def test_kids_pin_play_store_and_exit():
     # 0.10.39: PIN-protected Exit CodeAque in adult Settings and the Power row
     assert 'case "exitcodeaque": exitCodeaque();' in m
     assert 'action.equals("exitcodeaque")' in m
+    assert 'case "phonesettings": case "settings":' in m
+    assert 'case "phoneaccounts": case "accounts":' in m
+    assert 'action.equals("phonesettings")' in m and 'action.equals("phoneaccounts")' in m and 'action.equals("homeapp")' in m
+    oss = m.split("private boolean openSystemSettings(", 1)[1].split("private String resolveSettingsPackage(", 1)[0]
+    assert "FLAG_ACTIVITY_NEW_TASK" in oss
+    assert "stopLockTask()" in oss
+    assert "allowSettingsInLockTask(" in oss
+    assert 'putBoolean("parentSettings", true)' in oss
+    allowfn = m.split("private void allowSettingsInLockTask(", 1)[1]
+    assert '"com.android.settings"' in allowfn and "setLockTaskPackages" in allowfn
+    assert "Catalog.settingsPkg(pkg)" in m and 'LockPin.blocked(pkg) && !Catalog.settingsPkg(pkg)' in m
+    svc = (AND / "app/src/main/java/com/codeaque/launcher/ScreenTimeService.java").read_text()
+    assert 'parentSettings' in svc and "Catalog.settingsPkg(fg)" in svc
     ex = m.split("private void exitCodeaque()", 1)[1].split("private boolean openHomeSettings()", 1)[0]
     assert "stopLockTask()" in ex
     assert "LOCK_TASK_MODE_NONE" in ex
