@@ -2463,37 +2463,25 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (hasSu()) {
             toast("Asking for root to set device owner. Allow the superuser prompt if it appears.");
             new Thread(() -> {
-                StringBuilder out = new StringBuilder();
-                int rc = su(Catalog.DPM_SET_OWNER, out);
-                if (rc != 0 && !deviceOwner()) {
-                    if (out.length() > 0) out.append('\n');
-                    rc = su(Catalog.DPM_SET_OWNER_FALLBACK, out);
+                SuRun.Batch b = suBatch(Catalog.DPM_SET_OWNER);
+                if (!b.success() && !b.dpmFailed() && !deviceOwner()) {
+                    SuRun.Batch b2 = suBatch(Catalog.DPM_SET_OWNER_FALLBACK);
+                    for (SuRun.Attempt a : b2.attempts) b.add(a);
                 }
-                final int result = rc;
-                final String text = out.toString();
+                final SuRun.Batch batch = b;
                 runOnUiThread(() -> {
-                    if (deviceOwner()) {
+                    if (deviceOwner() || batch.success()) {
                         syncDeviceOwnerKiosk();
                         toast("Device owner is on. In Kids mode the phone stays on CodeAque (no Recents swipe). Remove it later with Settings > Remove device owner.");
-                    } else showDeviceOwnerFailed(result, text);
+                    } else showDeviceOwnerFailed(batch);
                 });
             }).start();
         } else showAdbKioskGuide("CodeAque needs a one-time setup to fully lock the phone. This handheld does not have root (su), so the steps use a computer and adb.");
     }
 
-    private void showDeviceOwnerFailed(int rc, String text) {
-        String reason = DpmError.plainReason(text);
-        String first = DpmError.firstLine(text);
-        StringBuilder msg = new StringBuilder();
-        if (reason != null && !reason.isEmpty()) msg.append(reason);
-        else if (rc < 0) msg.append("Root (su) could not be started. You can still set this up from a computer with adb.");
-        else msg.append("Could not set device owner.");
-        // If the cleaned first line adds detail not already in the plain sentence, show it — never the stack trace.
-        if (first != null && !first.isEmpty() && !reason.contains(first) && first.length() <= 240)
-            msg.append("\n\n").append(first);
-        msg.append("\n\nIf a Google account is on the phone, remove it or factory-reset first, then try again. You can also use a computer with adb (Show ADB steps).");
+    private void showDeviceOwnerFailed(SuRun.Batch batch) {
         dlg().setTitle("Could not lock the phone")
-                .setMessage(msg.toString())
+                .setMessage(SuRun.dialogMessage(batch))
                 .setPositiveButton("Show ADB steps", (d, w) -> showAdbKioskGuide(null))
                 .setNegativeButton("OK", null).show();
     }
@@ -2732,27 +2720,34 @@ public class MainActivity extends Activity implements HomeView.Host {
         } catch (Exception ignored) { }
         return new java.util.ArrayList<>(bins);
     }
-    /** Runs one command as root. Tries every su binary and several invocation styles.
-     *  Non-Magisk su (K56 /system/xbin/su) often does not treat -c as "run this command string"
-     *  and instead execs the whole string as a program name ("failed to exec dpm set-device-owner ...").
-     *  Order: [su, -c, cmd], [su, 0, sh, -c, cmd], [su, root, sh, -c, cmd], then write cmd\\nexit\\n to su's stdin.
-     *  Returns 0 on success, otherwise the last exit code or -1 if su is missing. */
+    /** Runs one command as root through every su binary and every SuRun form (stdin first).
+     *  "failed to exec" / "No such file" / "not found" means try the next form, never a final success.
+     *  Returns 0 only when the command actually succeeded ({@code __RC=0} or exit 0 with no exec miss). */
     private int su(String cmd, StringBuilder out) {
-        int last = -1;
+        SuRun.Batch b = suBatch(cmd);
+        if (out != null) {
+            if (b.decisive != null) out.append(b.decisive.output);
+            else out.append(b.formList());
+        }
+        return b.success() ? 0 : b.rc;
+    }
+    /** Try stdin first, then the sh -c and split-args forms. Stops early on real success or a real dpm refusal. */
+    private SuRun.Batch suBatch(String cmd) {
+        SuRun.Batch batch = new SuRun.Batch();
         for (String bin : suBinaries()) {
             if (!"su".equals(bin) && !new java.io.File(bin).exists()) continue;
-            last = suRead(new ProcessBuilder(bin, "-c", cmd), null, out);
-            if (last == 0) return 0;
-            last = suRead(new ProcessBuilder(bin, "0", "sh", "-c", cmd), null, out);
-            if (last == 0) return 0;
-            last = suRead(new ProcessBuilder(bin, "root", "sh", "-c", cmd), null, out);
-            if (last == 0) return 0;
-            last = suRead(new ProcessBuilder(bin), cmd + "\nexit\n", out);
-            if (last == 0) return 0;
+            for (String form : SuRun.FORM_IDS) {
+                StringBuilder chunk = new StringBuilder();
+                int wait = suRead(new ProcessBuilder(SuRun.argv(form, bin, cmd)),
+                        SuRun.usesStdin(form) ? SuRun.stdinScript(cmd) : null, chunk);
+                SuRun.Attempt a = new SuRun.Attempt(bin, form, chunk.toString(), wait);
+                batch.add(a);
+                if (!a.shouldRetry()) return batch;
+            }
         }
-        return last;
+        return batch;
     }
-    /** Start argv, optionally write stdin (then close it), read merged stdout/stderr into out, return waitFor(). */
+    /** Start argv, optionally write stdin (then close it), read stdout and stderr (merged) into out, return waitFor(). */
     private int suRead(ProcessBuilder pb, String stdin, StringBuilder out) {
         try {
             Process p = pb.redirectErrorStream(true).start();

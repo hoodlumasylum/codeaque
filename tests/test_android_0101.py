@@ -17,10 +17,8 @@ def test_bootanim_constants_and_flow():
               "\"Remove boot animation\"", "\"Restart now\"", "getLaunchIntentForPackage(BootAnim.MAGISK_PKG)",
               "Install from storage", "bootAnimAvailable()"):
         assert s in m, s
-    assert 'new ProcessBuilder(bin, "-c", cmd)' in m and "SU_PATHS" in m
-    assert 'new ProcessBuilder(bin, "0", "sh", "-c", cmd)' in m
-    assert 'new ProcessBuilder(bin, "root", "sh", "-c", cmd)' in m
-    assert 'cmd + "\\nexit\\n"' in m
+    assert "SU_PATHS" in m and "SuRun.FORM_IDS" in m and "SuRun.stdinScript(cmd)" in m
+    assert "suBatch(" in m and "shouldRetry()" in m
 
 
 def test_bootanim_not_bundled_and_manifest_queries():
@@ -454,12 +452,17 @@ def test_kids_pin_play_store_and_exit():
     assert "Catalog.DPM_SET_OWNER" in m and "Catalog.DPM_SET_OWNER_FALLBACK" in m and "/system/xbin/su" in m and "hasSu()" in m
     assert "/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver" in (SRC / "Catalog.java").read_text()
     assert "cmd device_policy set-device-owner com.codeaque.launcher/.AdminReceiver" in (SRC / "Catalog.java").read_text()
-    # failure dialog: first dpm line in plain English at the top; stack trace trimmed
+    # failure dialog: after all su forms, or the dpm exception in plain English (no stack)
     fail = m.split("private void showDeviceOwnerFailed(", 1)[1].split("private void showAdbKioskGuide(", 1)[0]
-    assert "DpmError.plainReason" in fail and "DpmError.firstLine" in fail
+    assert "SuRun.dialogMessage(batch)" in fail
     assert "at com.android" not in fail
-    assert "Show ADB steps" in fail and "factory-reset" in fail
-    assert "You can also use a computer with adb" in fail
+    assert "Show ADB steps" in fail
+    su_fn = m.split("private SuRun.Batch suBatch(", 1)[1].split("private int suRead(", 1)[0]
+    assert "SuRun.FORM_IDS" in su_fn and "SuRun.stdinScript(cmd)" in su_fn
+    assert "SuRun.argv(form, bin, cmd)" in su_fn
+    sr = (SRC / "SuRun.java").read_text()
+    assert sr.index('"stdin"') < sr.index('"su -c sh -c"') < sr.index('"su 0 /system/bin/sh -c"')
+    assert "echo __RC=$?" in sr and "failed to exec" in sr
     assert "Catalog.DPM_SET_OWNER_ADB" in m
     # 0.10.39: PIN-protected Exit CodeAque in adult Settings and the Power row
     assert 'case "exitcodeaque": exitCodeaque();' in m
@@ -568,7 +571,8 @@ def test_home_chooser_fix_and_update_badge():
     assert '"/su/bin/su"' in a and '"/system/xbin/su"' in a and "command -v su || which su" in a
     assert 'su("id"' in a and "Needs root (Magisk)" not in a
     su_fn = a.split("private int su(String cmd, StringBuilder out)", 1)[1].split("private void bootAnimDownload()", 1)[0]
-    assert "if (last == 0) return 0;" in su_fn  # try every su binary, not only the first
+    assert "suBatch(" in su_fn and "SuRun.FORM_IDS" in su_fn and "shouldRetry()" in su_fn
+    assert "SuRun.stdinScript(cmd)" in su_fn  # stdin form first; exec-miss is never final
     has = a.split("private boolean hasSu()", 1)[1].split("private java.util.List<String> suBinaries()", 1)[0]
     assert "canExecute()" not in has  # unprivileged apps often cannot execute /system/xbin/su
     assert "hasWindowFocus()" in a and "pendingPopup" in a and "Catalog.updateAvailable = true" in a

@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.41
+
+**Lock phone on non-Magisk root (Android).** On a phone such as the K56, "Lock phone to CodeAque" no longer stops at `su: failed to exec /system/bin/dpm set-device-owner ...: No such file or directory`. The root runner now talks to `su` on its input first (plain `dpm set-device-owner ...` lines, then `exit`), and only then tries other forms (`su -c sh -c`, `su 0 /system/bin/sh -c`, `su root /system/bin/sh -c`, `su -c /system/bin/sh -c`, and `su -c` with the command split into separate arguments). A "failed to exec" / "No such file" / "not found" result is never treated as the final answer — the next form is tried. If every form fails to start the command, the dialog lists each short result. If `dpm` does run and Android refuses (accounts already on the phone, already provisioned, more than one user), the dialog shows that reason in plain English. Hide other launchers uses the same runner. Not tried on a real phone.
+
 ## What's new in 0.10.40
 
 **Phone Settings (Android).** Adult Settings has parent-PIN **Phone Settings**, **Phone Accounts** and **Home app** buttons. They open the system Settings app (`Settings.ACTION_SETTINGS`), Accounts (`ACTION_SYNC_SETTINGS`, or Settings if that screen is missing), and the Home-app picker (`ACTION_HOME_SETTINGS`). Each starts with `FLAG_ACTIVITY_NEW_TASK`. If screen pinning / lock-task is on, it is stopped first and the Settings app is allowed in the lock-task list for that session, so Android will actually open it. The system Settings app stays visible in adult mode (including Lock mode); only Kids mode hides it. After the PIN, CodeAque will not bounce the parent back out of Settings. Not tried on a real phone.

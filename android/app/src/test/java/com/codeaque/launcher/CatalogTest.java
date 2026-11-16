@@ -648,6 +648,39 @@ public class CatalogTest {
         String provisioned = "java.lang.IllegalStateException: Not allowed to set the device owner because the device has already been provisioned\n\tat com.android.server.devicepolicy.DevicePolicyManagerServiceShellCommand.runSetDeviceOwner(DevicePolicyManagerServiceShellCommand.java:257)\n";
         String pr = DpmError.plainReason(provisioned).toLowerCase();
         check((pr.contains("provision") || pr.contains("already")) && !pr.contains("at com.android"), "dpm already provisioned in plain English");
+        String users = "java.lang.IllegalStateException: Not allowed to set the device owner because there are multiple users on the device\n\tat com.android.server.devicepolicy.DevicePolicyManagerServiceShellCommand.runSetDeviceOwner(DevicePolicyManagerServiceShellCommand.java:257)\n";
+        check(DpmError.plainReason(users).toLowerCase().contains("more than one user") || DpmError.plainReason(users).toLowerCase().contains("multiple users"), "dpm multiple users");
+        String execMiss = "su: failed to exec /system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver: No such file or directory\n";
+        check(SuRun.isExecMiss(execMiss) && SuRun.isExecMissLine(execMiss.trim()) && !SuRun.isDpmFailure(execMiss), "failed to exec is an exec miss, not a dpm refusal");
+        check(SuRun.isExecMiss("sh: dpm: inaccessible or not found") && SuRun.isExecMiss("/system/bin/dpm: not found"), "not found is exec miss");
+        check(SuRun.shouldRetry(execMiss, 127) && !SuRun.isSuccess(execMiss, 0), "exec miss is never final / never success, even if waitFor is 0");
+        check(SuRun.effectiveRc(execMiss, 0) != 0, "exec miss with waitFor 0 is not treated as ok");
+        String mixed = execMiss + accountsStack;
+        check(SuRun.isDpmFailure(mixed) && !SuRun.isExecMiss(mixed), "mixed output: dpm exception wins over failed to exec");
+        check(DpmError.plainReason(mixed).contains("account") && !DpmError.plainReason(mixed).contains("could not be started"), "plain reason skips exec miss and uses the exception message");
+        check(DpmError.firstLine(mixed, true).startsWith("Not allowed to set the device owner because there are already some accounts"), "first dpm line after skipping exec miss");
+        check(java.util.Arrays.equals(SuRun.FORM_IDS, new String[]{"stdin", "su -c sh -c", "su 0 /system/bin/sh -c", "su root /system/bin/sh -c", "su -c /system/bin/sh -c", "su -c split-args"}), "su form order, stdin first");
+        check(SuRun.usesStdin("stdin") && !SuRun.usesStdin("su -c sh -c"), "only stdin uses su's input");
+        String script = SuRun.stdinScript("/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver");
+        check(script.startsWith("/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver 2>&1; echo __RC=$?") && script.contains("\nexit\n") && !script.contains("sh -c"), "stdin script is plain lines, no sh -c wrapper");
+        check(SuRun.parseRcMarker("hello\n__RC=13\n") == 13 && SuRun.parseRcMarker("no marker") == null, "__RC marker");
+        check(SuRun.effectiveRc("ok\n__RC=0\n", 1) == 0 && SuRun.effectiveRc("err\n__RC=7\n", 0) == 7, "__RC wins over waitFor");
+        String dpmCmd = "/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver";
+        check(java.util.Arrays.equals(SuRun.argv("stdin", "/system/xbin/su", dpmCmd), new String[]{"/system/xbin/su"}), "stdin argv is su with no args");
+        String[] shc = SuRun.argv("su -c sh -c", "/system/xbin/su", dpmCmd);
+        check(shc.length == 3 && shc[1].equals("-c") && shc[2].startsWith("sh -c ") && shc[2].contains(dpmCmd), "su -c sh -c form");
+        check(java.util.Arrays.equals(SuRun.argv("su 0 /system/bin/sh -c", "/system/xbin/su", dpmCmd), new String[]{"/system/xbin/su", "0", "/system/bin/sh", "-c", dpmCmd}), "su 0 /system/bin/sh -c");
+        check(java.util.Arrays.equals(SuRun.argv("su root /system/bin/sh -c", "/system/xbin/su", dpmCmd), new String[]{"/system/xbin/su", "root", "/system/bin/sh", "-c", dpmCmd}), "su root /system/bin/sh -c");
+        check(java.util.Arrays.equals(SuRun.argv("su -c /system/bin/sh -c", "/system/xbin/su", dpmCmd), new String[]{"/system/xbin/su", "-c", "/system/bin/sh", "-c", dpmCmd}), "su -c /system/bin/sh -c");
+        check(java.util.Arrays.equals(SuRun.argv("su -c split-args", "/system/xbin/su", dpmCmd), new String[]{"/system/xbin/su", "-c", "/system/bin/dpm", "set-device-owner", "com.codeaque.launcher/.AdminReceiver"}), "split-args form");
+        SuRun.Batch allMiss = new SuRun.Batch();
+        allMiss.add(new SuRun.Attempt("/system/xbin/su", "stdin", execMiss, 127));
+        allMiss.add(new SuRun.Attempt("/system/xbin/su", "su -c sh -c", execMiss, 127));
+        check(!allMiss.success() && !allMiss.dpmFailed() && SuRun.dialogMessage(allMiss).contains("stdin") && SuRun.dialogMessage(allMiss).contains("failed to exec") && SuRun.dialogMessage(allMiss).contains("any su form"), "all-forms dialog lists each short result");
+        SuRun.Batch dpmNo = new SuRun.Batch();
+        dpmNo.add(new SuRun.Attempt("/system/xbin/su", "stdin", execMiss, 127));
+        dpmNo.add(new SuRun.Attempt("/system/xbin/su", "su 0 /system/bin/sh -c", accountsStack, 1));
+        check(dpmNo.dpmFailed() && !dpmNo.success() && SuRun.dialogMessage(dpmNo).contains("account") && !SuRun.dialogMessage(dpmNo).contains("any su form"), "when dpm runs and fails, dialog is the exception in plain English");
 
     }
 
