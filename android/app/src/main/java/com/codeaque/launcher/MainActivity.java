@@ -257,7 +257,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         List<Catalog.Category> cs;
         if (kidsOn) {
             cs = new ArrayList<>(Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus));
-        } else if (!prefs.getBoolean("classicHome", true)) {   // 0.10.43: kids-style layout is default once flipped; 0.10.42 keeps classic until then
+        } else if (!prefs.getBoolean("classicHome", false)) {   // 0.10.43: kids-style layout is the adult default; toggle Classic home layout to go back
             Catalog.Item[] rbx = (robloxItems != null && !robloxItems.isEmpty())
                     ? robloxItems.toArray(new Catalog.Item[0]) : Catalog.ROBLOX_ITEMS;
             cs = new ArrayList<>(Catalog.adultBrowse(games, apps, emus, allRoms, proj, bootAnimAvailable(), rbx));
@@ -1741,7 +1741,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         robloxItems = items;
         String row = "kroblox";
         // Adult classic home still uses the "roblox" row id.
-        if (!prefs.getBoolean("kidsMode", false) && prefs.getBoolean("classicHome", true)) row = "roblox";
+        if (!prefs.getBoolean("kidsMode", false) && prefs.getBoolean("classicHome", false)) row = "roblox";
         view.replaceRow(row, withRobloxApp(items));
     }
 
@@ -3180,7 +3180,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     @Override public boolean pinDialogOpen() { return pinDialogOpen; }
     @Override public boolean browseLayout() {
         if (prefs.getBoolean("kidsMode", false)) return true;
-        return !prefs.getBoolean("classicHome", true);   // 0.10.43 flips the default to false
+        return !prefs.getBoolean("classicHome", false);   // 0.10.43: default is kids-style (classicHome false)
     }
     @Override public String itemBlurb(Catalog.Item it) { return KidsPlay.blurb(it); }
     @Override public void kidsBrowseMore(String catId) {
@@ -3377,7 +3377,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void toggleClassicHome() {
-        boolean next = !prefs.getBoolean("classicHome", true);
+        boolean next = !prefs.getBoolean("classicHome", false);
         prefs.edit().putBoolean("classicHome", next).apply();
         toast(next ? "Classic home layout is on." : "Kids-style home layout is on.");
         rescan();

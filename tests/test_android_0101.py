@@ -551,6 +551,8 @@ def test_new_app_placer_and_sort_apps():
     assert 'case "sortapps": sortApps();' in m and 'act("Sort apps", "grid", "sortapps")' in c and 'LockPin.needsPin' in m
     assert "Catalog.applyPlacements(" in m and "Catalog.kidsMode(allRoms, kidsNew, approved, kids12(), allowedEmus)" in m
     assert 'case "installkids":' in m and 'case "kidsemus":' in m and 'case "classichome":' in m
+    assert 'getBoolean("classicHome", false)' in m and 'getBoolean("classicHome", true)' not in m
+    assert "Catalog.adultBrowse(" in m and "KidsPlay.ADULT" in m
 
 
 def test_phoenix_theme_and_kids_themes():

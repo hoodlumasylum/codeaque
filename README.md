@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.43
+
+**Kids-style home is the adult default (Android).** Adult mode now uses the same tabbed, vertical scrolling layout as Kids mode (icon, name and description under each category). The old busy tile layout is still available from Settings → Classic home layout. Anyone who already turned that toggle on keeps the classic layout; everyone else gets the new default.
+
+**All age ratings in adult mode.** The adult tabs (Puzzle, Racing, Adventure, Learning, Roblox-style, Roblox, Cloud, and the remaining adult categories) list games of every age rating, all ages through 17+. The Roblox and Roblox-style lists are unfiltered. Kids and Kids 12+ keep their PEGI limits.
+
 ## What's new in 0.10.42
 
 **CodeAque boot animation on non-Magisk root (Android).** The default path no longer needs Magisk. After a SHA-256-checked download, CodeAque unpacks its own original stored `bootanimation.zip` (not the Magisk module wrapper) and copies it to `/data/local/bootanimation.zip` with `chmod 644`, `chown root:root`, and `restorecon`/`chcon` when possible. Many phones read the animation from there. If Magisk is present, the existing systemless module install stays the default. An optional advanced step (separate confirm, parent PIN, and a warning that a bad write can stop the phone booting) remounts `/` or `/system` or `/product` read-write, backs up each existing system animation to `/sdcard/Download/codeaque-bootanim-backup/` first, verifies the backup's size and hash, and only then copies ours in with the original permissions and SELinux context. If the remount fails (dynamic partitions / read-only), it stops with a short plain message and changes nothing. **Restore original boot animation** (PIN) removes `/data/local/bootanimation.zip` and restores those backups. Errors are a short plain-English line with an expandable Details button, not a wall of `su` text. Uses the same SuRun runner (stdin first). Not tried on a real phone.
