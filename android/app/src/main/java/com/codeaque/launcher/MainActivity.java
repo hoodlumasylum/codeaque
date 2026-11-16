@@ -654,7 +654,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         if (action == null) return false;
         if (action.equals("safecontacts") || action.equals("downloads") || action.equals("blockunknown") || action.equals("safeonly")
                 || action.equals("kidsprofile") || action.equals("screentime") || action.equals("alwayskids") || action.equals("kidslock")
-                || action.equals("lockphone") || action.equals("removeowner")) return true;
+                || action.equals("lockphone") || action.equals("removeowner") || action.equals("exitcodeaque")) return true;
         return locked() && LockPin.needsPin(action);
     }
     /** A correct PIN opens grown-up things for 2 minutes. */
@@ -1375,6 +1375,7 @@ public class MainActivity extends Activity implements HomeView.Host {
             case "update": checkUpdate(true); break;
             case "about": toast("CodeAque version " + myVersion() + (Catalog.updateAvailable ? " - an update is available" : "")); break;   // 0.10.28
             case "makehome": makeHome(true); break;              // 0.10.28
+            case "exitcodeaque": exitCodeaque(); break;     // 0.10.39: PIN; opens Home-app settings
             case "hidelaunchers": hideLaunchers(); break;        // 0.10.28 (PIN in Lock mode; always asks the PIN below)
             case "bootanim": bootAnim(); break;
             case "rotation": rotationToggle(); break;
@@ -2365,6 +2366,29 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
     private int kidsBounceGen;
 
+    // ---------- 0.10.39 Exit CodeAque (adult Settings and the Power row, parent PIN) ----------
+    /** PIN already asked. Stops lock-task if it is on, then opens Android's Home-app settings so a parent can pick the stock launcher.
+     *  Does not change Always start in Kids mode — the next time CodeAque is opened it still starts in Kids mode. */
+    private void exitCodeaque() {
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            if (am != null && am.getLockTaskModeState() != android.app.ActivityManager.LOCK_TASK_MODE_NONE)
+                stopLockTask();
+        } catch (Exception ignored) { }
+        if (deviceOwner()) {
+            try {
+                android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                dpm.clearPackagePersistentPreferredActivities(adminComponent(), getPackageName());
+            } catch (Exception ignored) { }
+        }
+        toast("Pick another Home app and tap Always. The next time you open CodeAque it still starts in Kids mode.");
+        if (!openHomeSettings()) toast("Could not open Home settings.");
+    }
+    private boolean openHomeSettings() {
+        if (tryStart(new Intent(Settings.ACTION_HOME_SETTINGS))) return true;
+        return tryStart(new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS));
+    }
+
     // ---------- 0.10.37 Lock phone to CodeAque (optional device owner, root or ADB) ----------
     /** PIN already asked. If su is present, try /system/bin/dpm set-device-owner (then cmd device_policy); otherwise show the ADB steps. */
     private void lockPhone() {
@@ -2397,19 +2421,15 @@ public class MainActivity extends Activity implements HomeView.Host {
     }
 
     private void showDeviceOwnerFailed(int rc, String text) {
-        String clip = text == null ? "" : text.trim();
-        if (clip.length() > 800) clip = clip.substring(clip.length() - 800);
-        String low = clip.toLowerCase(java.util.Locale.ROOT);
-        boolean accounts = low.contains("account") || low.contains("not allowed") || low.contains("users present")
-                || low.contains("already some accounts") || low.contains("cannot be set");
+        String reason = DpmError.plainReason(text);
+        String first = DpmError.firstLine(text);
         StringBuilder msg = new StringBuilder();
-        if (accounts)
-            msg.append("Android would not make CodeAque the device owner. That usually means a Google (or other) account is already on the phone. Remove every account in Android Settings > Accounts, or use a factory-reset phone with no account added yet. Then try this button again.");
-        else if (rc < 0)
-            msg.append("Root (su) could not be started. You can still set this up from a computer with adb.");
-        else
-            msg.append("Could not set device owner.");
-        if (!clip.isEmpty()) msg.append("\n\n").append(clip);
+        if (reason != null && !reason.isEmpty()) msg.append(reason);
+        else if (rc < 0) msg.append("Root (su) could not be started. You can still set this up from a computer with adb.");
+        else msg.append("Could not set device owner.");
+        // If the cleaned first line adds detail not already in the plain sentence, show it — never the stack trace.
+        if (first != null && !first.isEmpty() && !reason.contains(first) && first.length() <= 240)
+            msg.append("\n\n").append(first);
         msg.append("\n\nIf a Google account is on the phone, remove it or factory-reset first, then try again. You can also use a computer with adb (Show ADB steps).");
         dlg().setTitle("Could not lock the phone")
                 .setMessage(msg.toString())

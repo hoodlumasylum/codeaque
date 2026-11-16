@@ -453,12 +453,28 @@ def test_kids_pin_play_store_and_exit():
     assert "Catalog.DPM_SET_OWNER" in m and "Catalog.DPM_SET_OWNER_FALLBACK" in m and "/system/xbin/su" in m and "hasSu()" in m
     assert "/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver" in (SRC / "Catalog.java").read_text()
     assert "cmd device_policy set-device-owner com.codeaque.launcher/.AdminReceiver" in (SRC / "Catalog.java").read_text()
-    # failure dialog always includes the actual dpm/su output plus simple guidance
+    # failure dialog: first dpm line in plain English at the top; stack trace trimmed
     fail = m.split("private void showDeviceOwnerFailed(", 1)[1].split("private void showAdbKioskGuide(", 1)[0]
-    assert ".append(clip)" in fail and "if (!clip.isEmpty())" in fail
+    assert "DpmError.plainReason" in fail and "DpmError.firstLine" in fail
+    assert "at com.android" not in fail
     assert "Show ADB steps" in fail and "factory-reset" in fail
     assert "You can also use a computer with adb" in fail
     assert "Catalog.DPM_SET_OWNER_ADB" in m
+    # 0.10.39: PIN-protected Exit CodeAque in adult Settings and the Power row
+    assert 'case "exitcodeaque": exitCodeaque();' in m
+    assert 'action.equals("exitcodeaque")' in m
+    ex = m.split("private void exitCodeaque()", 1)[1].split("private boolean openHomeSettings()", 1)[0]
+    assert "stopLockTask()" in ex
+    assert "LOCK_TASK_MODE_NONE" in ex
+    assert 'putBoolean("alwaysKids"' not in ex and 'putBoolean("kidsMode"' not in ex
+    assert "Settings.ACTION_HOME_SETTINGS" in m
+    assert "Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS" in m
+    cat = (SRC / "Catalog.java").read_text()
+    assert 'act("Exit CodeAque", "home", "exitcodeaque")' in cat
+    assert 'new Category("power", "Power", "gear", EXIT_CODEAQUE)' in cat
+    # Exit is not on the Kids home
+    kids = cat.split("public static List<Category> kidsMode(List<Item> roms, List<Item> added, java.util.Set<String> approved)", 1)[1].split("/** Kids row", 1)[0]
+    assert "EXIT_CODEAQUE" not in kids and "exitcodeaque" not in kids
     assert "KIDS_KIOSK_RULES" in m and "DISALLOW_INSTALL_APPS" in m and "DISALLOW_INSTALL_UNKNOWN_SOURCES" in m
     assert "syncDeviceOwnerKiosk(" in m and "clearDeviceOwnerApp(" in m
     assert (AND.parent / "docs/android-kiosk-setup.md").is_file()

@@ -16,7 +16,7 @@ public class CatalogTest {
         check(pj.get(0).id.equals("cloud") && pj.get(1).id.equals("media") && pj.size() == c.size(), "projector order");
         check(Catalog.indexOf(c, "store") > 0 && Catalog.indexOf(c, "accounts") > 0, "Games Store and Accounts");
         for (Catalog.Item i : c.get(Catalog.indexOf(c, "store")).items) check(i.webUrl.startsWith("https://play.google.com/"), "store opens Google Play");
-        check(Catalog.indexOf(c, "allapps") == c.size() - 2 && c.get(c.size() - 1).id.equals("settings"), "All Apps before Settings");
+        check(Catalog.indexOf(c, "allapps") == c.size() - 3 && c.get(c.size() - 2).id.equals("settings") && c.get(c.size() - 1).id.equals("power"), "All Apps, Settings, then Power");
         // 0.9.4: installed games / apps / emulators / the user's own files
         Catalog.Item g = Catalog.deviceApp("Some Game", "com.example.game", "com.example.game.Main");
         Catalog.Item rom = Catalog.rom("My Game.sfc", "content://x/1");
@@ -363,6 +363,7 @@ public class CatalogTest {
                     check(Catalog.ALWAYS_KIDS_DEFAULT && "alwayskids".equals(Catalog.ALWAYS_KIDS.action)
                             && "kidslock".equals(Catalog.KIDS_LOCK.action) && "lockphone".equals(Catalog.LOCK_PHONE.action)
                             && "removeowner".equals(Catalog.REMOVE_OWNER.action)
+                            && "exitcodeaque".equals(Catalog.EXIT_CODEAQUE.action)
                             && Catalog.DPM_SET_OWNER.equals("/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver")
                             && Catalog.DPM_SET_OWNER_FALLBACK.equals("cmd device_policy set-device-owner com.codeaque.launcher/.AdminReceiver")
                             && Catalog.DPM_SET_OWNER_ADB.equals("dpm set-device-owner com.codeaque.launcher/.AdminReceiver"), "always start in Kids; lock phone / remove owner");
@@ -627,7 +628,22 @@ public class CatalogTest {
         check(ScreenTime.blockedKidPackage("com.android.settings") && ScreenTime.blockedKidPackage("com.android.vending")
                 && ScreenTime.blockedKidPackage("com.google.android.packageinstaller") && ScreenTime.blockedKidPackage("com.android.documentsui")
                 && !ScreenTime.blockedKidPackage("com.roblox.client") && !ScreenTime.blockedKidPackage(null), "blocked packages");
-        check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock and device owner when locked; Update is gated in Kids mode instead");
+        check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && LockPin.needsPin("exitcodeaque") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock, device owner and Exit when locked; Update is gated in Kids mode instead");
+        java.util.List<String> settingsActs = new java.util.ArrayList<>();
+        java.util.List<Catalog.Category> cats39 = Catalog.categories();
+        for (Catalog.Item i : cats39.get(Catalog.indexOf(cats39, "settings")).items) settingsActs.add(i.action);
+        check(settingsActs.contains("exitcodeaque") && "exitcodeaque".equals(cats39.get(Catalog.indexOf(cats39, "power")).items.get(0).action), "Exit CodeAque in Settings and Power");
+        for (Catalog.Category k : Catalog.kidsMode()) {
+            check(!"power".equals(k.id), "no Power row in Kids mode");
+            for (Catalog.Item i : k.items) check(!"exitcodeaque".equals(i.action), "no Exit in Kids mode: " + k.id);
+        }
+        String accountsStack = "java.lang.IllegalStateException: Not allowed to set the device owner because there are already some accounts on the device\n\tat com.android.server.devicepolicy.DevicePolicyManagerServiceShellCommand.runSetDeviceOwner(DevicePolicyManagerServiceShellCommand.java:257)\n\tat com.android.server.devicepolicy.DevicePolicyManagerServiceShellCommand.onCommand(DevicePolicyManagerServiceShellCommand.java:1)\n";
+        check(DpmError.firstLine(accountsStack).equals("Not allowed to set the device owner because there are already some accounts on the device"), "dpm first line is the reason, not the stack");
+        check(DpmError.plainReason(accountsStack).contains("account") && !DpmError.plainReason(accountsStack).contains("at com.android") && !DpmError.firstLine(accountsStack).contains("runSetDeviceOwner"), "dpm accounts in plain English, stack trimmed");
+        String provisioned = "java.lang.IllegalStateException: Not allowed to set the device owner because the device has already been provisioned\n\tat com.android.server.devicepolicy.DevicePolicyManagerServiceShellCommand.runSetDeviceOwner(DevicePolicyManagerServiceShellCommand.java:257)\n";
+        String pr = DpmError.plainReason(provisioned).toLowerCase();
+        check((pr.contains("provision") || pr.contains("already")) && !pr.contains("at com.android"), "dpm already provisioned in plain English");
+
     }
 
     /** 0.10.37: empty / wrong / invalid PINs never grant access on the shared verifier used by every PIN dialog. */

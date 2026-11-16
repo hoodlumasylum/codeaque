@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.39
+
+**Exit CodeAque (Android).** Adult Settings and the Power row have a parent-PIN **Exit CodeAque** item. It opens Android's Home-app settings (`Settings.ACTION_HOME_SETTINGS`, or Default apps if that screen is missing) so you can pick the stock launcher. If screen pinning / lock-task is on, it is stopped first. Always start in Kids mode is unchanged: the next time you open CodeAque it still starts in Kids or Kids 12+.
+
+**Lock-phone error text.** If setting device owner through root fails (for example a Java stack from `DevicePolicyManagerServiceShellCommand.runSetDeviceOwner`), the dialog now puts the first useful line at the top in plain English (accounts already on the phone, already provisioned, and similar) and trims the stack trace. Not tried on a real phone.
+
 ## What's new in 0.10.38
 
 **Lock phone to CodeAque on non-Magisk root (Android).** On a rooted phone such as the K56 (`su` at `/system/xbin/su`, not Magisk), "Lock phone to CodeAque" no longer treats the whole `dpm ...` line as a program name. The root runner now tries `su -c`, then `su 0 sh -c`, then `su root sh -c`, then writes the command to `su`'s input. The command itself is `/system/bin/dpm set-device-owner ...`, with `cmd device_policy set-device-owner ...` as a fallback. If it still fails, the dialog shows the actual output (for example when a Google account is already on the phone) and short steps: remove accounts or factory-reset, or use adb. **Hide other launchers** uses the same runner and `/system/bin/pm`. Not tried on a real phone.
