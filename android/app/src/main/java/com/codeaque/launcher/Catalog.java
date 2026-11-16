@@ -350,7 +350,12 @@ public final class Catalog {
     /** 0.10.37: adult Settings, PIN. Uses root (su) when present to set device owner; otherwise shows the ADB steps. */
     public static final Item LOCK_PHONE = act("Lock phone to CodeAque", "gear", "lockphone");
     public static final Item REMOVE_OWNER = act("Remove device owner", "gear", "removeowner");
-    public static final String DPM_SET_OWNER = "dpm set-device-owner com.codeaque.launcher/.AdminReceiver";
+    /** Absolute dpm path: some su (K56 /system/xbin/su) have a short PATH, so bare "dpm" fails. */
+    public static final String DPM_SET_OWNER = "/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver";
+    /** Fallback when /system/bin/dpm is missing: the device_policy command. */
+    public static final String DPM_SET_OWNER_FALLBACK = "cmd device_policy set-device-owner com.codeaque.launcher/.AdminReceiver";
+    /** Human-typed adb form (adb shell already has /system/bin on PATH). */
+    public static final String DPM_SET_OWNER_ADB = "dpm set-device-owner com.codeaque.launcher/.AdminReceiver";
 
     /** 0.10.30: a plain Settings tile next to Kids Mode on the grown-up home (jumps to the Settings row, like Y). */
     public static final Item SETTINGS_TILE = act("Settings", "gear", "goto:settings");

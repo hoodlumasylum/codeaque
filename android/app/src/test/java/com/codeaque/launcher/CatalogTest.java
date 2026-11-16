@@ -363,7 +363,9 @@ public class CatalogTest {
                     check(Catalog.ALWAYS_KIDS_DEFAULT && "alwayskids".equals(Catalog.ALWAYS_KIDS.action)
                             && "kidslock".equals(Catalog.KIDS_LOCK.action) && "lockphone".equals(Catalog.LOCK_PHONE.action)
                             && "removeowner".equals(Catalog.REMOVE_OWNER.action)
-                            && Catalog.DPM_SET_OWNER.equals("dpm set-device-owner com.codeaque.launcher/.AdminReceiver"), "always start in Kids; lock phone / remove owner");
+                            && Catalog.DPM_SET_OWNER.equals("/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver")
+                            && Catalog.DPM_SET_OWNER_FALLBACK.equals("cmd device_policy set-device-owner com.codeaque.launcher/.AdminReceiver")
+                            && Catalog.DPM_SET_OWNER_ADB.equals("dpm set-device-owner com.codeaque.launcher/.AdminReceiver"), "always start in Kids; lock phone / remove owner");
                     java.util.List<Catalog.Category> adult = Catalog.categories(java.util.List.of(), java.util.List.of(ra), java.util.List.of(Catalog.RETROARCH), java.util.List.of());
                     check(Catalog.indexOf(adult, "retro") >= 0 && adult.get(Catalog.indexOf(adult, "retro")).items.contains(Catalog.RETROARCH)
                             && adult.get(Catalog.indexOf(adult, "mygames")).items.contains(Catalog.RETROARCH)

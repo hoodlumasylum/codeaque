@@ -12,9 +12,9 @@ Some handhelds already have `su` (on the K56 it is at `/system/xbin/su`). Root i
 
 1. Install CodeAque on the reset phone. Do not add a Google account yet.
 2. Open CodeAque, go to Settings, and choose **Lock phone to CodeAque**. It asks for the parent PIN.
-3. Allow the superuser / Magisk prompt if it appears.
+3. Allow the superuser prompt if it appears (this does not need Magisk). CodeAque runs `/system/bin/dpm set-device-owner ...` (or `cmd device_policy set-device-owner ...`) through `su`, trying several ways of starting `su` so a non-Magisk binary such as `/system/xbin/su` still works.
 4. If it works, you will see a short success message. Turn on Kids mode. The phone should stay on CodeAque.
-5. If it fails because an account is already on the phone, Android Settings > Accounts, remove every account (or factory-reset again), and retry. If there is no `su`, follow the adb steps below (the same screen can show them).
+5. If it fails, the dialog shows the actual output from the phone, plus short steps. When a Google (or other) account is already on the phone, go to Android Settings > Accounts, remove every account (or factory-reset again), and retry. If there is no `su`, follow the adb steps below (the same screen can show them).
 
 To undo: Settings (parent PIN) > **Remove device owner**. Do this before you sell or give the phone away, or the next person may be stuck.
 

@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.38
+
+**Lock phone to CodeAque on non-Magisk root (Android).** On a rooted phone such as the K56 (`su` at `/system/xbin/su`, not Magisk), "Lock phone to CodeAque" no longer treats the whole `dpm ...` line as a program name. The root runner now tries `su -c`, then `su 0 sh -c`, then `su root sh -c`, then writes the command to `su`'s input. The command itself is `/system/bin/dpm set-device-owner ...`, with `cmd device_policy set-device-owner ...` as a fallback. If it still fails, the dialog shows the actual output (for example when a Google account is already on the phone) and short steps: remove accounts or factory-reset, or use adb. **Hide other launchers** uses the same runner and `/system/bin/pm`. Not tried on a real phone.
+
 ## What's new in 0.10.37
 
 **Kids Roblox feed, Kids 12+, and Screen time (Android).** Normal Kids mode now uses the same infinite Roblox explore feed as Roblox Mode, but only games Roblox rates **Minimal / all ages**. A new **Kids 12+** profile (Settings, behind the parent PIN) also allows Mild and up to 12+ / 13+. 17+, unrated, sponsored and paid-access games are hidden. If the rating cannot be read, Kids mode falls back to the official 12-game short list — it never shows an unfiltered feed. Switching Kids / Kids 12+ needs the parent PIN.

@@ -2366,7 +2366,7 @@ public class MainActivity extends Activity implements HomeView.Host {
     private int kidsBounceGen;
 
     // ---------- 0.10.37 Lock phone to CodeAque (optional device owner, root or ADB) ----------
-    /** PIN already asked. If su is present, try dpm set-device-owner; otherwise show the ADB steps. */
+    /** PIN already asked. If su is present, try /system/bin/dpm set-device-owner (then cmd device_policy); otherwise show the ADB steps. */
     private void lockPhone() {
         if (deviceOwner()) {
             syncDeviceOwnerKiosk();
@@ -2380,33 +2380,39 @@ public class MainActivity extends Activity implements HomeView.Host {
             new Thread(() -> {
                 StringBuilder out = new StringBuilder();
                 int rc = su(Catalog.DPM_SET_OWNER, out);
-                String text = out.toString();
+                if (rc != 0 && !deviceOwner()) {
+                    if (out.length() > 0) out.append('\n');
+                    rc = su(Catalog.DPM_SET_OWNER_FALLBACK, out);
+                }
+                final int result = rc;
+                final String text = out.toString();
                 runOnUiThread(() -> {
                     if (deviceOwner()) {
                         syncDeviceOwnerKiosk();
                         toast("Device owner is on. In Kids mode the phone stays on CodeAque (no Recents swipe). Remove it later with Settings > Remove device owner.");
-                    } else showDeviceOwnerFailed(rc, text);
+                    } else showDeviceOwnerFailed(result, text);
                 });
             }).start();
         } else showAdbKioskGuide("CodeAque needs a one-time setup to fully lock the phone. This handheld does not have root (su), so the steps use a computer and adb.");
     }
 
     private void showDeviceOwnerFailed(int rc, String text) {
-        String low = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
+        String clip = text == null ? "" : text.trim();
+        if (clip.length() > 800) clip = clip.substring(clip.length() - 800);
+        String low = clip.toLowerCase(java.util.Locale.ROOT);
         boolean accounts = low.contains("account") || low.contains("not allowed") || low.contains("users present")
                 || low.contains("already some accounts") || low.contains("cannot be set");
-        String msg;
-        if (rc < 0)
-            msg = "Root (su) could not be started. You can still set this up from a computer with adb.";
-        else if (accounts)
-            msg = "Android would not make CodeAque the device owner. That usually means a Google (or other) account is already on the phone. Remove every account in Android Settings > Accounts, or use a factory-reset phone with no account added yet. Then try this button again.";
-        else {
-            String clip = text == null ? "" : text.trim();
-            if (clip.length() > 400) clip = clip.substring(clip.length() - 400);
-            msg = "Could not set device owner" + (clip.isEmpty() ? "." : ":\n" + clip) + "\n\nIf a Google account is on the phone, remove it or factory-reset first, then try again.";
-        }
+        StringBuilder msg = new StringBuilder();
+        if (accounts)
+            msg.append("Android would not make CodeAque the device owner. That usually means a Google (or other) account is already on the phone. Remove every account in Android Settings > Accounts, or use a factory-reset phone with no account added yet. Then try this button again.");
+        else if (rc < 0)
+            msg.append("Root (su) could not be started. You can still set this up from a computer with adb.");
+        else
+            msg.append("Could not set device owner.");
+        if (!clip.isEmpty()) msg.append("\n\n").append(clip);
+        msg.append("\n\nIf a Google account is on the phone, remove it or factory-reset first, then try again. You can also use a computer with adb (Show ADB steps).");
         dlg().setTitle("Could not lock the phone")
-                .setMessage(msg)
+                .setMessage(msg.toString())
                 .setPositiveButton("Show ADB steps", (d, w) -> showAdbKioskGuide(null))
                 .setNegativeButton("OK", null).show();
     }
@@ -2422,7 +2428,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 + "4. In the same terminal run:\n"
                 + "   adb devices\n"
                 + "   (you should see the phone listed). Then:\n"
-                + "   adb shell " + Catalog.DPM_SET_OWNER + "\n"
+                + "   adb shell " + Catalog.DPM_SET_OWNER_ADB + "\n"
                 + "5. You should see a success message. Open CodeAque, turn on Kids mode, and the phone stays on CodeAque (no Recents swipe).\n\n"
                 + "To undo later: in CodeAque Settings (parent PIN) choose Remove device owner. Do not skip this if you will sell or give the phone away.";
         android.widget.TextView tv = new android.widget.TextView(this);
@@ -2536,7 +2542,7 @@ public class MainActivity extends Activity implements HomeView.Host {
         return out;
     }
     /** PIN-gated: hide other Home apps. Device owner uses setApplicationHidden (no root).
-     *  Otherwise su -c 'pm disable-user --user 0 <pkg>' — any su, not only Magisk. */
+     *  Otherwise /system/bin/pm disable-user via the su runner (any su, not only Magisk). */
     private void hideLaunchers() {
         askPin("Hide other launchers", () -> {
             java.util.Set<String> hidden = new java.util.HashSet<>(prefs.getStringSet("hiddenLaunchers", new java.util.HashSet<>()));
@@ -2553,7 +2559,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 for (String pkg : others) {
                     if (!safePkg(pkg)) continue;
                     if (owner && setLauncherHidden(pkg, true)) { h.add(pkg); n++; }
-                    else if (su("pm disable-user --user 0 " + pkg, null) == 0) { h.add(pkg); n++; }
+                    else if (su("/system/bin/pm disable-user --user 0 " + pkg, null) == 0) { h.add(pkg); n++; }
                 }
                 prefs.edit().putStringSet("hiddenLaunchers", h).apply();
                 if (n > 0) toast("Hid " + n + " launcher(s). Undo is in the same menu.");
@@ -2566,7 +2572,7 @@ public class MainActivity extends Activity implements HomeView.Host {
                 for (String pkg : hidden) {
                     if (!safePkg(pkg)) { left.add(pkg); continue; }
                     boolean ok = owner && setLauncherHidden(pkg, false);
-                    if (!ok) ok = su("pm enable " + pkg, null) == 0;
+                    if (!ok) ok = su("/system/bin/pm enable " + pkg, null) == 0;
                     if (!ok) left.add(pkg);
                 }
                 prefs.edit().putStringSet("hiddenLaunchers", left).apply();
@@ -2643,21 +2649,38 @@ public class MainActivity extends Activity implements HomeView.Host {
         } catch (Exception ignored) { }
         return new java.util.ArrayList<>(bins);
     }
-    /** Runs one command as root via `su -c`. Tries every su binary until one succeeds (including `su -c id`). Returns 0 on success, otherwise the last exit code or -1 if su is missing. */
+    /** Runs one command as root. Tries every su binary and several invocation styles.
+     *  Non-Magisk su (K56 /system/xbin/su) often does not treat -c as "run this command string"
+     *  and instead execs the whole string as a program name ("failed to exec dpm set-device-owner ...").
+     *  Order: [su, -c, cmd], [su, 0, sh, -c, cmd], [su, root, sh, -c, cmd], then write cmd\\nexit\\n to su's stdin.
+     *  Returns 0 on success, otherwise the last exit code or -1 if su is missing. */
     private int su(String cmd, StringBuilder out) {
         int last = -1;
         for (String bin : suBinaries()) {
             if (!"su".equals(bin) && !new java.io.File(bin).exists()) continue;
-            try {
-                Process p = new ProcessBuilder(bin, "-c", cmd).redirectErrorStream(true).start();
-                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
-                    String l; while ((l = r.readLine()) != null) if (out != null && out.length() < 120000) out.append(l).append('\n');
-                }
-                last = p.waitFor();
-                if (last == 0) return 0;
-            } catch (Exception ignored) { }
+            last = suRead(new ProcessBuilder(bin, "-c", cmd), null, out);
+            if (last == 0) return 0;
+            last = suRead(new ProcessBuilder(bin, "0", "sh", "-c", cmd), null, out);
+            if (last == 0) return 0;
+            last = suRead(new ProcessBuilder(bin, "root", "sh", "-c", cmd), null, out);
+            if (last == 0) return 0;
+            last = suRead(new ProcessBuilder(bin), cmd + "\nexit\n", out);
+            if (last == 0) return 0;
         }
         return last;
+    }
+    /** Start argv, optionally write stdin (then close it), read merged stdout/stderr into out, return waitFor(). */
+    private int suRead(ProcessBuilder pb, String stdin, StringBuilder out) {
+        try {
+            Process p = pb.redirectErrorStream(true).start();
+            try (java.io.OutputStream w = p.getOutputStream()) {
+                if (stdin != null) w.write(stdin.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                String l; while ((l = r.readLine()) != null) if (out != null && out.length() < 120000) out.append(l).append('\n');
+            }
+            return p.waitFor();
+        } catch (Exception ignored) { return -1; }
     }
 
     private void bootAnimDownload() {

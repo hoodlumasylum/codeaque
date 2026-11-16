@@ -18,6 +18,9 @@ def test_bootanim_constants_and_flow():
               "Install from storage", "bootAnimAvailable()"):
         assert s in m, s
     assert 'new ProcessBuilder(bin, "-c", cmd)' in m and "SU_PATHS" in m
+    assert 'new ProcessBuilder(bin, "0", "sh", "-c", cmd)' in m
+    assert 'new ProcessBuilder(bin, "root", "sh", "-c", cmd)' in m
+    assert 'cmd + "\\nexit\\n"' in m
 
 
 def test_bootanim_not_bundled_and_manifest_queries():
@@ -447,7 +450,15 @@ def test_kids_pin_play_store_and_exit():
     assert 'p.getBoolean("kidsLock", false)' in svc and "bringKidsHome(" in svc
     assert 'p.getString("kidsFgPkg"' in svc
     assert 'case "lockphone": lockPhone();' in m and 'case "removeowner": removeOwner();' in m
-    assert "Catalog.DPM_SET_OWNER" in m and "/system/xbin/su" in m and "hasSu()" in m
+    assert "Catalog.DPM_SET_OWNER" in m and "Catalog.DPM_SET_OWNER_FALLBACK" in m and "/system/xbin/su" in m and "hasSu()" in m
+    assert "/system/bin/dpm set-device-owner com.codeaque.launcher/.AdminReceiver" in (SRC / "Catalog.java").read_text()
+    assert "cmd device_policy set-device-owner com.codeaque.launcher/.AdminReceiver" in (SRC / "Catalog.java").read_text()
+    # failure dialog always includes the actual dpm/su output plus simple guidance
+    fail = m.split("private void showDeviceOwnerFailed(", 1)[1].split("private void showAdbKioskGuide(", 1)[0]
+    assert ".append(clip)" in fail and "if (!clip.isEmpty())" in fail
+    assert "Show ADB steps" in fail and "factory-reset" in fail
+    assert "You can also use a computer with adb" in fail
+    assert "Catalog.DPM_SET_OWNER_ADB" in m
     assert "KIDS_KIOSK_RULES" in m and "DISALLOW_INSTALL_APPS" in m and "DISALLOW_INSTALL_UNKNOWN_SOURCES" in m
     assert "syncDeviceOwnerKiosk(" in m and "clearDeviceOwnerApp(" in m
     assert (AND.parent / "docs/android-kiosk-setup.md").is_file()
@@ -522,7 +533,7 @@ def test_home_chooser_fix_and_update_badge():
     assert all("category.HOME" not in a.split("</activity-alias>")[0] for a in m.split("<activity-alias")[1:])   # 0.10.30
     a = (AND.parent / "android/app/src/main/java/com/codeaque/launcher/MainActivity.java").read_text()
     assert "ensureHome();" in a and "Catalog.MAKE_HOME_CMDS" in a and "Catalog.ROLE_CMD" in a
-    assert "pm disable-user --user 0 " in a and '"pm enable "' in a and 'askPin("Hide other launchers"' in a
+    assert "/system/bin/pm disable-user --user 0 " in a and "/system/bin/pm enable " in a and 'askPin("Hide other launchers"' in a
     assert "setApplicationHidden" in a and "isApplicationHidden" in a
     assert '"/su/bin/su"' in a and '"/system/xbin/su"' in a and "command -v su || which su" in a
     assert 'su("id"' in a and "Needs root (Magisk)" not in a
