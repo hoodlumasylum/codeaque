@@ -13,7 +13,7 @@ public final class NovaHelp {
 
     public static final String LIMITS = "I know simple CodeAque help stored on this phone. If Smarter Nova is on I can look up a short fact when a question isn't already here. I don't use an account. Licence details are in About. I stay in CodeAque — I don't sit over other apps. Double-tap hides me until you turn Show Nova on in the Nova tab.";
 
-    public static final String KIDS_GREETING = "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.";
+    public static final String KIDS_GREETING = "Hi, I'm Nova! I can help you find a game. We can talk about Learning, or I can tell you a joke. If you need anything else, ask a grown-up.";
 
     public static final String KIDS_FOOT = "I can help with games, learning, or a joke. For anything else, ask a grown-up.";
 

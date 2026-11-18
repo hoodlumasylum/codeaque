@@ -32,14 +32,15 @@ public final class NovaVoiceGate {
     }
 
     /** SpeechRecognizer error codes (android.speech.SpeechRecognizer). */
+    public static final int ERR_AUDIO = 3;
     public static final int ERR_CLIENT = 5;
     public static final int ERR_SPEECH_TIMEOUT = 6;
     public static final int ERR_NO_MATCH = 7;
     public static final int ERR_RECOGNIZER_BUSY = 8;
 
-    /** Recreate the recognizer and keep the hands-free loop going. */
+    /** Recreate the recognizer and keep the hands-free loop going. Mic-busy is not retried. */
     public static boolean shouldRecycleRecognizer(int code) {
-        return code == ERR_CLIENT || code == ERR_SPEECH_TIMEOUT
-                || code == ERR_NO_MATCH || code == ERR_RECOGNIZER_BUSY;
+        if (NovaConvo.isMicBusy(code)) return false;
+        return code == ERR_CLIENT || code == ERR_SPEECH_TIMEOUT || code == ERR_NO_MATCH;
     }
 }

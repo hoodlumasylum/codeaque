@@ -19,6 +19,6 @@ public final class NovaSpeechListen implements RecognitionListener {
     @Override public void onEndOfSpeech() { }
     @Override public void onError(int error) { if (speech != null) speech.onError(error); }
     @Override public void onResults(Bundle results) { if (speech != null) speech.onResults(results); }
-    @Override public void onPartialResults(Bundle partialResults) { }
+    @Override public void onPartialResults(Bundle partialResults) { if (speech != null) speech.onPartial(partialResults); }
     @Override public void onEvent(int eventType, Bundle params) { }
 }

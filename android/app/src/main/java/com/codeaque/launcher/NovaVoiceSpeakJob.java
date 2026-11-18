@@ -16,22 +16,27 @@ public final class NovaVoiceSpeakJob implements Runnable, NovaVoicePlay.Listener
         this.gen = gen;
     }
     @Override public void run() {
-        if (stale()) return;
-        if (!NovaKokoro.isLoaded()) {
-            if (!NovaKokoro.load(view.getContext())) {
+        try {
+            if (stale()) return;
+            if (!NovaKokoro.isLoaded()) {
+                if (!NovaKokoro.load(view.getContext())) {
+                    fallback();
+                    return;
+                }
+            }
+            if (stale()) return;
+            float speed = NovaKokoro.speedFrom(view.prefs);
+            float[] samples = NovaKokoro.synthesize(text, sid, speed);
+            if (stale()) return;
+            if (samples == null || samples.length < 16) {
                 fallback();
                 return;
             }
-        }
-        if (stale()) return;
-        float speed = NovaKokoro.speedFrom(view.prefs);
-        float[] samples = NovaKokoro.synthesize(text, sid, speed);
-        if (stale()) return;
-        if (samples == null || samples.length < 16) {
+            NovaVoicePlay.play(samples, NovaKokoro.sampleRate(), this, gen);
+        } catch (Throwable t) {
+            android.util.Log.w("NovaVoice", "Heart speak failed", t);
             fallback();
-            return;
         }
-        NovaVoicePlay.play(samples, NovaKokoro.sampleRate(), this, gen);
     }
     boolean stale() {
         return view == null || !NovaSpeakGate.isCurrent(gen, view.speakGen);

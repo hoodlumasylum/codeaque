@@ -1310,10 +1310,10 @@ public class CatalogTest {
         check(Math.abs(NovaVoiceStatus.systemRate(null) - 0.90f) < 1e-4, "system TTS default rate is 0.90");
         check(Math.abs(NovaVoiceStatus.progressToSpeed(NovaVoiceStatus.speedToProgress(0.85f)) - 0.85f) < 1e-4, "speed slider round-trips 0.85");
         check(NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_CLIENT)
-                && NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_RECOGNIZER_BUSY)
+                && !NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_RECOGNIZER_BUSY)
                 && NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_NO_MATCH)
                 && NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_SPEECH_TIMEOUT),
-                "recycle the recognizer after client/busy/no-match/timeout");
+                "recycle the recognizer after client/no-match/timeout, but not when the mic is busy");
         check(NovaListenHidden.TOAST_HIDDEN.contains("Nova tab"), "hide toast points at the Nova tab");
 
         // 0.10.59: Install stays until the installed version is current; Heart sid/lang;
@@ -1348,7 +1348,7 @@ public class CatalogTest {
         check(!NovaSpeakGate.canStartListen(true, true, false, false, true, 2000, 0), "no listen while a speak job is in flight");
         check(!NovaSpeakGate.canStartListen(true, true, false, false, false, 500, 1000), "no listen during hangover");
         check(NovaSpeakGate.sameLine("Hi, I'm Nova! I can help you find a game.",
-                "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up."),
+                NovaHelp.KIDS_GREETING),
                 "a heard slice of her greeting is treated as her echo");
         check(!NovaSpeakGate.sameLine("hello", NovaHelp.KIDS_GREETING), "a real hello is not her greeting");
         check(NovaSpeakGate.shouldDropHeard("how do I play", NovaHelp.KIDS_GREETING, true, false, 5000, 0), "drop any result while she is talking");
@@ -1357,6 +1357,47 @@ public class CatalogTest {
         check(NovaSpeakGate.speakTag(true).equals("Heart") && NovaSpeakGate.speakTag(false).equals("Phone voice"), "on-screen engine tags");
         check(NovaVoiceStatus.failed("lib failed").equals("Heart failed: lib failed"), "Heart load error is shown in full");
         check(NovaSpeakGate.norm("Hellooo!").equals("hellooo") && NovaSpeakGate.norm("  How do I play? ").equals("how do i play"), "norm strips punctuation");
+
+        // 0.10.61: robust multi-turn loop, mic-busy, mouth from playback RMS, no field jumps, adult scroll.
+        check(NovaConvo.runTurns(5) == 5, "five consecutive turns each release their locks");
+        NovaConvo.Loop loop = new NovaConvo.Loop();
+        loop.field = "Hello";
+        loop.startListen();
+        loop.onPartial(loop.listenGen, "What");
+        loop.onPartial(loop.listenGen, "What's 8 * 8");
+        check(loop.field.equals("Hello"), "partial results never write the input field");
+        check(loop.caption.equals("What's 8 * 8"), "partials go to the live caption");
+        check(loop.onFinal(loop.listenGen, "What's 8 * 8") && loop.status.startsWith("You said:"), "status shows You said");
+        check(loop.field.equals("Hello"), "a final result also leaves the input field alone");
+        loop.beginReply("Answer");
+        check(NovaConvo.THINKING_TEXT.equals(loop.status), "status shows Thinking while she prepares a reply");
+        check(NovaConvo.spokenMatchesScreen(loop.lastSpoken, loop.answer), "spoken text matches the on-screen text");
+        loop.endReply();
+        check(!loop.locksHeld(), "endReply releases every lock");
+        loop.startListen();
+        loop.micBusy();
+        check(NovaConvo.MIC_BUSY_TEXT.equals(loop.status) && !loop.listening, "mic busy shows a friendly message and stops");
+        check(NovaConvo.isMicBusy(NovaConvo.ERR_BUSY) && NovaConvo.isMicBusy(NovaConvo.ERR_AUDIO), "busy and audio are mic-busy");
+        check(!NovaConvo.shouldRetry(NovaConvo.ERR_BUSY) && !NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_AUDIO), "a busy mic is not retried");
+        check(NovaConvo.shouldRetry(NovaVoiceGate.ERR_NO_MATCH), "no-match may retry");
+        loop.beginReply("x");
+        loop.timeout();
+        check(NovaConvo.FALLBACK_TEXT.equals(loop.lastSpoken) && !loop.locksHeld(), "a reply timeout speaks the canned fallback and releases locks");
+        check(NovaHelp.KIDS_GREETING.contains("find a game") && !NovaHelp.KIDS_GREETING.contains("find a games"), "greeting says find a game");
+        check(!NovaHelp.KIDS_GREETING.contains("find a game,"), "game is its own sentence so Heart does not say games");
+        check(NovaConvo.SILENCE_COMPLETE_MS >= 1500 && NovaConvo.SILENCE_COMPLETE_MS <= 2000
+                && NovaConvo.SILENCE_POSSIBLY_MS >= 1500 && NovaConvo.SILENCE_POSSIBLY_MS <= 2000, "recognizer silence is 1.5-2s");
+        NovaMouth.Ring ring = new NovaMouth.Ring(8);
+        ring.add(0, 0.08f);
+        ring.add(2000, 0.01f);
+        check(Math.abs(ring.atHead(100) - 0.08f) < 1e-4, "mouth uses the RMS the playback head is in");
+        check(NovaMouth.mouthFromRms(0.08f) >= 0.22f && NovaMouth.mouthFromRms(0.004f) == 0f, "jaw opens clearly on speech and closes on quiet");
+        check(NovaMouth.drained(1000, 1000, false) && !NovaMouth.drained(100, 1000, false), "audio ends when the playback head reaches the last sample");
+        check(!HomeDrawGate.bakeOnDrawThread(), "covers are not baked on the UI thread");
+        check(!HomeDrawGate.drawHeavyFx(true) && HomeDrawGate.drawHeavyFx(false), "glows and embers pause during a fling");
+        check(HomeDrawGate.tileKey("a", 144, 200, 400, 400).equals("a@144x200#400x400"), "tile cache keys are stable sizes");
+
+
 
 
 

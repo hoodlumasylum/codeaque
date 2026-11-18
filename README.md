@@ -31,6 +31,22 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.61
+
+**A conversation that can last more than one turn.** Each reply path releases its locks, even if Heart is slow or fails. If a reply takes too long she says a short fallback and listens again. While she is working you will see **You said: …** and **Thinking…**. What you are still saying appears in a live caption, not in the input field, so the field cannot jump on its own. The mic waits 1.5–2 seconds of silence before it stops, so a question is less likely to be cut off.
+
+**A clear message when the mic is busy.** If another app is using the microphone (a screen recorder is a common one), she shows: "Mic is busy, maybe screen recording? Tap Mic to try again", and she does not keep retrying in a loop.
+
+**Her mouth moves with Heart.** The jaw follows the real loudness of the audio that is playing, timed with the playback head, so it opens and closes with the words.
+
+**The portrait and the Heart tag stay put.** Listening and status changes no longer rebuild or shift the Chat layout, so her face does not twitch and the tag does not flicker.
+
+**"Find a game."** The greeting says "find a game" (not "find a games"), and the line she speaks is the same as the line on the screen.
+
+**Adult mode scrolling is smoother.** Covers are decoded and rounded on a background thread into a size-stable cache, and heavy glows pause during a fling. The grown-up home keeps its busy look when it is still.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. Heart mouth sync and the multi-turn loop on a device, and adult-home scroll feel on a phone, remain untested.
+
 ## What's new in 0.10.60
 
 **One voice at a time, and no looping intro.** Opening Chat or asking a question starts a single utterance. A new line cancels any leftover on-device job and the phone's text-to-speech, so she cannot talk over herself. After she finishes, the mic stays closed for a short moment and anything that matches the line she just said is ignored, so her own speech cannot restart the same greeting.

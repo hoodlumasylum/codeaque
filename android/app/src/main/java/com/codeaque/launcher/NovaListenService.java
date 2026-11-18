@@ -255,8 +255,11 @@ final class NovaListenSpeechCb implements NovaSpeech.Callbacks {
     final NovaListenService svc;
     NovaListenSpeechCb(NovaListenService svc) { this.svc = svc; }
     @Override public void onSpeechResult(String text) { svc.onHeard(text); }
+    @Override public void onSpeechPartial(String text) { }
+    @Override public void onSpeechMicBusy(String message) { /* do not retry against a busy mic */ }
     @Override public void onSpeechError(String message) {
-        if (message != null && message.toLowerCase().contains("wasn't allowed")) {
+        if (message != null && (message.toLowerCase().contains("wasn't allowed")
+                || (message != null && message.contains("Mic is busy")))) {
             NovaListenService.stopAndClear(svc);
             return;
         }

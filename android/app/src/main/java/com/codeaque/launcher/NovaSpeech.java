@@ -24,12 +24,16 @@ public final class NovaSpeech {
         void onSpeechResult(String text);
         void onSpeechError(String message);
         void onSpeechState(boolean listening);
-        /** Timeout / no-match / busy: keep the hands-free loop going. */
+        /** Timeout / no-match: keep the hands-free loop going. Not used for a busy mic. */
         void onSpeechRetry();
         /** No in-app recognizer; use ACTION_RECOGNIZE_SPEECH. */
         void onSpeechUsePrompt();
         /** No recognition service at all; show the Play Store message and button. */
         void onSpeechNeedService();
+        /** Live caption only; must never be written into the input field. */
+        void onSpeechPartial(String text);
+        /** Mic is held by another app (for example a screen recorder). Do not retry in a loop. */
+        void onSpeechMicBusy(String message);
     }
 
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -37,6 +41,8 @@ public final class NovaSpeech {
     Callbacks cb;
     boolean listening, offlineTried, destroyed;
     Context app;
+    /** 0.10.61: bumped on each start/stop so a late result cannot replay an old question. */
+    int listenGen;
 
     public static boolean voiceTalkOn(SharedPreferences p) {
         return p == null || p.getBoolean(PREF_VOICE_TALK, true);
@@ -94,6 +100,7 @@ public final class NovaSpeech {
     public void stop() {
         listening = false;
         offlineTried = false;
+        listenGen = NovaConvo.nextGen(listenGen);
         SpeechRecognizer r = rec;
         rec = null;
         if (r != null) {
@@ -115,6 +122,7 @@ public final class NovaSpeech {
         if (destroyed || rec == null) return;
         Intent i = recognizeIntent(preferOffline);
         offlineTried = preferOffline;
+        listenGen = NovaConvo.nextGen(listenGen);
         listening = true;
         notifyState(true);
         try { rec.startListening(i); }
@@ -129,6 +137,7 @@ public final class NovaSpeech {
     void onReady() { }
 
     void onResults(Bundle b) {
+        int gen = listenGen;
         if (destroyed || !listening) return;
         listening = false;
         notifyState(false);
@@ -138,16 +147,24 @@ public final class NovaSpeech {
             return;
         }
         final String said = text.trim();
-        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false));
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false, gen));
+    }
+
+    void onPartial(Bundle b) {
+        if (destroyed || !listening) return;
+        String text = firstResult(b);
+        if (text == null || text.trim().isEmpty()) return;
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.PARTIAL, text.trim(), false, listenGen));
     }
 
     /** Soft errors that should restart listening in a hands-free loop (not a hard failure). */
     public static boolean softListenError(int code) {
-        return NovaVoiceGate.shouldRecycleRecognizer(code);
+        return NovaConvo.shouldRetry(code);
     }
 
     void onError(int code) {
         if (destroyed || !listening) return;
+        int gen = listenGen;
         // Offline packs are missing on some phones: retry once without EXTRA_PREFER_OFFLINE.
         if (offlineTried && (code == SpeechRecognizer.ERROR_CLIENT
                 || code == SpeechRecognizer.ERROR_SERVER
@@ -158,8 +175,12 @@ public final class NovaSpeech {
         }
         listening = false;
         notifyState(false);
+        if (NovaConvo.isMicBusy(code)) {
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.MIC_BUSY, NovaConvo.MIC_BUSY_TEXT, false, gen));
+            return;
+        }
         if (softListenError(code)) {
-            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false));
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen));
             return;
         }
         fail(friendlyError(code));
@@ -177,8 +198,8 @@ public final class NovaSpeech {
             return "The mic wasn't allowed, so you can type your question instead.";
         if (code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || code == SpeechRecognizer.ERROR_NO_MATCH)
             return "I didn't catch that. Try again, or type it.";
-        if (code == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
-            return "The mic is busy. Try again in a moment, or type it.";
+        if (NovaConvo.isMicBusy(code))
+            return NovaConvo.MIC_BUSY_TEXT;
         return "I couldn't hear that. You can type your question instead.";
     }
 
@@ -187,9 +208,12 @@ public final class NovaSpeech {
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, NovaSpeechAvail.LANGUAGE);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, NovaSpeechAvail.LANGUAGE);
-        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Nova");
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, (int) NovaConvo.SILENCE_COMPLETE_MS);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, (int) NovaConvo.SILENCE_POSSIBLY_MS);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, (int) NovaConvo.SILENCE_MIN_MS);
         if (preferOffline) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
         return i;
     }

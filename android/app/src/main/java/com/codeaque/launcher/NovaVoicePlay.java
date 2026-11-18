@@ -75,34 +75,51 @@ public final class NovaVoicePlay {
         if (cb != null) post(cb, 0, 0);
         try { t.play(); } catch (Exception ignored) { }
         short[] pcm = new short[2048];
+        NovaMouth.Ring ring = new NovaMouth.Ring(64);
+        int written = 0;
         int i = 0;
-        while (i < samples.length && !stopFlag) {
+        int stuck = 0;
+        int lastHead = -1;
+        while (i < samples.length && !stopFlag && wantSession == currentSession()) {
             int n = Math.min(pcm.length, samples.length - i);
-            float sum = 0;
             for (int k = 0; k < n; k++) {
                 float s = samples[i + k];
                 if (s > 1f) s = 1f;
                 else if (s < -1f) s = -1f;
                 pcm[k] = (short) (s * 32767f);
-                sum += s * s;
             }
+            float chunkRms = NovaMouth.rms(samples, i, n);
             try { t.write(pcm, 0, n); } catch (Exception e) { break; }
-            float amp = (float) Math.sqrt(sum / Math.max(1, n));
-            // Map RMS to a visible mouth opening.
-            float mouth = amp * 4.5f;
-            if (mouth < 0.08f) mouth = 0.08f;
-            if (mouth > 1f) mouth = 1f;
-            if (cb != null) post(cb, 1, mouth);
+            ring.add(written, chunkRms);
+            written += n;
+            int head = playbackHead(t);
+            if (cb != null) post(cb, 1, NovaMouth.mouthFromRms(ring.atHead(head)));
             i += n;
         }
-        // Let the buffer drain a little so the last syllable isn't cut off.
-        if (!stopFlag) {
-            try { Thread.sleep(120); } catch (InterruptedException ignored) { }
+        // Drain until the playback head has actually reached the last sample,
+        // so the mouth stays in time and the last syllable is not cut off.
+        while (!stopFlag && wantSession == currentSession()) {
+            int head = playbackHead(t);
+            if (cb != null) post(cb, 1, NovaMouth.mouthFromRms(ring.atHead(head)));
+            if (NovaMouth.drained(head, written, false)) break;
+            if (head == lastHead) {
+                stuck++;
+                if (stuck > 15) break;
+            } else {
+                stuck = 0;
+                lastHead = head;
+            }
+            try { Thread.sleep(20); } catch (InterruptedException ignored) { }
         }
         try { t.stop(); } catch (Exception ignored) { }
         try { t.release(); } catch (Exception ignored) { }
         if (track == t) track = null;
         if (cb != null) post(cb, 2, 0);
+    }
+
+    static int playbackHead(AudioTrack t) {
+        if (t == null) return 0;
+        try { return t.getPlaybackHeadPosition(); } catch (Exception e) { return 0; }
     }
 
     static void post(Listener cb, int kind, float amp) {

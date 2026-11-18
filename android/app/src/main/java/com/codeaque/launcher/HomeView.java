@@ -133,6 +133,7 @@ public class HomeView extends View {
     final HomeScroll row = new HomeScroll();
     private Typeface tfBlack, tfBold, tfRegular, tfMedium;
     private final TileBmpCache tileBmps;
+    private final java.util.Set<String> bakeQueued = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
     private Bitmap chromeSnap, phoenixScreen, phoenixBg;
     private int chromeW, chromeH, phoenixSw, phoenixSh, bakesThisFrame;
     private boolean chromeReady, phoenixTried, artPending, robloxNearPosted;
@@ -2047,18 +2048,25 @@ public class HomeView extends View {
         stroke.setShader(null);
     }
 
-    /** Pre-scaled, opaque, rounded cover at the exact tile size. Null if this frame is already baking too many. */
+    /** Cached pre-scaled cover. A miss is baked on a worker thread, never on the draw thread. */
     private Bitmap bakedTile(Catalog.Item it, Bitmap cov, int tw, int th, float rad) {
         if (it == null || cov == null || cov.isRecycled() || tw < 2 || th < 2) return null;
-        String key = it.key() + "@" + tw + "x" + th + "#" + cov.getWidth() + "x" + cov.getHeight() + "#" + System.identityHashCode(cov);
+        String key = HomeDrawGate.tileKey(it.key(), tw, th, cov.getWidth(), cov.getHeight());
         Bitmap have = tileBmps.get(key);
         if (have != null && !have.isRecycled()) return have;
-        int cap = row.busy() ? 1 : 4;
-        if (bakesThisFrame >= cap) return null;
-        bakesThisFrame++;
-        have = bakeCover(cov, tw, th, rad);
-        if (have != null) tileBmps.put(key, have);
-        return have;
+        if (!HomeDrawGate.bakeOnDrawThread()
+                && !bakeQueued.contains(key)
+                && bakeQueued.add(key)) {
+            new Thread(new HomeTileBake(this, key, cov, tw, th, rad), "home-tile-bake").start();
+        }
+        return null;
+    }
+
+    /** Called on the UI thread when a background bake finishes. */
+    void tileBaked(String key, Bitmap bmp) {
+        bakeQueued.remove(key);
+        if (bmp != null) tileBmps.put(key, bmp);
+        artArrived();
     }
 
     private Bitmap bakeCover(Bitmap cov, int tw, int th, float rad) {

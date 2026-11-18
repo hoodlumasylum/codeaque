@@ -12,17 +12,25 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
         view.onHeard(text);
     }
 
+    @Override public void onSpeechPartial(String text) {
+        if (view != null) view.onPartialHeard(text);
+    }
+
+    @Override public void onSpeechMicBusy(String message) {
+        if (view != null) view.onMicBusy(message);
+    }
+
     @Override public void onSpeechError(String message) {
         if (view == null) return;
         view.refreshMicLabel();
-        if (message != null) {
-            view.lastAnswer = message;
-            if (view.answerView != null) view.answerView.setText(message);
+        if (message != null) view.showListenStatus(message);
+        // Stay in the hands-free loop after a hard error, unless permission was refused
+        // or the mic is busy (retrying would spin against a screen recorder).
+        if (message != null && (message.toLowerCase().contains("wasn't allowed")
+                || message.contains("Mic is busy"))) {
+            return;
         }
-        // Stay in the hands-free loop after a hard error, unless permission was refused.
-        if (message == null || !message.toLowerCase().contains("wasn't allowed")) {
-            view.postDelayed(new NovaListenSoon(view), 600);
-        }
+        if (view.voiceLoop) view.postDelayed(new NovaListenSoon(view), 600);
     }
 
     @Override public void onSpeechState(boolean listening) {

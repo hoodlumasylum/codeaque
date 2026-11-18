@@ -170,14 +170,19 @@ public final class NovaAnim {
             return;
         }
         float target;
+        float ease;
         if (amp >= 0f) {
             s.talkAmp = amp;
-            target = clamp(0.12f + amp * 0.95f, 0.10f, 1f);
+            // Playback RMS is already mapped to a jaw opening. No floor, so
+            // the mouth visibly closes between words and opens with them.
+            target = clamp(amp, 0f, 1f);
+            ease = 0.72f;
         } else {
             float a = (float) (0.55 + 0.45 * Math.sin(now / 90.0 * 2.0 * Math.PI));
             float b = (float) (0.5 + 0.5 * Math.sin(now / 145.0 * 2.0 * Math.PI + 0.8));
             target = clamp(a * b, 0.08f, 1f);
+            ease = 0.45f;
         }
-        s.mouth += (target - s.mouth) * 0.45f;
+        s.mouth += (target - s.mouth) * ease;
     }
 }
