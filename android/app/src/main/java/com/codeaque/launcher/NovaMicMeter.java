@@ -34,7 +34,7 @@ public final class NovaMicMeter extends View {
     public void setLevel(float v) {
         if (v < 0f) v = 0f;
         if (v > 1f) v = 1f;
-        if (Math.abs(v - level) < 0.02f && v < 0.98f) return;
+        if (Math.abs(v - level) < 0.01f) return;
         level = v;
         invalidate();
     }

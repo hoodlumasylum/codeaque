@@ -31,6 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.65
+
+**The greeting starts at once.** Opening Chat no longer sits on "Thinking…" for a long silent wait. Nova speaks a canned greeting (no on-device brain, no Grok) and shows **Speaking…** while she talks, never Thinking. Heart and the on-device brain warm up in the background when the app starts, so they are ready for later replies. If Heart is still loading, that first greeting may use the phone's voice so it is not silent.
+
+**Replies are shorter and start sooner.** A simple "Hello" gets an instant canned reply. The on-device brain is capped at 40 tokens. As soon as a longer answer is ready, she speaks the first sentence and then the rest. While she is actually thinking, the status shows elapsed time, for example "Thinking… 3s".
+
+**The mic meter is live.** It is driven from the system recognizer's RMS and from the built-in listener's AudioRecord levels, and it decays toward empty when levels stop arriving, so a stuck yellow block can no longer look like a live meter.
+
+**Built-in listening is the default once it is downloaded**, and it listens for about 8 seconds with end-of-speech detection. If the system recognizer hears nothing, she switches automatically; if the pack is not downloaded, Chat offers "Get built-in listening" with one tap, above the meter so a short landscape window cannot clip it. If our own AudioRecord reads only silence, Chat says "Mic is getting no sound. Another app may be using it". The Chat title no longer wraps to one letter per line.
+
+Untested: these changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. Instant greeting with a cold Heart load, the live mic meter on a device, automatic 8-second built-in listening, all-zero mic detection while a screen recorder is running, and first-sentence streaming of a longer reply remain untested.
+
 ## What's new in 0.10.64
 
 **Built-in listening is the obvious path in Chat.** "Get built-in listening" stays on the Chat screen whenever the pack is not downloaded, above the fold, with a visible mic level bar (a labelled Mic meter with a gold outline, so it is not a dark strip on a dark card). On a short landscape Chat window, those controls were previously clipped under "Get speech service". The Play Store button is now a secondary control in the scrolling area. Chat and Nova's tab show a **CodeAque 0.10.64** version label so a screenshot can confirm the installed build.

@@ -76,6 +76,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     NovaListenSoon listenSoon;
     int emptyListenCycles;
     boolean listenGiveUp, preferBuiltin, asrDlBusy, busyRetried, heartWaitExtended, heartFallbackRetried;
+    boolean heardThisListen;
+    long lastRmsAt, thinkStarted;
+    NovaThinkTick thinkTick;
+    NovaListenWatch listenWatch;
+    NovaMeterDecay meterDecay;
+    String pendingRest;
     long listenHideAfter;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady, deviceVoice;
     int ttsInitTries;
@@ -201,11 +207,13 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     void greet() {
+        pendingRest = null;
         lastAnswer = NovaConvo.speakText(kids ? NovaHelp.KIDS_GREETING : NovaHelp.GREETING);
         if (answerView != null) answerView.setText(lastAnswer);
-        showListenStatus(NovaConvo.THINKING_TEXT);
-        convoState = NovaConvo.THINKING;
-        if (!muted()) speak(lastAnswer);
+        cancelThinkTick();
+        showListenStatus(NovaConvo.SPEAKING_TEXT);
+        convoState = NovaConvo.SPEAKING;
+        if (!muted()) speak(lastAnswer, true, true);
     }
 
     void setPanelShown(boolean on) {
@@ -264,14 +272,15 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         title.setTextColor(0xFFF2F6FA);
         title.setTextSize(18);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        tlp.setMargins(0, 0, Math.round(8 * d), 0);
         head.addView(title, tlp);
-        TextView verHead = new TextView(getContext());
-        verHead.setText(NovaAppVer.label(installedVersionName()));
-        verHead.setTextColor(0xFFB8A88A);
-        verHead.setTextSize(11);
-        verHead.setPadding(0, 0, Math.round(8 * d), 0);
-        head.addView(verHead);
+        // Version stays in the footer only. Putting it in this row made "Chat"
+        // wrap to one letter per line on a short landscape card.
+        android.view.View spacer = new android.view.View(getContext());
+        head.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
         listenLabel = new TextView(getContext());
         listenLabel.setText("Listening…");
         listenLabel.setTextColor(0xFF1C1A18);
@@ -380,6 +389,18 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         listenStatus.setVisibility(VISIBLE);
         panel.addView(listenStatus);
 
+        asrOfferStatus = new TextView(getContext());
+        asrOfferStatus.setTextColor(0xFFE8C872);
+        asrOfferStatus.setTextSize(12);
+        asrOfferStatus.setPadding(0, pad / 2, 0, 0);
+        asrOfferStatus.setVisibility(GONE);
+        panel.addView(asrOfferStatus);
+        asrOfferBtn = btn(NovaAsrFiles.DOWNLOAD_BTN, new NovaAsrOfferClick(this));
+        asrOfferBtn.setMinHeight(dp(36));
+        asrOfferBtn.setMinimumHeight(dp(36));
+        asrOfferBtn.setVisibility(GONE);
+        panel.addView(asrOfferBtn);
+
         LinearLayout meterRow = new LinearLayout(getContext());
         meterRow.setOrientation(LinearLayout.HORIZONTAL);
         meterRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
@@ -395,16 +416,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         LinearLayout.LayoutParams meterRowLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         meterRowLp.topMargin = pad / 2;
         panel.addView(meterRow, meterRowLp);
-
-        asrOfferStatus = new TextView(getContext());
-        asrOfferStatus.setTextColor(0xFFE8C872);
-        asrOfferStatus.setTextSize(12);
-        asrOfferStatus.setPadding(0, pad / 2, 0, 0);
-        asrOfferStatus.setVisibility(GONE);
-        panel.addView(asrOfferStatus);
-        asrOfferBtn = btn(NovaAsrFiles.DOWNLOAD_BTN, new NovaAsrOfferClick(this));
-        asrOfferBtn.setVisibility(GONE);
-        panel.addView(asrOfferBtn);
         refreshAsrOffer();
 
         liveCaption = new TextView(getContext());
@@ -499,15 +510,27 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void ask(String q, boolean fromVoice) {
         stopListen();
+        cancelThinkTick();
+        pendingRest = null;
         if (fromVoice) showListenStatus(NovaConvo.youSaid(q));
         if (kids && NovaHelp.looksLikeJoke(q)) { tellJoke(); return; }
+        if (NovaReplyQuick.isSimpleGreeting(q)) {
+            lastAnswer = NovaConvo.speakText(NovaReplyQuick.cannedHello(kids));
+            if (answerView != null) answerView.setText(lastAnswer);
+            if (!fromVoice && askField != null && q != null) askField.setText(q);
+            showListenStatus(fromVoice ? NovaConvo.youSaid(q) : NovaConvo.SPEAKING_TEXT);
+            convoState = NovaConvo.SPEAKING;
+            if (kids || !muted()) speakAuto(lastAnswer);
+            invalidate();
+            return;
+        }
         if (kids && smarterOn() && NovaHelp.kidsMayAskOnline(q)) {
             awaitingAnswer = true;
             if (!fromVoice && askField != null && q != null) askField.setText(q);
-            showListenStatus(NovaConvo.THINKING_TEXT);
             convoState = NovaConvo.THINKING;
             lastAnswer = "Let me think…";
             if (answerView != null) answerView.setText(lastAnswer);
+            startThinkTick();
             final String question = q;
             if (NovaLlm.smarterUsesModel(getContext(), prefs)
                     && NovaLlm.phoneStrongEnough(getContext())) {
@@ -525,7 +548,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (!fromVoice && !NovaConvo.writeHeardToField() && askField != null && q != null) askField.setText(q);
         if (fromVoice) { /* field stays put */ }
         if (fromVoice) showListenStatus(NovaConvo.youSaid(q));
-        else showListenStatus(NovaConvo.THINKING_TEXT);
+        else showListenStatus(NovaConvo.SPEAKING_TEXT);
+        convoState = NovaConvo.SPEAKING;
         if (kids) speakAuto(lastAnswer);
         invalidate();
     }
@@ -580,13 +604,22 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (listenGiveUp) return;
         if (!NovaListenGate.canRestart(voiceLoop, expanded, listenGiveUp, talking, thinking(), speakJobInFlight, pendingSpeak != null)) return;
         if (talking || speakJobInFlight || pendingSpeak != null || now < silentUntil) return;
+        preferBuiltin = NovaListenPick.preferBuiltinWhenReady(NovaAsr.filesReady(getContext())) || preferBuiltin;
+        heardThisListen = false;
+        lastRmsAt = 0;
+        if (micMeter != null) micMeter.setLevel(0f);
         if (speech == null) speech = new NovaSpeech();
         speech.start(getContext(), new NovaTalkCb(this), preferBuiltin);
+        scheduleListenWatch();
+        startMeterDecay();
         refreshMicLabel();
     }
 
     void stopListen() {
+        cancelListenWatch();
+        cancelMeterDecay();
         if (speech != null) speech.stop();
+        if (micMeter != null && !isListening()) micMeter.setLevel(0f);
         refreshMicLabel();
     }
 
@@ -622,6 +655,54 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             removeCallbacks(listenSoon);
             listenSoon = null;
         }
+    }
+
+    void startThinkTick() {
+        cancelThinkTick();
+        thinkStarted = android.os.SystemClock.uptimeMillis();
+        showListenStatus(NovaReplyQuick.thinkingText(0));
+        thinkTick = new NovaThinkTick(this, thinkStarted);
+        postDelayed(thinkTick, 1000);
+    }
+
+    void cancelThinkTick() {
+        if (thinkTick != null) {
+            removeCallbacks(thinkTick);
+            thinkTick = null;
+        }
+    }
+
+    public void onThinkTick(long started) {
+        if (!thinking()) {
+            thinkTick = null;
+            return;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        showListenStatus(NovaReplyQuick.thinkingText(now - started));
+        thinkTick = new NovaThinkTick(this, started);
+        postDelayed(thinkTick, 1000);
+    }
+
+    void scheduleListenWatch() {
+        cancelListenWatch();
+        int gen = speech == null ? 0 : speech.listenGen;
+        listenWatch = new NovaListenWatch(this, gen);
+        postDelayed(listenWatch, NovaReplyQuick.LISTEN_WINDOW_MS);
+    }
+
+    void cancelListenWatch() {
+        if (listenWatch != null) {
+            removeCallbacks(listenWatch);
+            listenWatch = null;
+        }
+    }
+
+    public void onListenWatch(int gen) {
+        listenWatch = null;
+        if (speech == null || gen != speech.listenGen) return;
+        if (!isListening()) return;
+        if (heardThisListen) return;
+        onEmptyListen(NovaVoiceGate.ERR_NO_MATCH);
     }
 
     void scheduleListen(long delayMs) {
@@ -693,10 +774,31 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onPartialHeard(String text) {
+        if (text != null && !text.trim().isEmpty()) heardThisListen = true;
         setLiveCaption(text);
     }
 
+    public void onMicNoSound(String message) {
+        listenGiveUp = false;
+        emptyListenCycles++;
+        String msg = message == null || message.isEmpty() ? NovaReplyQuick.NO_SOUND : message;
+        NovaListenDiag.setReason(msg);
+        lastAnswer = msg;
+        if (answerView != null) answerView.setText(msg);
+        showListenStatus(msg);
+        boolean ready = NovaAsr.filesReady(getContext());
+        if (!ready) showNeedBuiltin(msg);
+        else if (emptyListenCycles >= 2) {
+            listenGiveUp = true;
+            showListenStatus(NovaListenGate.TAP_MIC);
+        } else {
+            scheduleListen(400);
+        }
+        refreshMicLabel();
+    }
+
     public void onMicBusy(String message) {
+
         boolean ready = NovaAsr.filesReady(getContext());
         boolean alreadyBuiltin = preferBuiltin || (speech != null && speech.usingBuiltin());
         // The hidden listen service may have been holding the mic. Pause it once, then retry.
@@ -790,7 +892,38 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onSpeechRms(float level) {
+        lastRmsAt = android.os.SystemClock.uptimeMillis();
+        if (level >= 0.15f) heardThisListen = true;
         if (micMeter != null) micMeter.setLevel(level);
+        startMeterDecay();
+    }
+
+    void startMeterDecay() {
+        if (meterDecay != null) return;
+        meterDecay = new NovaMeterDecay(this);
+        post(meterDecay);
+    }
+
+    void cancelMeterDecay() {
+        if (meterDecay != null) {
+            removeCallbacks(meterDecay);
+            meterDecay = null;
+        }
+    }
+
+    public void onMeterDecay() {
+        if (!isListening()) {
+            cancelMeterDecay();
+            if (micMeter != null) micMeter.setLevel(0f);
+            return;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        if (lastRmsAt > 0 && now - lastRmsAt > 180 && micMeter != null) {
+            float v = micMeter.level * 0.6f;
+            if (v < 0.03f) v = 0f;
+            micMeter.setLevel(v);
+        }
+        if (meterDecay != null) postDelayed(meterDecay, 80);
     }
 
     void refreshAsrOffer() {
@@ -1053,12 +1186,34 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         speak(s);
     }
 
-    void speak(String s) { speak(s, true); }
+    void speak(String s) { speak(s, true, false); }
 
-    void speak(String s, boolean freshLine) {
+    void speak(String s, boolean freshLine) { speak(s, freshLine, false); }
+
+    void speakStreamed(String full) {
+        if (full == null || full.isEmpty()) return;
+        lastAnswer = full;
+        if (answerView != null) answerView.setText(full);
+        cancelThinkTick();
+        String first = NovaReplyQuick.firstSentence(full);
+        pendingRest = NovaReplyQuick.afterFirst(full);
+        speakAuto(first);
+    }
+
+    /** If a streamed rest remains, speak it and return true (do not start listening yet). */
+    boolean continueRest() {
+        if (pendingRest == null || pendingRest.isEmpty()) return false;
+        String rest = pendingRest;
+        pendingRest = null;
+        speak(rest, false);
+        return true;
+    }
+
+    void speak(String s, boolean freshLine, boolean instantOk) {
         if (s == null || s.isEmpty()) return;
         if (muted()) return;
         if (freshLine) heartFallbackRetried = false;
+        cancelThinkTick();
         cancelListenSoon();
         stopListen();   // 0.10.55: do not hear herself while speaking
         // 0.10.60: cancel any other engine / leftover job first so only one voice plays.
@@ -1072,6 +1227,14 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         silentUntil = 0;
         heartWaitExtended = false;
         beginTalk(s);
+        boolean heartReady = NovaKokoro.isLoaded();
+        // Greeting must start at once. If Heart is still warming, use the phone voice for this line only.
+        if (instantOk && NovaSpeakGate.allowInstantPhone(NovaKokoro.filesReady(getContext()), heartReady)) {
+            setVoiceTag(NovaSpeakGate.TAG_PHONE);
+            speakJobInFlight = false;
+            speakSystem(s, true);
+            return;
+        }
         startReplyTimeout(speakGen);
         if (NovaKokoro.usesOnDevice(getContext(), prefs)) {
             setVoiceTag(NovaSpeakGate.TAG_HEART);
@@ -1142,6 +1305,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void beginTalk(String s) {
         talking = true;
         deviceVoice = false;
+        convoState = NovaConvo.SPEAKING;
+        showListenStatus(NovaConvo.SPEAKING_TEXT);
         talkUntil = android.os.SystemClock.uptimeMillis() + NovaTtsVoice.estimateMs(s);
         st.talking = true;
         startAnim();
@@ -1149,10 +1314,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     /** System TTS path. Never used once Heart's files are on the phone. */
-    void speakSystem(String s) {
+    void speakSystem(String s) { speakSystem(s, false); }
+
+    void speakSystem(String s, boolean forcePhone) {
         if (s == null || s.isEmpty()) return;
         if (muted()) { speakJobInFlight = false; return; }
-        if (NovaSpeakGate.keepHeart(NovaKokoro.filesReady(getContext()))) {
+        if (!forcePhone && NovaSpeakGate.keepHeart(NovaKokoro.filesReady(getContext()))) {
             if (!heartFallbackRetried) {
                 heartFallbackRetried = true;
                 speak(s, false);
@@ -1227,7 +1394,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         deviceVoice = true;
         st.talking = true;
         convoState = NovaConvo.SPEAKING;
-        if (lastHeard != null && !lastHeard.isEmpty()) showListenStatus(NovaConvo.youSaid(lastHeard));
+        showListenStatus(NovaConvo.SPEAKING_TEXT);
         long extra = android.os.SystemClock.uptimeMillis() + 8000;
         if (extra > talkUntil) talkUntil = extra;
         invalidate();
@@ -1243,6 +1410,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     public void onDeviceVoiceEnd() {
         releaseSpeakLocks();
+        if (continueRest()) return;
         silentUntil = android.os.SystemClock.uptimeMillis() + NovaSpeakGate.HANGOVER_MS;
         st.mouth = 0;
         invalidate();
@@ -1371,6 +1539,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (!id.equals(talkId)) return;   // ignore pauses and earlier sentences
         talkId = null;
         releaseSpeakLocks();
+        if (continueRest()) return;
         silentUntil = android.os.SystemClock.uptimeMillis() + NovaSpeakGate.HANGOVER_MS;
         invalidate();
         if (voiceLoop) postDelayed(new NovaListenSoon(this), NovaSpeakGate.HANGOVER_MS);
@@ -1378,6 +1547,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void stopSpeak() {
         cancelReplyTimeout();
+        cancelThinkTick();
+        pendingRest = null;
         pendingSpeak = null;
         talking = false;
         deviceVoice = false;

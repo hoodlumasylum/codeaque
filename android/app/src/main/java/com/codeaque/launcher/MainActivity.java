@@ -127,6 +127,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             if (handleInstallerResult(i)) return;
             parentEntry(i);   // 0.10.30: CodeAque Adult / CodeAque Settings icon or long-press shortcut
         }
+        new Thread(new NovaEngineWarmup(this), "nova-warmup").start();
     }
 
     @Override protected void onNewIntent(Intent i) {      // pressing Home again, the screenshot extras, or the installer's answer

@@ -21,6 +21,9 @@ public final class NovaConvo {
 
     public static final String LISTENING_TEXT = "Listening…";
     public static final String THINKING_TEXT = "Thinking…";
+    public static final String SPEAKING_TEXT = NovaReplyQuick.SPEAKING_TEXT;
+    public static final String NO_SOUND_TEXT = NovaReplyQuick.NO_SOUND;
+    public static final long LISTEN_WINDOW_MS = NovaReplyQuick.LISTEN_WINDOW_MS;
     public static final String MIC_BUSY_TEXT = "Mic is busy, maybe screen recording? Tap Mic to try again";
     public static final String FALLBACK_TEXT = "Sorry, that took too long. Please ask me again.";
 
@@ -40,7 +43,7 @@ public final class NovaConvo {
         if (state == HEARD) return youSaid(heard);
         if (state == THINKING) return THINKING_TEXT;
         if (state == MIC_BUSY) return MIC_BUSY_TEXT;
-        if (state == SPEAKING) return heard == null || heard.isEmpty() ? THINKING_TEXT : youSaid(heard);
+        if (state == SPEAKING) return SPEAKING_TEXT;
         return "";
     }
 

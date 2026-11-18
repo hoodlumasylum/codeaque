@@ -31,6 +31,10 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
             view.onMicBusy(message);
             return;
         }
+        if (message != null && message.contains(NovaReplyQuick.NO_SOUND)) {
+            view.onMicNoSound(message);
+            return;
+        }
         if (message != null && (message.contains("download built-in")
                 || message.contains("No speech service"))) {
             view.showSpeechServiceMissing();

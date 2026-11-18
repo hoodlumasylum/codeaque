@@ -94,7 +94,12 @@ public final class NovaListenPick {
     public static boolean useBuiltinNow(boolean forceBuiltin, boolean builtinReady,
             boolean recOk, boolean onDeviceOk) {
         if (!builtinReady) return false;
-        if (forceBuiltin) return true;
-        return !recOk && !onDeviceOk;
+        // Once downloaded, built-in ASR is the default: we own the AudioRecord
+        // and the mic meter, so a deaf system recognizer cannot sit in the way.
+        return true;
+    }
+
+    public static boolean preferBuiltinWhenReady(boolean builtinReady) {
+        return builtinReady;
     }
 }

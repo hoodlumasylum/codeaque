@@ -98,7 +98,7 @@ public final class NovaLlm {
         if (prompt == null || prompt.isEmpty()) return null;
         synchronized (LOCK) {
             if (handle == 0) return null;
-            try { return nativeComplete(handle, prompt, 80); }
+            try { return nativeComplete(handle, prompt, NovaReplyQuick.MAX_TOKENS); }
             catch (Throwable t) { return null; }
         }
     }

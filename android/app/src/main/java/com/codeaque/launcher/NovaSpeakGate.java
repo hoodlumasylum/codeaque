@@ -123,4 +123,12 @@ public final class NovaSpeakGate {
     public static long speakWaitMs(boolean keepHeart) {
         return keepHeart ? HEART_WAIT_MS : 12000L;
     }
+
+    /**
+     * The canned opening greeting must start at once. If Heart is still loading,
+     * the phone voice is allowed for that one line.
+     */
+    public static boolean allowInstantPhone(boolean heartFilesReady, boolean heartLoaded) {
+        return !heartLoaded;
+    }
 }

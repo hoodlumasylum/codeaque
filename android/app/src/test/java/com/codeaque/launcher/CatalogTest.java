@@ -1451,9 +1451,9 @@ public class CatalogTest {
                 && NovaListenPick.nextLanguage("en-US", true) == null
                 && NovaListenPick.nextLanguage("en-GB", false) == null, "en-US is the one language fallback");
         check(NovaListenPick.useBuiltinNow(false, true, false, false)
-                && !NovaListenPick.useBuiltinNow(false, true, true, false)
+                && NovaListenPick.useBuiltinNow(false, true, true, false)
                 && NovaListenPick.useBuiltinNow(true, true, true, false)
-                && !NovaListenPick.useBuiltinNow(true, false, false, false), "built-in is default when no system service, or when forced and ready");
+                && !NovaListenPick.useBuiltinNow(true, false, false, false), "built-in is the default once the pack is on the phone");
         check(NovaListenPick.shouldFallToBuiltin(true, false, 1, false)
                 && !NovaListenPick.shouldFallToBuiltin(false, false, 5, false)
                 && NovaListenPick.shouldFallToBuiltin(true, false, 0, true)
@@ -1483,11 +1483,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.64") && NovaAppVer.CODE == 164, "shipping version is 0.10.64");
-        check(NovaAppVer.label().equals("CodeAque 0.10.64")
-                && NovaAppVer.label("0.10.64").equals("CodeAque 0.10.64")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.64")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.64"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.65") && NovaAppVer.CODE == 165, "shipping version is 0.10.65");
+        check(NovaAppVer.label().equals("CodeAque 0.10.65")
+                && NovaAppVer.label("0.10.65").equals("CodeAque 0.10.65")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.65")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.65"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1515,6 +1515,40 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(true, true, true, false)
                 && !NovaSpeakGate.extendHeartWait(true, false, true, true)
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
+
+        // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
+        check(NovaAppVer.NAME.equals("0.10.65") && NovaAppVer.CODE == 165, "shipping version is 0.10.65");
+        check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
+                && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
+                && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
+                && !NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.THINKING_TEXT), "while she talks the status is Speaking, never Thinking");
+        check(NovaReplyQuick.isSimpleGreeting("Hello")
+                && NovaReplyQuick.isSimpleGreeting("hello. hello.")
+                && NovaReplyQuick.isSimpleGreeting("Hi")
+                && NovaReplyQuick.isSimpleGreeting("Hey Nova")
+                && !NovaReplyQuick.isSimpleGreeting("find a game")
+                && !NovaReplyQuick.isSimpleGreeting(""), "simple spoken greetings get a canned reply");
+        check(NovaReplyQuick.cannedHello(true).startsWith("Hi!")
+                && NovaReplyQuick.cannedHello(false).startsWith("Hi!"), "canned hello is instant and short");
+        check(NovaReplyQuick.thinkingText(0).equals("Thinking… 0s")
+                && NovaReplyQuick.thinkingText(3500).equals("Thinking… 3s"), "thinking shows elapsed seconds");
+        check(NovaReplyQuick.firstSentence("Hello there. How can I help you today?").equals("Hello there.")
+                && NovaReplyQuick.afterFirst("Hello there. How can I help you today?").equals("How can I help you today?")
+                && NovaReplyQuick.afterFirst("Just one line!").isEmpty(), "the first sentence streams to TTS first");
+        check(NovaReplyQuick.MAX_TOKENS <= 40 && NovaReplyQuick.MAX_TOKENS >= 20, "on-device replies stay short");
+        check(NovaReplyQuick.LISTEN_WINDOW_MS == 8000L
+                && NovaReplyQuick.SPEECH_TAIL_MS >= 1500L
+                && NovaReplyQuick.LISTEN_MAX_MS >= NovaReplyQuick.LISTEN_WINDOW_MS, "listen up to 8s, then end-of-speech");
+        check(NovaReplyQuick.isSilentRms(0.001f) && !NovaReplyQuick.isSilentRms(0.05f)
+                && NovaReplyQuick.allZeros(0, 16000) && NovaReplyQuick.allZeros(3, 8000)
+                && !NovaReplyQuick.allZeros(200, 8000), "all-zero AudioRecord is flagged");
+        check(NovaReplyQuick.NO_SOUND.contains("no sound") && NovaReplyQuick.NO_SOUND.contains("Another app"), "no-sound wording");
+        check(NovaListenPick.preferBuiltinWhenReady(true) && !NovaListenPick.preferBuiltinWhenReady(false)
+                && NovaListenPick.useBuiltinNow(false, true, true, true), "built-in is the default once downloaded");
+        check(NovaSpeakGate.allowInstantPhone(true, false)
+                && !NovaSpeakGate.allowInstantPhone(true, true)
+                && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
+
 
 
 
