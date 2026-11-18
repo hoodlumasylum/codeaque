@@ -31,7 +31,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
-## What's new in 0.10.47 (unreleased)
+## What's new in 0.10.48 (unreleased)
+
+Game tiles on the tabbed home (Kids, Kids 12+, adult default, and Roblox) are now the **same size and style as the Wi-Fi / Update tiles**: one row of big equal tiles, the cover filling each tile (centre-cropped, not stretched), and the game name in the same big bold uppercase type over the lower part of the cover. Long names shrink or ellipsize so they stay inside the tile. Classic home is unchanged.
+
+## What's new in 0.10.47
 
 Games on the tabbed home (Kids, Kids 12+, and the adult default) are back on **one horizontal row** of large cover tiles — the sleeker layout from before the 0.10.45 two-row grid. Category tabs, tick-to-install, covers and infinite paging stay. Classic home layout is unchanged.
 

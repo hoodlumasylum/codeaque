@@ -45,7 +45,7 @@ public class HomeView extends View {
         void timeUpAskParent();
         /** 0.10.37: while a parent PIN dialog is open, tiles must not activate (wrong PIN / A / Enter must not launch). */
         boolean pinDialogOpen();
-        /** 0.10.42 / 0.10.47: tabbed home with one row of large tiles (Kids always; adult default unless Classic home is on). */
+        /** 0.10.42 / 0.10.48: tabbed home with one row of Wi-Fi-sized tiles (Kids always; adult default unless Classic home is on). */
         boolean browseLayout();
         /** Description under a browse-list title; empty if none. */
         String itemBlurb(Catalog.Item item);
@@ -284,26 +284,12 @@ public class HomeView extends View {
         if ("kthemes".equals(id) || "kwifi".equals(id) || "kparent".equals(id) || "settings".equals(id) || "power".equals(id)) return false;
         return true;
     }
-    /** 0.10.47: one horizontal row of large cover tiles under the category tabs. */
-    private float browsePad() { return 20 * s; }
-    private float browseGap() { return 12 * s; }
-    private float browseNameH() { return 22 * s; }
-    private float browseTileH() {
-        float span = Math.max(80 * s, browseBottom() - browseTop());
-        float h = span - browseNameH() - 6 * s;
-        if (h < 72 * s) h = 72 * s;
-        return h;
-    }
-    private float browseTileW() {
-        // Portrait covers, sized so a small handheld still shows more than one tile.
-        float h = browseTileH();
-        float w = h * 0.72f;
-        float avail = Math.max(40 * s, getWidth() - 2 * browsePad());
-        if (w > avail * 0.52f) w = avail * 0.52f;
-        if (w < 56 * s) w = 56 * s;
-        return w;
-    }
-    private float browseTop() { return catsBottom() + 8 * s; }
+    /** 0.10.48: game tiles use the same size, gap and placement as the Wi-Fi / Update action tiles. */
+    private float browsePad() { return 24 * s; }
+    private float browseGap() { return 16 * s * big(); }
+    private float browseTileH() { return 136 * s * big(); }
+    private float browseTileW() { return 188 * s * big(); }
+    private float browseTop() { return getHeight() - footH() - browseTileH(); }
     private float browseBottom() { return getHeight() - footH(); }
     private float clampScroll(float v) { float m = maxScroll(); return v < 0 ? 0 : v > m ? m : v; }
 
@@ -329,7 +315,7 @@ public class HomeView extends View {
     private int hitBrowseItem(float x, float y) {
         if (!browseList() || y < browseTop() || y > browseBottom()) return -1;
         float left = browsePad(), tw = browseTileW(), gap = browseGap(), th = browseTileH();
-        if (y > browseTop() + th + browseNameH()) return -1;
+        if (y > browseTop() + th) return -1;
         int i = (int) Math.floor((x - left) / (tw + gap) + scrollAnim);
         if (i < 0 || i >= items().size()) return -1;
         float x0 = left + (i - scrollAnim) * (tw + gap);
@@ -619,7 +605,7 @@ public class HomeView extends View {
         topBar(c, W, H);
         notifyRoblox(true);
         if (!boxset) categories(c, W, H);
-        if (!browseList() && !boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
+        if (!boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
         if (browseList()) browseList(c, W, H); else tiles(c, W, H);
         hints(c, W, H);
         if (browseList()) installFab(c, W, H);
@@ -821,7 +807,8 @@ public class HomeView extends View {
 
     /** 0.10.19: tile names drawn big and heavy (sans-serif-black, soft shadow). */
     private boolean heavy;
-    /** 0.10.19: a tile name as large as fits in maxW on up to 2 lines, bottom line's baseline at y. */
+    /** 0.10.19: a tile name as large as fits in maxW on up to 2 lines, bottom line's baseline at y.
+     *  0.10.48: a line that is still too wide at the minimum size is ellipsized, so long game names stay inside the tile. */
     private void tileName(Canvas c, String lab, float cx, float y, float maxW, float start, float min) {
         heavy = true;
         p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
@@ -834,9 +821,25 @@ public class HomeView extends View {
             if (best > 0 && bw <= maxW) { l1 = lab.substring(0, best); l2 = lab.substring(best + 1); break; }
             if (ts <= min) { if (best > 0) { l1 = lab.substring(0, best); l2 = lab.substring(best + 1); } break; }
         }
+        p.setTextSize(ts);
+        l1 = ellipsize(l1, maxW);
+        if (l2 != null) l2 = ellipsize(l2, maxW);
         if (l2 != null) { text(c, l1, cx, y - ts * 1.05f, ts, 0xFFFFFFFF, Paint.Align.CENTER, true); text(c, l2, cx, y, ts, 0xFFFFFFFF, Paint.Align.CENTER, true); }
         else text(c, l1, cx, y, ts, 0xFFFFFFFF, Paint.Align.CENTER, true);
         heavy = false;
+    }
+    private String ellipsize(String lab, float maxW) {
+        if (lab == null || lab.isEmpty() || p.measureText(lab) <= maxW) return lab == null ? "" : lab;
+        String dots = "…";
+        float dw = p.measureText(dots);
+        if (dw >= maxW) return dots;
+        int lo = 0, hi = lab.length();
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2;
+            if (p.measureText(lab, 0, mid) + dw <= maxW) lo = mid; else hi = mid - 1;
+        }
+        if (lo <= 0) return dots;
+        return lab.substring(0, lo).trim() + dots;
     }
 
     private void spaced(Canvas c, String txt, float x, float y, float size, int col, Paint.Align a) {
@@ -946,20 +949,20 @@ public class HomeView extends View {
         c.drawLine(cx - 1.5f * s, cy + 4.5f * s, cx + 6 * s, cy - 4 * s, stroke);
     }
 
-    /** 0.10.47: one sleek horizontal row of large covers under the tabs. */
+    /** 0.10.48: one row of tiles the same size and style as Wi-Fi / Update — cover fills the tile
+     *  (centre-cropped, not stretched), big bold title over the lower part of the cover, all tiles equal. */
     private void browseList(Canvas c, int W, int H) {
         List<Catalog.Item> its = items();
         float top = browseTop(), bot = browseBottom();
         float tw = browseTileW(), th = browseTileH(), gap = browseGap(), left = browsePad();
         c.save();
-        c.clipRect(0, top - 8 * s, W, bot + 2 * s);
+        c.clipRect(0, top - 16 * s, W, H);
         for (int i = 0; i < its.size(); i++) {
             float x = left + (i - scrollAnim) * (tw + gap);
             if (x > W || x + tw < 0) continue;
             boolean sel = i == tile && !inCats;
             Catalog.Item it = its.get(i); badgeItem = it;
-            float grow = sel ? 6 * s : 0;
-            r.set(x - grow, top - grow, x + tw + grow, top + th + grow);
+            r.set(x, top, x + tw, top + th);
             if (sel) {
                 p.setShader(new RadialGradient(r.centerX(), r.centerY(), tw * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), tw * 0.85f, p); p.setShader(null);
@@ -968,10 +971,15 @@ public class HomeView extends View {
             getBadge(c, it);
             tickBadge(c, it);
             updBadge(c);
-            tileName(c, it.label.toUpperCase(Locale.ROOT), x + tw / 2, top + th + browseNameH() - 4 * s, tw - 4 * s, (kids ? 16 : 13) * s, 9 * s);
+            tileName(c, it.label.toUpperCase(Locale.ROOT), r.centerX(), r.top + th * 0.86f, tw - 12 * s, (kids ? 34 : 20) * s, 11 * s);
         }
         c.restore();
         if (its.isEmpty()) text(c, "Nothing in this list yet.", W / 2f, (top + bot) / 2, 16 * s, DIM, Paint.Align.CENTER, false);
+        else {
+            Catalog.Item f = its.get(Math.min(tile, its.size() - 1));
+            String hint = "wifi".equals(f.action) ? host.wifi() : host.scanNote(cats.get(cat).id) != null && !f.isRom() ? host.scanNote(cats.get(cat).id) : Catalog.copyHint(cats.get(cat).id, f) != null ? Catalog.copyHint(cats.get(cat).id, f) : f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
+            text(c, hint, W / 2f, top + th + 24 * s, 14 * s, DIM, Paint.Align.CENTER, false);
+        }
     }
 
     private void tiles(Canvas c, int W, int H) {
@@ -1075,14 +1083,31 @@ public class HomeView extends View {
     private void coverTile(Canvas c, Catalog.Item it, boolean sel) { coverTile(c, it, sel, true); }
     private void coverTile(Canvas c, Catalog.Item it, boolean sel, boolean nameInside) {
         float rad = 12 * s;
-        boolean kg = kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
+        // 0.10.48: the one-row home uses the ordinary cover, centre-cropped to fill the (Wi-Fi-sized) tile.
+        boolean kg = nameInside && kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
         Bitmap cov = kg ? host.wideCover(it) : host.cover(it), ai = cov == null ? host.appIcon(it) : null;
         c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
         if (cov != null) {
-            float sc = Math.max(r.width() / cov.getWidth(), r.height() / cov.getHeight());
+            // Centre-crop: scale to fill the tile, keep aspect, no stretch, clip to the rounded rect.
+            float sc = Math.max(r.width() / Math.max(1, cov.getWidth()), r.height() / Math.max(1, cov.getHeight()));
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
             src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
             p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(cov, null, src, p);
+        } else if (!nameInside) {
+            // Same face as the Wi-Fi / Update tiles, so a missing cover still matches that style.
+            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
+            c.drawRect(r, p); p.setShader(null);
+            if (ai != null) {
+                float is = 40 * s * big(); iconRect.set(r.centerX() - is / 2, r.top + r.height() * 0.30f - is / 2 - 4 * s, r.centerX() + is / 2, r.top + r.height() * 0.30f + is / 2 - 4 * s);
+                p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(ai, null, iconRect, p);
+            } else icon(c, it.icon, r.centerX(), r.top + r.height() * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
+            spaced(c, "CODEAQUE", r.centerX(), r.top + r.height() * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
+            c.restore();
+            stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
+            stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
+            c.drawRoundRect(r, rad, rad, stroke); stroke.setShader(null);
+            timeUpBadge(c, it);
+            return;
         } else if (it.isRom() || ai == null) {
             // 0.10.46: styled name-tile when no cover or Play / package icon is available.
             titleCard(c, it, sel);
