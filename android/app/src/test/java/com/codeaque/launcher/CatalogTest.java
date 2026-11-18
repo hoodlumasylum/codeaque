@@ -1583,11 +1583,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.70") && NovaAppVer.CODE == 170, "shipping version is 0.10.70");
-        check(NovaAppVer.label().equals("CodeAque 0.10.70")
-                && NovaAppVer.label("0.10.70").equals("CodeAque 0.10.70")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.70")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.70"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.71") && NovaAppVer.CODE == 171, "shipping version is 0.10.71");
+        check(NovaAppVer.label().equals("CodeAque 0.10.71")
+                && NovaAppVer.label("0.10.71").equals("CodeAque 0.10.71")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.71")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.71"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1617,7 +1617,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.70") && NovaAppVer.CODE == 170, "shipping version is 0.10.70");
+        check(NovaAppVer.NAME.equals("0.10.71") && NovaAppVer.CODE == 171, "shipping version is 0.10.71");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1641,11 +1641,42 @@ public class CatalogTest {
                 && NovaSmallTalk.reply("bye", true).equals(NovaSmallTalk.BYE_KIDS)
                 && NovaSmallTalk.reply("o hallo", true).equals(NovaSmallTalk.HELLO_KIDS)
                 && NovaSmallTalk.reply("find a racing game", true) == null, "small talk after fillers, not a greeting swallow");
-        check(NovaSmallTalk.brainFallback("u how were you", true).contains("u how were you")
+        check(NovaSmallTalk.brainFallback("u how were you", true).contains("isn't ready")
+                && !NovaSmallTalk.brainFallback("u how were you", true).contains("\"")
                 && !NovaSmallTalk.brainFallback("u how were you", true).contains("Hello there")
+                && !NovaSmallTalk.brainFallback("u how were you", true).contains("or ask me about a game")
                 && NovaSmallTalk.isBareGreetingReply("Hello there! I'm Nova.")
                 && !NovaSmallTalk.isBareGreetingReply("I'm really well, thank you! How are you?"),
-                "brain fallback reflects what he said and is not the greeting");
+                "brain fallback is short, has no quotes, and is not the greeting");
+        check(NovaGameTalk.stripLeadingNoise("o tell me about roe box").equals("tell me about roe box")
+                && NovaGameTalk.stripLeadingNoise("ut robecks").equals("robecks")
+                && NovaGameTalk.cleanHeard("o tell me about roe box").equals("tell me about Roblox")
+                && NovaGameTalk.cleanHeard("ut robecks").equals("Roblox")
+                && NovaGameTalk.cleanHeard("tell me about mine craft").equals("tell me about Minecraft")
+                && NovaGameTalk.cleanHeard("row blocks").equals("Roblox")
+                && NovaGameTalk.matchName("robecks").equals("roblox")
+                && NovaGameTalk.matchName("roe box").equals("roblox")
+                && NovaGameTalk.matchName("mine craft").equals("minecraft"),
+                "leading ASR noise is stripped and misheard game names are matched");
+        String roblox = NovaGameTalk.reply("o tell me about roe box", true);
+        check(roblox != null && roblox.contains("Roblox") && !roblox.contains("thinking brain")
+                && NovaGameTalk.reply("tell me about Roblox", true).contains("Roblox")
+                && NovaGameTalk.reply("ut robecks", true).contains("Roblox")
+                && NovaGameTalk.reply("what is mine craft", true).contains("Minecraft")
+                && NovaGameTalk.reply("how are you", true) == null,
+                "Tell me about Roblox has a built-in answer with no brain");
+        check(NovaConvo.brainReadyText(-1).equals("Getting my brain ready…")
+                && NovaConvo.brainReadyText(40).equals("Getting my brain ready… 40%")
+                && NovaConvo.brainReadyText(100).equals("Getting my brain ready…")
+                && NovaConvo.BRAIN_OFFER.contains("Nova tab"),
+                "brain-ready status uses a real download percent, never a fake load percent");
+        check(NovaConvo.spokenMatchesScreen("Roblox is a game.", "Roblox is a game.")
+                && !NovaTtsNorm.forSpeak("I heard you say \"o tell me about roe box\".").contains("\"")
+                && NovaTtsNorm.forSpeak("I heard you say \"o tell me about roe box\".").contains("roe box"),
+                "quotes are dropped for TTS so quoted words are not skipped");
+        check(NovaReplyQuick.firstSentence("I heard you say \"o tell me about roe box\". Next.").equals("I heard you say \"o tell me about roe box\".")
+                && NovaReplyQuick.afterFirst("I heard you say \"o tell me about roe box\". Next.").equals("Next."),
+                "first sentence does not split on a period inside quotes");
         check(NovaTtsNorm.forSpeak("Hello there! I’m Nova.").contains("I'm")
                 && NovaTtsNorm.keepsIm("Hello there! I’m Nova.")
                 && NovaTtsNorm.forSpeak("don’t").equals("don't"),
@@ -1716,7 +1747,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.70") && NovaAppVer.CODE == 170, "shipping version is 0.10.70");
+        check(NovaAppVer.NAME.equals("0.10.71") && NovaAppVer.CODE == 171, "shipping version is 0.10.71");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

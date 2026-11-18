@@ -43,9 +43,14 @@ public final class NovaReplyQuick {
         String t = text.trim();
         if (t.isEmpty()) return "";
         int cut = -1;
+        boolean inQuote = false;
         for (int i = 0; i < t.length(); i++) {
             char c = t.charAt(i);
-            if (c == '.' || c == '!' || c == '?') {
+            if (c == '"' || c == '\u201C' || c == '\u201D') {
+                inQuote = !inQuote;
+                continue;
+            }
+            if (!inQuote && (c == '.' || c == '!' || c == '?')) {
                 cut = i + 1;
                 break;
             }

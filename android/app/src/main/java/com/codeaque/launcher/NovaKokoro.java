@@ -107,7 +107,13 @@ public final class NovaKokoro {
         String dataDir = espeak.isDirectory() ? espeak.getAbsolutePath() : "";
         synchronized (LOCK) {
             if (handle != 0) return true;
-            if (loading) return false;
+            if (loading) {
+                long deadline = System.currentTimeMillis() + 60_000L;
+                while (loading && handle == 0 && System.currentTimeMillis() < deadline) {
+                    try { LOCK.wait(400); } catch (InterruptedException e) { break; }
+                }
+                return handle != 0;
+            }
             loading = true;
         }
         long h = 0;
@@ -140,10 +146,25 @@ public final class NovaKokoro {
                 handle = h;
                 sampleRate = rate;
                 lastError = null;
-                return true;
+            } else if (err != null) {
+                lastError = err;
             }
-            if (err != null) lastError = err;
-            return false;
+            LOCK.notifyAll();
+        }
+        if (h != 0) {
+            warm();
+            return true;
+        }
+        return false;
+    }
+
+    /** Run a short silent synth so the first real line starts sooner. */
+    public static void warm() {
+        if (handle == 0) return;
+        try {
+            synthesize("Hi.", 0, NovaVoiceStatus.DEFAULT_KOKORO);
+        } catch (Throwable t) {
+            Log.w(TAG, "Heart warmup synth failed", t);
         }
     }
 

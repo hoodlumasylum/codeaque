@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.71
+
+**"Tell me about Roblox" works even if the on-device brain is not loaded.** 0.10.70 answered a common question with "my thinking brain isn't ready yet" because the Gemma file is not bundled (it is an optional ~800 MB download). On a phone that already had the file, load could still be in progress, or skipped when free RAM looked tight after Heart was loaded, and Chat bailed out immediately instead of waiting or using a built-in answer. Chat now answers well-known games from built-in knowledge, waits for an in-flight load, tries to load a file that is already on the phone even if free RAM looks tight, and shows "Getting my brain ready…" (with a real download percent when a download is in progress). If the brain is not on the phone, a grown-up can download it in the Nova tab.
+
+**Misheard game names are matched.** Leading ASR noise such as "o" or "ut" is stripped, and names like "roe box", "robecks", "row blocks", and "mine craft" are mapped to Roblox and Minecraft.
+
+**Speech starts sooner, and matches the bubble.** The 14-second gap was Heart synthesizing a long fallback as one job before any audio. Heart is pre-warmed after load, the first sentence is spoken at once, and the spoken line is the same string as the pinned bubble. Quote marks are dropped for TTS (they were truncating words inside a quoted span) and the fallback no longer uses quotes or a long tail that was clipped from the bubble.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. Please try this install and see that "tell me about Roblox" (including a misheard "roe box") gets a game answer at once, the spoken line matches the bubble, and speech starts without a long pause.
+
 ## What's new in 0.10.70
 
 **Chat answers what you actually said.** "Uh, how are you?" was heard as "u how were you" and Nova still replied with a hello. Filler words (uh, um, u, so) are stripped first. A greeting match only fires when the whole line is a hello — not because it contains a greeting-ish word. How are you, what's your name, what can you do, thanks, and bye have short kid-safe replies. Anything else goes to the on-device brain; if that brain is not loaded, she gives a helpful fallback that repeats what she heard, not another greeting.

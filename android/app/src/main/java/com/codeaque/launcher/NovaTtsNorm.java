@@ -18,9 +18,11 @@ public final class NovaTtsNorm {
                 case '\u2032': case '\u0060': case '\u00B4':
                     b.append('\'');
                     break;
+                case '"':
                 case '\u201C': case '\u201D': case '\u201E': case '\u201F':
                 case '\u00AB': case '\u00BB':
-                    b.append('"');
+                    // Drop quotes. Kokoro/espeak was skipping words inside
+                    // a quoted span, so the spoken line did not match the bubble.
                     break;
                 case '\u2013': case '\u2014': case '\u2212':
                     b.append('-');

@@ -24,6 +24,9 @@ public final class NovaLlm {
     private static volatile long handle;
     private static final Object LOCK = new Object();
     static boolean loading;
+    /** -1 when no download is in progress; 0–100 while one is. */
+    static volatile int downloadPercent = -1;
+    static String lastError;
 
     private NovaLlm() {}
 
@@ -36,20 +39,47 @@ public final class NovaLlm {
         return f.isFile() && f.length() >= MIN_BYTES;
     }
 
-    /** Rough floor: loading ~0.8 GB plus context needs a few GB of RAM. */
+    /** Rough floor for offering the download: needs a few GB of RAM. */
     public static boolean phoneStrongEnough(Context c) {
+        return totalMemOk(c, 2_800_000_000L);
+    }
+
+    static boolean totalMemOk(Context c, long minTotal) {
         try {
             ActivityManager am = (ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
             if (am == null) return true;
             ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
             am.getMemoryInfo(mi);
-            // totalMem is API 16+. Under ~2.8 GB total, skip the model.
-            if (mi.totalMem > 0 && mi.totalMem < 2_800_000_000L) return false;
-            if (mi.availMem > 0 && mi.availMem < 1_200_000_000L) return false;
+            if (mi.totalMem > 0 && mi.totalMem < minTotal) return false;
             return true;
         } catch (Throwable t) {
             return true;
         }
+    }
+
+    public static boolean isLoading() { return loading && handle == 0; }
+
+    public static int downloadPercent() { return downloadPercent; }
+
+    public static void setDownloadPercent(int percent) {
+        if (percent < 0) downloadPercent = -1;
+        else downloadPercent = Math.max(0, Math.min(100, percent));
+    }
+
+    public static String lastError() { return lastError; }
+
+    /**
+     * Status for Chat: real download percent when known, otherwise a plain
+     * "getting ready" line. Never invents a load percent the JNI does not provide.
+     */
+    public static String readyStatus() {
+        return NovaConvo.brainReadyText(downloadPercent);
+    }
+
+    public static boolean needsReadyStatus(Context c) {
+        if (c == null) return false;
+        if (downloadPercent >= 0 && downloadPercent < 100) return true;
+        return filesReady(c) && handle == 0;
     }
 
     public static synchronized boolean loadLibrary() {
@@ -74,26 +104,44 @@ public final class NovaLlm {
     }
 
     public static boolean load(Context c) {
-        if (c == null || !filesReady(c) || !phoneStrongEnough(c)) return false;
+        // If the ~800 MB file is already on the phone, try to load it even when
+        // availMem looks tight (Heart + the launcher can leave under 1.2 GB free
+        // on a 4–6 GB phone). Only skip on truly small devices.
+        if (c == null || !filesReady(c)) return false;
         if (handle != 0) return true;
+        if (!totalMemOk(c, 2_000_000_000L)) return false;
         if (!loadLibrary()) return false;
         synchronized (LOCK) {
             if (handle != 0) return true;
-            if (loading) return false;
+            if (loading) {
+                long deadline = System.currentTimeMillis() + 90_000L;
+                while (loading && handle == 0 && System.currentTimeMillis() < deadline) {
+                    try { LOCK.wait(400); } catch (InterruptedException e) { break; }
+                }
+                return handle != 0;
+            }
             loading = true;
         }
         long h = 0;
+        String err = null;
         try {
             int threads = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
             h = nativeLoad(file(c).getAbsolutePath(), 2048, threads);
+            if (h == 0) err = "The on-device brain did not start.";
         } catch (Throwable t) {
             h = 0;
+            err = t.getClass().getSimpleName() + ": " + t.getMessage();
         }
         synchronized (LOCK) {
             loading = false;
-            if (h == 0) return false;
-            handle = h;
-            return true;
+            if (h != 0) {
+                handle = h;
+                lastError = null;
+            } else if (err != null) {
+                lastError = err;
+            }
+            LOCK.notifyAll();
+            return h != 0;
         }
     }
 

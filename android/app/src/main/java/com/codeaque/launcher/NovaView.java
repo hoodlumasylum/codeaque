@@ -559,75 +559,48 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         String match = pendingRude ? NovaKidsTalk.stripRude(q) : q;
         if (match == null || match.isEmpty()) match = "";
         if (fromVoice) showListenStatus(NovaConvo.youSaid(heard));
-        q = match;
+        q = NovaGameTalk.cleanHeard(match);
         if (kids && NovaHelp.looksLikeJoke(q)) { tellJoke(); return; }
         String small = NovaSmallTalk.reply(q, kids);
         if (small != null) {
-            pinAnswer(NovaConvo.speakText(small));
-            if (!fromVoice && askField != null && heard != null) askField.setText(heard);
-            showListenStatus(fromVoice ? NovaConvo.youSaid(heard) : NovaConvo.SPEAKING_TEXT);
-            convoState = NovaConvo.SPEAKING;
-            if (kids || !muted()) speakAuto(lastAnswer);
-            invalidate();
+            answerAloud(small, heard, fromVoice, true);
             return;
         }
         if (NovaReplyQuick.isSimpleGreeting(q) || (pendingRude && (q == null || q.isEmpty()))) {
-            if (pendingRude && (q == null || q.isEmpty())) {
-                pinAnswer(NovaKidsTalk.STILL_HERE);
-            } else {
-                pinAnswer(NovaConvo.speakText(NovaReplyQuick.cannedHello(kids)));
-            }
-            if (!fromVoice && askField != null && heard != null) askField.setText(heard);
-            showListenStatus(fromVoice ? NovaConvo.youSaid(heard) : NovaConvo.SPEAKING_TEXT);
-            convoState = NovaConvo.SPEAKING;
-            if (kids || !muted()) speakAuto(lastAnswer);
-            invalidate();
+            if (pendingRude && (q == null || q.isEmpty())) answerAloud(NovaKidsTalk.STILL_HERE, heard, fromVoice, true);
+            else answerAloud(NovaReplyQuick.cannedHello(kids), heard, fromVoice, true);
             return;
         }
         String arith = NovaArith.answer(q);
         if (arith != null) {
-            pinAnswer(NovaConvo.speakText(arith));
-            if (!fromVoice && askField != null && heard != null) askField.setText(heard);
-            showListenStatus(fromVoice ? NovaConvo.youSaid(heard) : NovaConvo.SPEAKING_TEXT);
-            convoState = NovaConvo.SPEAKING;
-            if (kids || !muted()) speakAuto(lastAnswer);
-            invalidate();
+            answerAloud(arith, heard, fromVoice, true);
+            return;
+        }
+        String game = NovaGameTalk.reply(q, kids);
+        if (game != null) {
+            answerAloud(game, heard, fromVoice, true);
             return;
         }
         String canned = NovaHelp.cannedOrNull(q, kids);
         if (canned != null) {
             if (kids && NovaHelp.kidsUnsafe(canned)) canned = NovaHelp.KIDS_UNSURE;
-            pinAnswer(NovaConvo.speakText(canned));
-            if (!fromVoice && !NovaConvo.writeHeardToField() && askField != null && heard != null) askField.setText(heard);
-            if (fromVoice) showListenStatus(NovaConvo.youSaid(heard));
-            else showListenStatus(NovaConvo.SPEAKING_TEXT);
-            convoState = NovaConvo.SPEAKING;
-            if (kids) speakAuto(lastAnswer);
-            invalidate();
+            answerAloud(canned, heard, fromVoice, kids);
             return;
         }
         if (smarterOn() && (NovaLlm.smarterUsesModel(getContext(), prefs)
                 || (kids && NovaLlm.phoneStrongEnough(getContext())))) {
-            if (NovaLlm.smarterUsesModel(getContext(), prefs)
-                    && NovaLlm.phoneStrongEnough(getContext())
-                    && !NovaLlm.isLoaded()) {
-                pinAnswer(NovaConvo.speakText(NovaSmallTalk.brainFallback(heard, kids)));
-                if (!fromVoice && askField != null && heard != null) askField.setText(heard);
-                showListenStatus(fromVoice ? NovaConvo.youSaid(heard) : NovaConvo.SPEAKING_TEXT);
-                convoState = NovaConvo.SPEAKING;
-                if (kids || !muted()) speakAuto(lastAnswer);
-                invalidate();
-                return;
-            }
             awaitingAnswer = true;
             if (!fromVoice && askField != null && heard != null) askField.setText(heard);
             convoState = NovaConvo.THINKING;
-            pinAnswer("Let me think…");
+            boolean waitBrain = NovaLlm.needsReadyStatus(getContext());
+            pinAnswer(waitBrain ? NovaLlm.readyStatus() : "Let me think…");
+            if (fromVoice) showListenStatus(NovaConvo.youSaid(heard));
             startThinkTick();
             final String question = q;
             final int gen = askGen;
-            if (NovaLlm.smarterUsesModel(getContext(), prefs)
-                    && NovaLlm.phoneStrongEnough(getContext())) {
+            // Files on disk: always try to load. Do not require phoneStrongEnough
+            // here — availMem can look tight after Heart is loaded.
+            if (NovaLlm.smarterUsesModel(getContext(), prefs)) {
                 new Thread(new NovaLlmJob(this, question, gen), "nova-llm").start();
             } else {
                 new Thread(new NovaWikiJob(this, question), "nova-wiki").start();
@@ -637,12 +610,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         }
         String fallback = NovaHelp.answer(q, kids);
         if (kids && NovaHelp.kidsUnsafe(fallback)) fallback = NovaHelp.KIDS_UNSURE;
-        pinAnswer(NovaConvo.speakText(fallback));
-        if (!fromVoice && !NovaConvo.writeHeardToField() && askField != null && heard != null) askField.setText(heard);
+        if (!NovaLlm.filesReady(getContext()) && fromVoice) {
+            showListenStatus(NovaConvo.BRAIN_OFFER);
+        }
+        answerAloud(fallback, heard, fromVoice, kids);
+    }
+
+    /** Pin one string and speak that same string, first sentence first. */
+    void answerAloud(String text, String heard, boolean fromVoice, boolean speak) {
+        if (!fromVoice && askField != null && heard != null) askField.setText(heard);
         if (fromVoice) showListenStatus(NovaConvo.youSaid(heard));
         else showListenStatus(NovaConvo.SPEAKING_TEXT);
         convoState = NovaConvo.SPEAKING;
-        if (kids) speakAuto(lastAnswer);
+        String shown = NovaConvo.speakText(text);
+        if (speak && (kids || !muted())) speakStreamed(shown);
+        else pinAnswer(shown);
         invalidate();
     }
 
@@ -809,9 +791,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void startThinkTick() {
         cancelThinkTick();
         thinkStarted = android.os.SystemClock.uptimeMillis();
-        showListenStatus(NovaReplyQuick.thinkingText(0));
+        showListenStatus(thinkStatus(0));
         thinkTick = new NovaThinkTick(this, thinkStarted);
         postDelayed(thinkTick, 1000);
+    }
+
+    String thinkStatus(long elapsedMs) {
+        if (NovaLlm.needsReadyStatus(getContext())) {
+            String s = NovaLlm.readyStatus();
+            if (answerView != null && lastAnswer != null && lastAnswer.startsWith(NovaConvo.BRAIN_READY_TEXT)) {
+                lastAnswer = s;
+                answerView.setText(s);
+            }
+            return s;
+        }
+        return NovaReplyQuick.thinkingText(elapsedMs);
     }
 
     void cancelThinkTick() {
@@ -827,7 +821,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             return;
         }
         long now = android.os.SystemClock.uptimeMillis();
-        showListenStatus(NovaReplyQuick.thinkingText(now - started));
+        showListenStatus(thinkStatus(now - started));
         thinkTick = new NovaThinkTick(this, started);
         postDelayed(thinkTick, 1000);
     }
@@ -1385,8 +1379,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (full == null || full.isEmpty()) return;
         pinAnswer(full);
         cancelThinkTick();
-        String first = NovaReplyQuick.firstSentence(full);
-        pendingRest = NovaReplyQuick.afterFirst(full);
+        // Speak the pinned text, including any kid-safe prefix pinAnswer added.
+        String shown = lastAnswer == null ? "" : lastAnswer;
+        String first = NovaReplyQuick.firstSentence(shown);
+        pendingRest = NovaReplyQuick.afterFirst(shown);
         speakAuto(first);
     }
 
@@ -1406,7 +1402,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         cancelThinkTick();
         cancelListenSoon();
         stopListen();   // 0.10.55: do not hear herself while speaking
-        // 0.10.60: cancel any other engine / leftover job first so only one voice plays.
+        // 0.10.60: cancel a leftover utterance so only one voice plays.
+        // Do not shut down or re-create the system TTS engine.
         if (tts != null) { try { tts.stop(); } catch (Exception ignored) { } }
         pendingSpeak = null;
         talkId = null;

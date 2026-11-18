@@ -23,7 +23,7 @@ public final class NovaSmallTalk {
 
     /** Leading/trailing fillers only: uh, um, u, so, oh, and the like. */
     static final String[] FILLERS = {
-            "uh", "um", "umm", "er", "erm", "ah", "oh", "o", "u",
+            "uh", "um", "umm", "er", "erm", "ah", "oh", "o", "u", "ut",
             "hmm", "hm", "mmm", "mm", "like", "well", "so", "and"
     };
 
@@ -167,17 +167,9 @@ public final class NovaSmallTalk {
     }
 
     public static String brainFallback(String heard, boolean kids) {
-        String said = heard == null ? "" : heard.trim();
-        if (said.length() > 80) said = said.substring(0, 77).trim() + "…";
-        if (said.isEmpty()) {
-            return kids
-                    ? "My thinking brain isn't ready yet. Try again in a moment, or ask me about a game, a word, or a number."
-                    : "My on-device brain isn't ready yet. Please try again in a moment.";
-        }
-        if (kids) {
-            return "I heard you say \"" + said + "\". My thinking brain isn't ready yet. "
-                    + "You can try again in a moment, or ask me about a game, a word, or a number.";
-        }
-        return "I heard you say \"" + said + "\". My on-device brain isn't ready yet. Please try again in a moment.";
+        // Keep this short, with no quote marks: a long quoted line was
+        // clipped in the bubble while Heart spoke a different span.
+        if (kids) return "My thinking brain isn't ready yet. Try again in a moment.";
+        return "My on-device brain isn't ready yet. Please try again in a moment.";
     }
 }

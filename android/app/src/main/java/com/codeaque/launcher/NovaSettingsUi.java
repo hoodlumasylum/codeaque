@@ -193,6 +193,7 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
     void startGemmaDownload() {
         if (gemmaBusy) return;
         gemmaBusy = true;
+        NovaLlm.setDownloadPercent(0);
         refresh();
         FileDest dest = new FileDest();
         dest.file = NovaLlm.file(act);
@@ -213,9 +214,14 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
 
     void gemmaDone(boolean ok, String error) {
         gemmaBusy = false;
+        NovaLlm.setDownloadPercent(ok ? 100 : -1);
         refresh();
-        if (ok) toast("The on-device brain is ready.");
-        else toast(error != null ? error : "The on-device brain didn't finish downloading.");
+        if (ok) {
+            toast("The on-device brain is downloaded. Getting it ready…");
+            new Thread(new NovaEngineWarmup(act), "nova-brain-load").start();
+        } else {
+            toast(error != null ? error : "The on-device brain didn't finish downloading.");
+        }
     }
 
     @Override public void onDlProgress(int percent, long got, long total) {
@@ -232,6 +238,7 @@ final class NovaGemmaDlUi implements NovaDlJob.NovaDlUi {
     final NovaSettingsUi ui;
     NovaGemmaDlUi(NovaSettingsUi ui) { this.ui = ui; }
     @Override public void onDlProgress(int percent, long got, long total) {
+        NovaLlm.setDownloadPercent(percent);
         if (ui.gemmaStatus != null) ui.gemmaStatus.setText("Downloading the on-device brain… " + percent + "%");
     }
     @Override public void onDlDone(boolean ok, String error) { ui.gemmaDone(ok, error); }

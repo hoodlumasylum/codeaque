@@ -21,6 +21,17 @@ public final class NovaConvo {
 
     public static final String LISTENING_TEXT = "Listening…";
     public static final String THINKING_TEXT = "Thinking…";
+    public static final String BRAIN_READY_TEXT = "Getting my brain ready…";
+    public static final String BRAIN_OFFER =
+            "A grown-up can download the on-device brain in the Nova tab (about 800 MB).";
+
+    /** Real download percent when known; never a fake load percent. */
+    public static String brainReadyText(int downloadPercent) {
+        if (downloadPercent >= 0 && downloadPercent < 100) {
+            return BRAIN_READY_TEXT + " " + downloadPercent + "%";
+        }
+        return BRAIN_READY_TEXT;
+    }
     public static final String SPEAKING_TEXT = NovaReplyQuick.SPEAKING_TEXT;
     public static final String NO_SOUND_TEXT = NovaReplyQuick.NO_SOUND;
     public static final long LISTEN_WINDOW_MS = NovaReplyQuick.LISTEN_WINDOW_MS;

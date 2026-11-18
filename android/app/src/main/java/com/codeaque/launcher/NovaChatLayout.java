@@ -14,7 +14,10 @@ public final class NovaChatLayout {
     public static boolean replyInterceptsTouches() { return false; }
 
     public static int replyMaxLines(int panelHeightDp) {
-        return panelHeightDp > 0 && panelHeightDp < 260 ? 2 : 4;
+        if (panelHeightDp > 0 && panelHeightDp < 260) {
+            return chromeFits(panelHeightDp, 3) ? 3 : 2;
+        }
+        return 4;
     }
 
     /**
