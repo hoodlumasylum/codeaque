@@ -69,7 +69,21 @@ public final class NovaSpeechAvail {
     }
 
     public static boolean showInstallButton(int path) {
+        return showInstallButton(path, false);
+    }
+
+    /**
+     * Do not offer the Play Store page when Speech Recognition & Synthesis
+     * (or any recognition service) is already on the phone.
+     */
+    public static boolean showInstallButton(int path, boolean serviceAlreadyInstalled) {
+        if (serviceAlreadyInstalled) return false;
         return path == NEED_INSTALL || path == NEED_BUILTIN;
+    }
+
+    public static boolean serviceAlreadyInstalled(boolean recAvailable, boolean onDeviceAvailable,
+            boolean ttsPackageInstalled) {
+        return recAvailable || onDeviceAvailable || ttsPackageInstalled;
     }
 
     public static boolean showBuiltinButton(int path, boolean builtinReady) {

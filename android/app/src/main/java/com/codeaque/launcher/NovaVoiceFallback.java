@@ -1,6 +1,6 @@
 package com.codeaque.launcher;
 
-/** If the on-device voice fails, fall back to system TTS on the UI thread. */
+/** If Heart fails, retry or show the error on the UI thread. Never mix in the phone's voice once Heart is downloaded. */
 public final class NovaVoiceFallback implements Runnable {
     final NovaView view;
     final String text;

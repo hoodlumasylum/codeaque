@@ -13,6 +13,15 @@ public final class NovaListenPick {
      */
     public static boolean preferOfflineFirst() { return false; }
 
+    /**
+     * The on-device system recognizer is often "available" once Speech
+     * Recognition & Synthesis is installed, even with no English pack. It
+     * then starts, hears nothing, and times out. Prefer the default
+     * recognizer from that same package first.
+     */
+    public static boolean preferOnDeviceFirst() { return false; }
+
+
     public static String firstLanguage() { return NovaSpeechAvail.LANGUAGE; }
 
     /** After a client/server/network error on en-GB, try en-US once. */

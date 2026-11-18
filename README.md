@@ -37,7 +37,11 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 **A deaf or busy system recognizer falls over sooner.** If the phone's speech service starts but hears nothing, she switches to built-in listening after one empty try when the pack is downloaded, instead of five. If the mic is busy (a screen recorder is a common cause), she still pauses her own hidden-listen service and tries once more; if it is still busy and built-in listening is on the phone, she switches to that automatically.
 
-These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. The new Chat layout on a short landscape screen, automatic fallback to built-in listening when a screen recorder holds the mic, and the version label on a device remain untested.
+**The installed Google speech service is used correctly.** "Get speech service" is hidden when Speech Recognition & Synthesis (or any recognition service) is already on the phone. The default system recognizer is tried first; the on-device one is only a later retry, because that on-device engine can report itself available with no English pack and then listen in silence. If that service still returns nothing, she falls over to built-in listening when the pack is downloaded.
+
+**Heart stays on once it is downloaded.** A slow first load no longer trips the 12 second reply timer and hands the next line to the phone's voice. Timeouts and a failed synth retry Heart, or show the error; they never mix Heart and the phone's voice in one conversation.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. The new Chat layout on a short landscape screen, automatic fallback to built-in listening when a screen recorder holds the mic, the version label on a device, using the installed Google speech service without the on-device-first path, and Heart staying on for every line on a phone remain untested.
 
 ## What's new in 0.10.63
 

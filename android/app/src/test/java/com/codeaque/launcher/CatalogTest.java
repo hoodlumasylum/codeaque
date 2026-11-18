@@ -1499,6 +1499,22 @@ public class CatalogTest {
                 && !NovaListenPick.switchBusyToBuiltin(true, false, false)
                 && !NovaListenPick.switchBusyToBuiltin(false, false, true)
                 && !NovaListenPick.switchBusyToBuiltin(true, true, true), "after the busy retry, switch to built-in if it is downloaded and not already in use");
+        check(!NovaListenPick.preferOnDeviceFirst(), "do not start with the on-device system recognizer");
+        check(NovaSpeechAvail.serviceAlreadyInstalled(true, false, false)
+                && NovaSpeechAvail.serviceAlreadyInstalled(false, false, true)
+                && !NovaSpeechAvail.serviceAlreadyInstalled(false, false, false), "Speech Recognition & Synthesis already installed counts as a service");
+        check(NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN, false)
+                && !NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN, true)
+                && !NovaSpeechAvail.showInstallButton(NovaSpeechAvail.USE_RECOGNIZER, false), "hide Get speech service when the Google service is already on the phone");
+        check(NovaSpeakGate.keepHeart(true) && !NovaSpeakGate.keepHeart(false), "once Heart is downloaded, keep it");
+        check(!NovaSpeakGate.allowSystemTts(true) && NovaSpeakGate.allowSystemTts(false), "never mix in the phone's voice after Heart is on the phone");
+        check(NovaSpeakGate.speakWaitMs(true) == NovaSpeakGate.HEART_WAIT_MS
+                && NovaSpeakGate.HEART_WAIT_MS >= 30000L
+                && NovaSpeakGate.speakWaitMs(false) == 12000L, "Heart gets a longer wait than the 12 s reply timer");
+        check(NovaSpeakGate.extendHeartWait(true, false, true, false)
+                && !NovaSpeakGate.extendHeartWait(true, true, true, false)
+                && !NovaSpeakGate.extendHeartWait(true, false, true, true)
+                && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
 
 

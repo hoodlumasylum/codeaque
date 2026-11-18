@@ -75,7 +75,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     NovaReplyTimeout replyWait;
     NovaListenSoon listenSoon;
     int emptyListenCycles;
-    boolean listenGiveUp, preferBuiltin, asrDlBusy, busyRetried;
+    boolean listenGiveUp, preferBuiltin, asrDlBusy, busyRetried, heartWaitExtended, heartFallbackRetried;
     long listenHideAfter;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady, deviceVoice;
     int ttsInitTries;
@@ -740,7 +740,24 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             return;
         }
         showNeedBuiltin(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN);
-        if (speechInstallBtn != null) speechInstallBtn.setVisibility(VISIBLE);
+    }
+
+    boolean speechServicePresent() {
+        Context c = getContext();
+        if (c == null) return false;
+        boolean rec = false, od = false, tts = false;
+        try { rec = android.speech.SpeechRecognizer.isRecognitionAvailable(c); } catch (Exception ignored) { }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            try { od = android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(c); } catch (Throwable ignored) { }
+        }
+        try { c.getPackageManager().getPackageInfo(NovaSpeechAvail.TTS_PACKAGE, 0); tts = true; } catch (Exception ignored) { }
+        return NovaSpeechAvail.serviceAlreadyInstalled(rec, od, tts);
+    }
+
+    void refreshSpeechInstallBtn() {
+        if (speechInstallBtn == null) return;
+        boolean show = NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN, speechServicePresent());
+        speechInstallBtn.setVisibility(show ? VISIBLE : GONE);
     }
 
     void showNeedBuiltin(String message) {
@@ -756,7 +773,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (asrOfferBtn != null && !NovaAsr.filesReady(getContext())) {
             asrOfferBtn.setVisibility(VISIBLE);
         }
-        if (speechInstallBtn != null) speechInstallBtn.setVisibility(VISIBLE);
+        refreshSpeechInstallBtn();
         refreshMicLabel();
     }
 
@@ -1036,9 +1053,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         speak(s);
     }
 
-    void speak(String s) {
+    void speak(String s) { speak(s, true); }
+
+    void speak(String s, boolean freshLine) {
         if (s == null || s.isEmpty()) return;
         if (muted()) return;
+        if (freshLine) heartFallbackRetried = false;
         cancelListenSoon();
         stopListen();   // 0.10.55: do not hear herself while speaking
         // 0.10.60: cancel any other engine / leftover job first so only one voice plays.
@@ -1050,6 +1070,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         speakJobInFlight = true;
         lastSpoken = s;
         silentUntil = 0;
+        heartWaitExtended = false;
         beginTalk(s);
         startReplyTimeout(speakGen);
         if (NovaKokoro.usesOnDevice(getContext(), prefs)) {
@@ -1065,7 +1086,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void startReplyTimeout(int gen) {
         cancelReplyTimeout();
         replyWait = new NovaReplyTimeout(this, gen);
-        postDelayed(replyWait, NovaConvo.REPLY_TIMEOUT_MS);
+        boolean heart = NovaSpeakGate.keepHeart(NovaKokoro.filesReady(getContext()));
+        postDelayed(replyWait, NovaSpeakGate.speakWaitMs(heart));
     }
 
     void cancelReplyTimeout() {
@@ -1079,14 +1101,26 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     public void onReplyTimeout(int gen) {
         replyWait = null;
         if (NovaSpeakGate.stale(gen, speakGen) && gen != 0) return;
-        if (deviceVoice && talking) return;   // audio already started
+        if (deviceVoice && talking) return;   // Heart audio already started — never cut over to the phone.
+        boolean keep = NovaSpeakGate.keepHeart(NovaKokoro.filesReady(getContext()));
+        if (NovaSpeakGate.extendHeartWait(keep, deviceVoice, speakJobInFlight, heartWaitExtended)) {
+            heartWaitExtended = true;
+            startReplyTimeout(gen);
+            return;
+        }
         String fallback = NovaConvo.FALLBACK_TEXT;
         lastAnswer = fallback;
         if (answerView != null) answerView.setText(fallback);
         showListenStatus(fallback);
+        if (keep) {
+            // Keep Heart for the fallback line. Do not start the phone's voice.
+            speakJobInFlight = false;
+            pendingSpeak = null;
+            speak(fallback);
+            return;
+        }
         speakJobInFlight = false;
         pendingSpeak = null;
-        // Cancel any leftover Heart job, then speak the fallback on the phone voice.
         speakGen = NovaSpeakGate.nextGen(speakGen);
         NovaVoicePlay.stop();
         setVoiceTag(NovaSpeakGate.TAG_PHONE);
@@ -1114,10 +1148,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         invalidate();
     }
 
-    /** System TTS path (also the fallback if the on-device voice fails). */
+    /** System TTS path. Never used once Heart's files are on the phone. */
     void speakSystem(String s) {
         if (s == null || s.isEmpty()) return;
         if (muted()) { speakJobInFlight = false; return; }
+        if (NovaSpeakGate.keepHeart(NovaKokoro.filesReady(getContext()))) {
+            if (!heartFallbackRetried) {
+                heartFallbackRetried = true;
+                speak(s, false);
+                return;
+            }
+            onHeartFailed(NovaKokoro.lastError());
+            releaseSpeakLocks();
+            if (voiceLoop) postDelayed(new NovaListenSoon(this), 400);
+            return;
+        }
         deviceVoice = false;
         speakJobInFlight = false;
         setVoiceTag(NovaSpeakGate.TAG_PHONE);

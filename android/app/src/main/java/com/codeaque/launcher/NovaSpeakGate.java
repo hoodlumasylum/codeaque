@@ -88,4 +88,39 @@ public final class NovaSpeakGate {
     public static String speakTag(boolean usedHeart) {
         return usedHeart ? TAG_HEART : TAG_PHONE;
     }
+
+    /**
+     * First Heart load/synth can take longer than a reply timeout. Wait this
+     * long before considering a Heart line stuck. Never cut it over to the
+     * phone's voice just because the 12 s reply timer fired.
+     */
+    public static final long HEART_WAIT_MS = 30000L;
+
+    /** Once the Heart files are on the phone, every line must use Heart. */
+    public static boolean keepHeart(boolean filesReady) {
+        return filesReady;
+    }
+
+    /**
+     * If Heart is still loading or synthesising, extend the wait once instead
+     * of switching to the phone's voice.
+     */
+    public static boolean extendHeartWait(boolean keepHeart, boolean audioStarted,
+            boolean jobInFlight, boolean alreadyExtended) {
+        if (!keepHeart) return false;
+        if (audioStarted) return false;
+        return jobInFlight && !alreadyExtended;
+    }
+
+    /**
+     * A timeout or a failed synth must not start system TTS while Heart is
+     * the chosen voice.
+     */
+    public static boolean allowSystemTts(boolean keepHeart) {
+        return !keepHeart;
+    }
+
+    public static long speakWaitMs(boolean keepHeart) {
+        return keepHeart ? HEART_WAIT_MS : 12000L;
+    }
 }

@@ -154,18 +154,9 @@ public final class NovaSpeech {
 
     SpeechRecognizer createBest(Context ctx) {
         if (ctx == null) return null;
-        if (Build.VERSION.SDK_INT >= 31) {
-            try {
-                boolean od = false;
-                try { od = SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx); }
-                catch (Throwable ignored) { }
-                if (od) {
-                    SpeechRecognizer r = SpeechRecognizer.createOnDeviceSpeechRecognizer(ctx);
-                    usedOnDevice = true;
-                    return r;
-                }
-            } catch (Throwable ignored) { }
-        }
+        // Default recognizer first: Speech Recognition & Synthesis can report
+        // an on-device engine as available even with no English pack, which
+        // then "listens" and returns nothing.
         try {
             if (SpeechRecognizer.isRecognitionAvailable(ctx)) {
                 usedOnDevice = false;
@@ -352,6 +343,20 @@ public final class NovaSpeech {
                 return true;
             } catch (Exception e) {
                 rec = null;
+            }
+        }
+        if (!usedOnDevice && app != null && Build.VERSION.SDK_INT >= 31
+                && NovaListenPick.networkOrServer(code)) {
+            destroyRecognizerOnly();
+            try {
+                rec = SpeechRecognizer.createOnDeviceSpeechRecognizer(app);
+                rec.setRecognitionListener(new NovaSpeechListen(this));
+                usedOnDevice = true;
+                listen(false, language);
+                return true;
+            } catch (Throwable e) {
+                rec = null;
+                usedOnDevice = false;
             }
         }
         if (app != null && NovaAsr.filesReady(app)
