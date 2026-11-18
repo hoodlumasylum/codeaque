@@ -63,6 +63,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     @Override protected void onCreate(Bundle b) {
         Catalog.VERSION = myVersion();   // 0.10.28
         super.onCreate(b);
+        try { NovaAsr.recoverAfterCrash(this); } catch (Throwable ignored) { }
         prefs = getSharedPreferences("codeaque", MODE_PRIVATE);
         UpdateOfferStore.apply(prefs, myVersion());       // 0.10.59: keep Install visible across restarts
         NovaOverlayService.retire(this);             // 0.10.58: stop any leftover over-apps bubble

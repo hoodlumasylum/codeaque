@@ -40,13 +40,16 @@ public final class NovaSpeech {
         default void onSpeechRms(float level) { }
         /** No system service (or it failed). Offer or start the built-in pack. */
         default void onSpeechNeedBuiltin(String message) { }
+        /** Built-in pack is loading in the background. Do not treat as a give-up. */
+        default void onSpeechAsrLoading(String message) { }
     }
 
     final Handler ui = new Handler(Looper.getMainLooper());
     SpeechRecognizer rec;
     Callbacks cb;
     boolean listening, offlineTried, destroyed, usedOnDevice, usedUsLang, usingBuiltin;
-    boolean pausedHidden;
+    boolean pausedHidden, pendingBuiltinLoad;
+    String pendingBuiltinReason;
     Context app;
     /** 0.10.61: bumped on each start/stop so a late result cannot replay an old question. */
     int listenGen;
@@ -104,13 +107,23 @@ public final class NovaSpeech {
         }
         boolean promptOk = promptAvailable(ctx);
         boolean builtinReady = NovaAsr.filesReady(ctx);
+        boolean builtinLoaded = NovaAsr.isLoaded();
         int path = NovaSpeechAvail.path(recOk, onDeviceOk, promptOk, builtinReady, true);
 
-        if (NovaListenPick.useBuiltinNow(forceBuiltin, builtinReady, recOk, onDeviceOk)) {
+        // Kick a background load on a Mic tap; never init native on this thread.
+        if (builtinReady && !builtinLoaded) NovaAsr.requestLoad(ctx);
+
+        if (NovaListenPick.useBuiltinNow(forceBuiltin, builtinLoaded, recOk, onDeviceOk)) {
             startBuiltin(forceBuiltin && (recOk || onDeviceOk)
                     ? NovaSpeechAvail.SYSTEM_ERROR_BUILTIN
                     : NovaSpeechAvail.NO_SERVICE_BUILTIN);
-            return listening;
+            return listening || pendingBuiltinLoad;
+        }
+        // Pack is on disk but not yet loaded, and there is no system recognizer:
+        // load in the background and start the mic when it is ready.
+        if (builtinReady && !builtinLoaded && !recOk && !onDeviceOk) {
+            startBuiltin(NovaSpeechAvail.NO_SERVICE_BUILTIN);
+            return listening || pendingBuiltinLoad;
         }
         if (path == NovaSpeechAvail.NEED_PERMISSION) {
             NovaListenDiag.setPermissionDenied(true);
@@ -176,7 +189,22 @@ public final class NovaSpeech {
 
     void startBuiltin(String reason) {
         destroyRecognizerOnly();
+        if (NovaAsr.isLoaded()) {
+            startBuiltinMic(reason);
+            return;
+        }
+        if (app != null) NovaAsr.requestLoad(app, new NovaSpeechAsrLoadCb(this, reason));
+        pendingBuiltinLoad = true;
+        pendingBuiltinReason = reason;
+        listenGen = NovaConvo.nextGen(listenGen);
+        NovaListenDiag.setReason(reason == null ? "Loading built-in listening…" : reason);
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.ASR_LOADING,
+                "Loading built-in listening…", false));
+    }
+
+    void startBuiltinMic(String reason) {
         usingBuiltin = true;
+        pendingBuiltinLoad = false;
         NovaListenDiag.setUsingBuiltin(true);
         NovaListenDiag.setReason(reason);
         if (asrMic == null) asrMic = new NovaAsrMic(new NovaSpeechAsrCb(this));
@@ -197,6 +225,36 @@ public final class NovaSpeech {
         notifyState(true);
     }
 
+    void onAsrLoadDone(boolean ok, String error, String reason, int gen) {
+        if (!pendingBuiltinLoad) return;
+        if (NovaConvo.stale(gen, listenGen) && gen != 0) return;
+        pendingBuiltinLoad = false;
+        if (destroyed || listening) return;
+        if (ok && NovaAsr.isLoaded()) {
+            startBuiltinMic(reason != null ? reason : pendingBuiltinReason);
+            return;
+        }
+        String msg = error == null || error.isEmpty()
+                ? "Built-in listening didn't start. Using the phone's listener if it is there."
+                : error;
+        NovaListenDiag.setReason(msg);
+        // Fall back to the system recognizer when it exists.
+        try {
+            if (app != null) {
+                rec = createBest(app);
+                if (rec != null) {
+                    rec.setRecognitionListener(new NovaSpeechListen(this));
+                    listen(NovaListenPick.preferOfflineFirst(), language);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            rec = null;
+        }
+        fail(msg);
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_BUILTIN, msg, false));
+    }
+
     public void toggle(Context ctx, Callbacks callbacks) {
         if (listening) stop();
         else start(ctx, callbacks);
@@ -205,6 +263,7 @@ public final class NovaSpeech {
     public void stop() {
         listening = false;
         offlineTried = false;
+        pendingBuiltinLoad = false;
         listenGen = NovaConvo.nextGen(listenGen);
         beep.restoreNow();
         usingBuiltin = false;

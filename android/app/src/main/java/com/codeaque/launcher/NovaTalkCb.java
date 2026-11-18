@@ -69,4 +69,8 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
     @Override public void onSpeechNeedBuiltin(String message) {
         if (view != null) view.showNeedBuiltin(message);
     }
+
+    @Override public void onSpeechAsrLoading(String message) {
+        if (view != null) view.onAsrLoading(message);
+    }
 }

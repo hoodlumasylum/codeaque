@@ -31,7 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.69
+
+**Installing the built-in listening pack no longer resets the app or leaves it stuck on the splash.** After the 75 MB speech pack finished downloading, Chat started the built-in listener straight away and loaded the native model in-process (often on the screen thread). On some phones that load aborted the app (a native crash or a memory kill). The next start could then stick on the splash. The pack is now loaded only when you tap Mic, in the background, with a time limit. A marker file is written before native init and cleared after it, so if the app dies mid-load the next start marks that pack bad and skips it. The launcher falls back to the phone's own listener, and Chat offers "Download again" or the older, smaller 45 MB pack. Model file names are checked (encoder, decoder, joiner, tokens, int8). The download still streams to disk. The model is still never bundled in the APK.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. The first Mic tap after installing the pack may still crash once on a tight-memory phone; the next start should open home and skip the bad pack. Please try this install and see that home appears after the splash, and that talking still works with the phone's listener if the built-in pack is skipped.
+
 ## What's new in 0.10.68
+
 
 **The launcher opens past the splash screen again.** After 0.10.67 some phones stayed on the CodeAque logo (the system splash) and never reached home. Opening Chat had started loading Nova's voice and on-device brain on a background thread, but the main thread then waited on the same lock to ask "is it loaded yet?" while building her panel — so the first frame never arrived, especially if the 360 MB voice pack was already on the phone. Home now paints first. Nova, speech files, Heart and the on-device brain start afterwards on background threads. The UI never waits on those loads, and a Nova failure cannot stop the launcher.
 

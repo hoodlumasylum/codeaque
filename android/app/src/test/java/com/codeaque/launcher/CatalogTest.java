@@ -1534,6 +1534,38 @@ public class CatalogTest {
                 && !NovaAsrFiles.sizesOk(50_000_000L, 100_000L, 100_000L, 10L)
                 && !NovaAsrFiles.filesReadyAt(new java.io.File("/no/such/nova-asr")), "75 MB int8 pack size gate");
         check(NovaAsrFiles.SIZE_LABEL.contains("75 MB") && NovaAsrFiles.DOWNLOAD_BTN.contains("built-in listening"), "download copy");
+        check(NovaAsrFiles.SIZE_LABEL_SMALL.contains("45 MB")
+                && NovaAsrFiles.DOWNLOAD_BTN_SMALL.contains("45 MB")
+                && NovaAsrFiles.ENCODER_MIN_SMALL == 20_000_000L
+                && NovaAsrFiles.ENCODER_SMALL.endsWith(".int8.onnx")
+                && NovaAsrFiles.minLength(NovaAsrFiles.ENCODER) >= 60_000_000L
+                && NovaAsrFiles.minLength(NovaAsrFiles.ENCODER_SMALL) >= 20_000_000L, "smaller 45 MB pack is offered");
+        check(NovaAsrGuard.namesMatch(NovaAsrFiles.ENCODER, NovaAsrFiles.DECODER, NovaAsrFiles.JOINER, NovaAsrFiles.TOKENS)
+                && NovaAsrGuard.namesMatch(NovaAsrFiles.ENCODER_SMALL, NovaAsrFiles.DECODER_SMALL, NovaAsrFiles.JOINER_SMALL, NovaAsrFiles.TOKENS)
+                && !NovaAsrGuard.namesMatch("encoder.onnx", NovaAsrFiles.DECODER, NovaAsrFiles.JOINER, NovaAsrFiles.TOKENS)
+                && !NovaAsrGuard.namesMatch(NovaAsrFiles.ENCODER, NovaAsrFiles.DECODER, NovaAsrFiles.JOINER, "tokens"), "int8 encoder/decoder/joiner/tokens must match");
+        check(NovaAsrGuard.canNativeLoad(true, false, false, true)
+                && !NovaAsrGuard.canNativeLoad(true, true, false, true)
+                && !NovaAsrGuard.canNativeLoad(true, false, true, true)
+                && !NovaAsrGuard.canNativeLoad(false, false, false, true)
+                && !NovaAsrGuard.canNativeLoad(true, false, false, false), "native load is skipped if files are missing, mid-load, or marked bad");
+        check(NovaAsrGuard.numThreads(4096) == 1 && NovaAsrGuard.numThreads(8000) == 2
+                && NovaAsrGuard.THREADS == 2 && NovaAsrGuard.LOAD_TIMEOUT_MS >= 15_000L, "1-2 threads and a load timeout");
+        try {
+            java.io.File tmp = java.io.File.createTempFile("nova-asr-guard", "dir");
+            tmp.delete();
+            check(tmp.mkdir(), "temp pack dir");
+            check(!NovaAsrGuard.diedMidLoad(tmp) && !NovaAsrGuard.isMarkedBad(tmp), "fresh pack has no crash marks");
+            check(NovaAsrGuard.writeMark(NovaAsrGuard.loadingMark(tmp)) && NovaAsrGuard.diedMidLoad(tmp), "loading marker is visible");
+            NovaAsrGuard.clearMark(NovaAsrGuard.loadingMark(tmp));
+            check(!NovaAsrGuard.diedMidLoad(tmp), "loading marker can be cleared");
+            check(NovaAsrGuard.writeMark(NovaAsrGuard.badMark(tmp)) && NovaAsrGuard.isMarkedBad(tmp), "bad marker skips the pack");
+            check(NovaAsrFiles.usableDir(new java.io.File("/no/such/files-dir")) == null, "missing packs are not usable");
+            NovaAsrGuard.clearMark(NovaAsrGuard.badMark(tmp));
+            tmp.delete();
+        } catch (Exception e) {
+            throw new RuntimeException("ASR guard file marks: " + e, e);
+        }
         check(Math.abs(NovaListenDiag.meterFromRmsDb(-10f)) < 1e-4
                 && NovaListenDiag.meterFromRmsDb(12f) == 1f
                 && NovaListenDiag.meterFromRmsDb(1f) > 0.4f, "speech RMS dB maps into 0..1");
@@ -1551,11 +1583,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.68") && NovaAppVer.CODE == 168, "shipping version is 0.10.68");
-        check(NovaAppVer.label().equals("CodeAque 0.10.68")
-                && NovaAppVer.label("0.10.68").equals("CodeAque 0.10.68")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.68")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.68"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.69") && NovaAppVer.CODE == 169, "shipping version is 0.10.69");
+        check(NovaAppVer.label().equals("CodeAque 0.10.69")
+                && NovaAppVer.label("0.10.69").equals("CodeAque 0.10.69")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.69")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.69"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1585,7 +1617,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.68") && NovaAppVer.CODE == 168, "shipping version is 0.10.68");
+        check(NovaAppVer.NAME.equals("0.10.69") && NovaAppVer.CODE == 169, "shipping version is 0.10.69");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1640,7 +1672,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.68") && NovaAppVer.CODE == 168, "shipping version is 0.10.68");
+        check(NovaAppVer.NAME.equals("0.10.69") && NovaAppVer.CODE == 169, "shipping version is 0.10.69");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

@@ -36,9 +36,9 @@ public final class NovaAsrMic {
     public String start(android.content.Context ctx) {
         stop();
         if (ctx == null) return "Built-in listening isn't available.";
-        if (!NovaAsr.ensureLoaded(ctx)) {
+        if (!NovaAsr.isLoaded()) {
             String err = NovaAsr.lastError();
-            return err == null || err.isEmpty() ? "Built-in listening didn't start." : err;
+            return err == null || err.isEmpty() ? "Built-in listening isn't ready yet." : err;
         }
         stream = NovaAsr.createStream();
         if (stream == 0) return "Built-in listening didn't start.";

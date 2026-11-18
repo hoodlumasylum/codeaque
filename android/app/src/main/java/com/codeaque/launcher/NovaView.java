@@ -60,7 +60,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     TextView answerView, muteLabel, voiceOfferStatus, engineLabel, liveCaption;
     Button voiceOfferBtn;
     EditText askField;
-    Button micBtn, typeBtn, hideBtn, speechInstallBtn, asrOfferBtn;
+    Button micBtn, typeBtn, hideBtn, speechInstallBtn, asrOfferBtn, asrOfferSmallBtn;
     TextView listenStatus, asrOfferStatus;
     NovaMicMeter micMeter;
     TextToSpeech tts;
@@ -253,6 +253,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         liveCaption = null;
         speechInstallBtn = null;
         asrOfferBtn = null;
+        asrOfferSmallBtn = null;
         asrOfferStatus = null;
         micMeter = null;
         stopListen();
@@ -384,6 +385,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         asrOfferBtn.setMinimumHeight(dp(36));
         asrOfferBtn.setVisibility(GONE);
         mid.addView(asrOfferBtn);
+        asrOfferSmallBtn = btn(NovaAsrFiles.DOWNLOAD_BTN_SMALL, new NovaAsrSmallOfferClick(this));
+        asrOfferSmallBtn.setMinHeight(dp(36));
+        asrOfferSmallBtn.setMinimumHeight(dp(36));
+        asrOfferSmallBtn.setVisibility(GONE);
+        mid.addView(asrOfferSmallBtn);
 
         ScrollView sv = new ScrollView(getContext());
         sv.addView(mid);
@@ -700,7 +706,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         long now = android.os.SystemClock.uptimeMillis();
         if (!NovaMicTap.allowStart(fromUser, expanded, voiceLoop, listenGiveUp, talking, thinking(),
                 speakJobInFlight, pendingSpeak != null, now < silentUntil)) return false;
-        preferBuiltin = NovaListenPick.preferBuiltinWhenReady(NovaAsr.filesReady(getContext())) || preferBuiltin;
+        try { NovaAsr.requestLoad(getContext()); } catch (Throwable ignored) { }
+        preferBuiltin = NovaListenPick.preferBuiltinWhenReady(NovaAsr.isLoaded()) || preferBuiltin;
         heardThisListen = false;
         lastRmsAt = 0;
         if (micMeter != null) micMeter.setLevel(0f);
@@ -975,8 +982,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         listenGiveUp = true;
         cancelListenSoon();
         refreshAsrOffer();
-        if (asrOfferBtn != null && !NovaAsr.filesReady(getContext())) {
-            asrOfferBtn.setVisibility(VISIBLE);
+        if (!NovaAsr.filesReady(getContext())) {
+            if (asrOfferBtn != null) asrOfferBtn.setVisibility(VISIBLE);
+            if (asrOfferSmallBtn != null) asrOfferSmallBtn.setVisibility(VISIBLE);
         }
         refreshSpeechInstallBtn();
         refreshMicLabel();
@@ -1031,31 +1039,57 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void refreshAsrOffer() {
         boolean ready = NovaAsr.filesReady(getContext());
+        boolean bad = NovaAsr.packMarkedBad(getContext());
+        boolean show = NovaListenPick.showBuiltinButton(ready, asrDlBusy);
         if (asrOfferBtn != null) {
             asrOfferBtn.setEnabled(!asrDlBusy);
-            asrOfferBtn.setVisibility(NovaListenPick.showBuiltinButton(ready, asrDlBusy) ? VISIBLE : GONE);
+            asrOfferBtn.setText(bad ? "Download again" : NovaAsrFiles.DOWNLOAD_BTN);
+            asrOfferBtn.setVisibility(show ? VISIBLE : GONE);
         }
-        if (asrOfferStatus != null && !asrDlBusy && ready) {
-            asrOfferStatus.setVisibility(GONE);
+        if (asrOfferSmallBtn != null) {
+            asrOfferSmallBtn.setEnabled(!asrDlBusy);
+            asrOfferSmallBtn.setVisibility(show ? VISIBLE : GONE);
+        }
+        if (asrOfferStatus != null && !asrDlBusy) {
+            if (ready) {
+                asrOfferStatus.setVisibility(GONE);
+            } else if (bad) {
+                asrOfferStatus.setVisibility(VISIBLE);
+                asrOfferStatus.setText("Built-in listening didn't start safely. You can download again, or get the smaller pack.");
+            }
         }
     }
 
-    void startAsrDownload() {
+    void startAsrDownload() { startAsrDownload(false); }
+
+    void startAsrDownload(boolean small) {
         if (asrDlBusy) return;
         if (NovaAsr.filesReady(getContext())) {
-            preferBuiltin = true;
             listenGiveUp = false;
-            startListen();
             return;
         }
         asrDlBusy = true;
         if (asrOfferBtn != null) asrOfferBtn.setEnabled(false);
+        if (asrOfferSmallBtn != null) asrOfferSmallBtn.setEnabled(false);
+        String start = small
+                ? "Downloading the smaller listening pack… 0%"
+                : "Downloading built-in listening… 0%";
         if (asrOfferStatus != null) {
             asrOfferStatus.setVisibility(VISIBLE);
-            asrOfferStatus.setText("Downloading built-in listening… 0%");
+            asrOfferStatus.setText(start);
         }
-        showListenStatus("Downloading built-in listening… 0%");
-        new Thread(new NovaAsrPack(getContext(), new NovaViewAsrDl(this)), "nova-asr-dl").start();
+        showListenStatus(start);
+        new Thread(new NovaAsrPack(getContext(), new NovaViewAsrDl(this), small), "nova-asr-dl").start();
+    }
+
+    void onAsrLoading(String message) {
+        String msg = message == null || message.isEmpty() ? "Loading built-in listening…" : message;
+        showListenStatus(msg);
+        if (asrOfferStatus != null) {
+            asrOfferStatus.setVisibility(VISIBLE);
+            asrOfferStatus.setText(msg);
+        }
+        NovaListenDiag.setReason(msg);
     }
 
     void onAsrDlProgress(int percent) {
@@ -1072,20 +1106,26 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         asrDlBusy = false;
         if (ok) {
             if (asrOfferBtn != null) asrOfferBtn.setVisibility(GONE);
+            if (asrOfferSmallBtn != null) asrOfferSmallBtn.setVisibility(GONE);
+            String ready = "Built-in listening is downloaded. Tap Mic to talk.";
             if (asrOfferStatus != null) {
                 asrOfferStatus.setVisibility(VISIBLE);
-                asrOfferStatus.setText("Built-in listening is ready. Tap Mic to talk.");
+                asrOfferStatus.setText(ready);
             }
-            showListenStatus("Built-in listening is ready. Tap Mic to talk.");
-            NovaListenDiag.setReason("Built-in listening is ready. Tap Mic to talk.");
-            preferBuiltin = true;
+            showListenStatus(ready);
+            NovaListenDiag.setReason(ready);
             listenGiveUp = false;
-            if (voiceLoop && expanded) startListen();
+            // Do not start listening or load the model here. A Mic tap loads it
+            // in the background; auto-starting after download was crashing the app.
         } else {
-            String msg = error != null ? error : "The download didn't finish. You can try again.";
+            String msg = error != null ? error : "The download didn't finish. You can try again, or get the smaller pack.";
             if (asrOfferBtn != null) {
                 asrOfferBtn.setVisibility(VISIBLE);
                 asrOfferBtn.setEnabled(true);
+            }
+            if (asrOfferSmallBtn != null) {
+                asrOfferSmallBtn.setVisibility(VISIBLE);
+                asrOfferSmallBtn.setEnabled(true);
             }
             if (asrOfferStatus != null) {
                 asrOfferStatus.setVisibility(VISIBLE);
