@@ -1,6 +1,6 @@
 package com.codeaque.launcher;
 
-/** Named worker: try the on-device model, then local + Wikipedia fallback. */
+/** Named worker: try the on-device model within a short budget, then local fallback. */
 public final class NovaLlmJob implements Runnable {
     final NovaView view;
     final String question;
@@ -15,26 +15,31 @@ public final class NovaLlmJob implements Runnable {
     }
     @Override public void run() {
         if (stale()) return;
-        String ans = null;
-        try {
-            if (!NovaLlm.isLoaded()) NovaLlm.load(view.getContext());
-            if (stale()) return;
-            if (NovaLlm.isLoaded()) {
-                String raw = NovaLlm.complete(NovaLlmFilter.prompt(question));
-                ans = NovaLlmFilter.filter(raw);
+        // Never block a question on a model load. If it is not already in
+        // memory, answer locally and let the warmup thread keep loading it.
+        if (!NovaLlm.isLoaded()) {
+            if (view.getContext() != null && NovaLlm.filesReady(view.getContext())) {
+                try { new Thread(new NovaEngineWarmup(view.getContext()), "nova-brain-load").start(); }
+                catch (Throwable ignored) { }
             }
-        } catch (Throwable ignored) { }
-        if (stale()) return;
-        if (ans != null && NovaSmallTalk.isBareGreetingReply(ans)
-                && !NovaSmallTalk.isBareGreeting(question)) {
-            ans = NovaSmallTalk.brainFallback(question, view.kids);
-        }
-        if (ans == null || ans.isEmpty()) {
-            // Same fallback as before: local set, then a short Simple Wikipedia fact.
-            view.finishOnlineAsk(question);
+            if (stale()) return;
+            view.post(new NovaLlmBudget(view, question, gen));
             return;
         }
-        view.awaitingAnswer = false;
+        String ans = null;
+        try {
+            String raw = NovaLlm.complete(NovaLlmFilter.prompt(question));
+            ans = NovaLlmFilter.filter(raw);
+        } catch (Throwable ignored) { }
+        if (stale()) return;
+        if (ans != null && (NovaSmallTalk.isUnreadyPhrase(ans)
+                || (NovaSmallTalk.isBareGreetingReply(ans) && !NovaSmallTalk.isBareGreeting(question)))) {
+            ans = null;
+        }
+        if (ans == null || ans.isEmpty()) {
+            view.post(new NovaLlmBudget(view, question, gen));
+            return;
+        }
         view.post(new NovaWikiDone(view, ans, gen));
     }
     boolean stale() {

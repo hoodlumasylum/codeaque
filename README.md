@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.72
+
+**She never says "my thinking brain isn't ready yet".** If the on-device brain is missing or still loading, she answers at once from built-in game knowledge, small talk, or a short friendly best-effort line. If the brain is already loaded, it has about two and a half seconds to answer; after that she falls back. The model is preloaded when the app starts and is kept in memory. Chat shows "Thinking…" only briefly — never a long stall.
+
+**Listening stays with you.** After she finishes speaking, the mic opens again in about a fifth of a second, and the recognizer is kept warm instead of being torn down each turn. Partial words appear live in the bubble. A timeout or "no match" restarts listening quietly, so you should not have to repeat yourself. Offline / on-device recognition is preferred when the phone has it, with an automatic fallback if that path fails.
+
+0.10.71's Roblox fuzzy match, identical speech and bubble, and Heart pre-warm are unchanged.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. Please try this install and see that she never says the brain isn't ready, a question gets a quick answer, and you can talk after she finishes without repeating yourself.
+
 ## What's new in 0.10.71
 
 **"Tell me about Roblox" works even if the on-device brain is not loaded.** 0.10.70 answered a common question with "my thinking brain isn't ready yet" because the Gemma file is not bundled (it is an optional ~800 MB download). On a phone that already had the file, load could still be in progress, or skipped when free RAM looked tight after Heart was loaded, and Chat bailed out immediately instead of waiting or using a built-in answer. Chat now answers well-known games from built-in knowledge, waits for an in-flight load, tries to load a file that is already on the phone even if free RAM looks tight, and shows "Getting my brain ready…" (with a real download percent when a download is in progress). If the brain is not on the phone, a grown-up can download it in the Nova tab.

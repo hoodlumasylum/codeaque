@@ -47,7 +47,7 @@ public final class NovaSpeech {
     final Handler ui = new Handler(Looper.getMainLooper());
     SpeechRecognizer rec;
     Callbacks cb;
-    boolean listening, offlineTried, destroyed, usedOnDevice, usedUsLang, usingBuiltin;
+    boolean listening, offlineTried, offlineUnavailable, destroyed, usedOnDevice, usedUsLang, usingBuiltin;
     boolean pausedHidden, pendingBuiltinLoad;
     String pendingBuiltinReason;
     Context app;
@@ -77,13 +77,22 @@ public final class NovaSpeech {
             ui.post(new NovaSpeechStart(this, ctx, callbacks, forceBuiltin));
             return true;
         }
-        stop();
+        pauseListening();
         destroyed = false;
         cb = callbacks;
-        usingBuiltin = false;
-        usedOnDevice = false;
         usedUsLang = false;
         language = NovaListenPick.firstLanguage();
+        // Switching engines: drop the other recognizer. Otherwise keep it warm.
+        if (forceBuiltin) {
+            destroyRecognizerOnly();
+            usingBuiltin = false;
+        } else if (usingBuiltin) {
+            if (asrMic != null) {
+                try { asrMic.stop(); } catch (Exception ignored) { }
+            }
+            usingBuiltin = false;
+            NovaListenDiag.setUsingBuiltin(false);
+        }
         if (ctx == null) {
             fail("Voice talk isn't available on this phone. You can type your question instead.");
             return false;
@@ -146,9 +155,11 @@ public final class NovaSpeech {
             return false;
         }
         try {
-            rec = createBest(ctx);
-            if (rec == null) throw new IllegalStateException("no recognizer");
-            rec.setRecognitionListener(new NovaSpeechListen(this));
+            if (rec == null) {
+                rec = createBest(ctx);
+                if (rec == null) throw new IllegalStateException("no recognizer");
+                rec.setRecognitionListener(new NovaSpeechListen(this));
+            }
         } catch (Exception e) {
             rec = null;
             if (builtinReady) {
@@ -263,21 +274,30 @@ public final class NovaSpeech {
         else start(ctx, callbacks);
     }
 
-    public void stop() {
+    /** Stop this listen session but keep the SpeechRecognizer for the next turn. */
+    public void pauseListening() {
         listening = false;
-        offlineTried = false;
         pendingBuiltinLoad = false;
         listenGen = NovaConvo.nextGen(listenGen);
         cancelEndpointWatches();
         beep.restoreNow();
-        usingBuiltin = false;
-        NovaListenDiag.setUsingBuiltin(false);
         NovaListenDiag.setLevel(0f);
         if (asrMic != null) {
             try { asrMic.stop(); } catch (Exception ignored) { }
         }
-        destroyRecognizerOnly();
+        if (rec != null) {
+            try { rec.stopListening(); } catch (Exception ignored) { }
+            try { rec.cancel(); } catch (Exception ignored) { }
+        }
         notifyState(false);
+    }
+
+    public void stop() {
+        pauseListening();
+        offlineTried = false;
+        usingBuiltin = false;
+        NovaListenDiag.setUsingBuiltin(false);
+        destroyRecognizerOnly();
     }
 
     void destroyRecognizerOnly() {
@@ -305,6 +325,7 @@ public final class NovaSpeech {
         if (destroyed || rec == null) return;
         if (lang == null || lang.isEmpty()) lang = NovaSpeechAvail.LANGUAGE;
         language = lang;
+        if (offlineUnavailable) preferOffline = false;
         Intent i = recognizeIntent(preferOffline, lang);
         offlineTried = preferOffline;
         listenGen = NovaConvo.nextGen(listenGen);
@@ -347,12 +368,12 @@ public final class NovaSpeech {
         String text = firstResult(b);
         if (text == null || text.trim().isEmpty()) text = endpoint.lastPartial();
         if (text == null || text.trim().isEmpty()) {
-            fail("I didn't catch that. Try again, or type it.");
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, NovaVoiceGate.ERR_NO_MATCH));
             return;
         }
         final String said = NovaAsrText.tidy(text);
         if (said.isEmpty()) {
-            fail("I didn't catch that. Try again, or type it.");
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, NovaVoiceGate.ERR_NO_MATCH));
             return;
         }
         if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false, gen));
@@ -402,21 +423,13 @@ public final class NovaSpeech {
         listening = false;
         beep.restoreNow();
         notifyState(false);
-        destroyRecognizerOnly();
+        // Keep the recognizer instance warm for the next startListening.
         if (said != null && !said.isEmpty()) {
             if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false, gen));
             return;
         }
-        long now = android.os.SystemClock.uptimeMillis();
-        if (endpoint.reallySilent(now)) {
-            fail(NovaReplyQuick.NO_SOUND);
-            return;
-        }
-        if (emptyWindow) {
-            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, NovaVoiceGate.ERR_NO_MATCH));
-            return;
-        }
-        fail("I didn't catch that. Try again, or type it.");
+        int code = emptyWindow ? NovaVoiceGate.ERR_NO_MATCH : NovaVoiceGate.ERR_SPEECH_TIMEOUT;
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, code));
     }
 
     void scheduleEndpointWatch() {
@@ -455,7 +468,16 @@ public final class NovaSpeech {
         if (offlineTried && (code == SpeechRecognizer.ERROR_CLIENT
                 || code == SpeechRecognizer.ERROR_SERVER
                 || code == SpeechRecognizer.ERROR_NETWORK
-                || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT)) {
+                || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
+                || code == SpeechRecognizer.ERROR_NO_MATCH
+                || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
+            // Offline pack missing or unhappy: do not keep failing the first
+            // syllables of each turn. Use the default recognizer from now on.
+            if (code == SpeechRecognizer.ERROR_CLIENT || code == SpeechRecognizer.ERROR_SERVER
+                    || code == SpeechRecognizer.ERROR_NETWORK
+                    || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
+                offlineUnavailable = true;
+            }
             listen(false, language);
             return;
         }

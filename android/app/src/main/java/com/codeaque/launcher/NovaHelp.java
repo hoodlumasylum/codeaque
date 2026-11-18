@@ -70,6 +70,17 @@ public final class NovaHelp {
         return kids ? kidsAnswer(question) : adultAnswer(question);
     }
 
+    /** Instant local reply when the on-device brain is missing or too slow. */
+    public static String bestEffort(String question, boolean kids) {
+        String a = answer(question, kids);
+        if (a == null || a.isEmpty() || NovaSmallTalk.isUnreadyPhrase(a)
+                || (NovaSmallTalk.isBareGreetingReply(a) && !NovaSmallTalk.isBareGreeting(question))) {
+            return NovaSmallTalk.brainFallback(question, kids);
+        }
+        if (kids && kidsUnsafe(a)) return NovaSmallTalk.brainFallback(question, kids);
+        return a;
+    }
+
     public static String[] chips() {
         return new String[] { "How do I update?", "Kids mode", "Search", "Screen Time", "Parent PIN", "Nova" };
     }

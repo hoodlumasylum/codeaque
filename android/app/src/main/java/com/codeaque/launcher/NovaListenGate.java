@@ -2,16 +2,17 @@ package com.codeaque.launcher;
 
 /**
  * 0.10.62: hands-free listen stays calm. The Listening chip does not flash
- * between recognizer restarts, empty NO_MATCH / timeout cycles back off,
- * and the loop gives up after a few silent tries. Plain Java so CatalogTest
+ * between recognizer restarts, empty NO_MATCH / timeout cycles restart quickly
+ * and the loop stays on until he taps Mic or leaves Chat. Plain Java so CatalogTest
  * can check it.
  */
 public final class NovaListenGate {
     private NovaListenGate() {}
 
-    public static final long RETRY_START_MS = 300L;
-    public static final long RETRY_MAX_MS = 2000L;
-    public static final int EMPTY_CYCLES_MAX = 5;
+    public static final long RETRY_START_MS = 200L;
+    public static final long RETRY_MAX_MS = 400L;
+    /** Hands-free loop keeps restarting; this is only a soft hint, not a stop. */
+    public static final int EMPTY_CYCLES_MAX = 1000;
     /** Keep the chip visible this long after listening drops, so a restart cannot flash it off. */
     public static final long HIDE_DEBOUNCE_MS = 800L;
 
@@ -42,7 +43,9 @@ public final class NovaListenGate {
     }
 
     public static boolean shouldRetryEmpty(int emptyCycles) {
-        return emptyCycles < EMPTY_CYCLES_MAX;
+        // Continuous / hands-free: never stop the loop because of a timeout
+        // or no-match. A Mic tap or leaving Chat is what ends listening.
+        return true;
     }
 
     /**

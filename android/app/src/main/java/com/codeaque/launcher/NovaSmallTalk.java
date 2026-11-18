@@ -166,10 +166,23 @@ public final class NovaSmallTalk {
                 || n.equals("hi i m happy to help") || n.equals("hello there");
     }
 
+    public static final String BEST_EFFORT_KIDS =
+            "I'm not sure about that. You can ask me about a game, a word, or a number.";
+    public static final String BEST_EFFORT_ADULT =
+            "I'm not sure about that. You can ask about a game, a word, or a number.";
+
+    /**
+     * Friendly short fallback when the on-device brain is missing or slow.
+     * Never says the brain isn't ready, and never asks him to try again later.
+     */
     public static String brainFallback(String heard, boolean kids) {
-        // Keep this short, with no quote marks: a long quoted line was
-        // clipped in the bubble while Heart spoke a different span.
-        if (kids) return "My thinking brain isn't ready yet. Try again in a moment.";
-        return "My on-device brain isn't ready yet. Please try again in a moment.";
+        return kids ? BEST_EFFORT_KIDS : BEST_EFFORT_ADULT;
+    }
+
+    public static boolean isUnreadyPhrase(String s) {
+        if (s == null) return false;
+        String n = s.toLowerCase();
+        return n.contains("isn't ready") || n.contains("is not ready")
+                || n.contains("try again in a moment");
     }
 }

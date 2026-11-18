@@ -587,33 +587,39 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             answerAloud(canned, heard, fromVoice, kids);
             return;
         }
-        if (smarterOn() && (NovaLlm.smarterUsesModel(getContext(), prefs)
-                || (kids && NovaLlm.phoneStrongEnough(getContext())))) {
+        if (smarterOn() && NovaLlm.smarterUsesModel(getContext(), prefs) && NovaLlm.isLoaded()) {
             awaitingAnswer = true;
             if (!fromVoice && askField != null && heard != null) askField.setText(heard);
             convoState = NovaConvo.THINKING;
-            boolean waitBrain = NovaLlm.needsReadyStatus(getContext());
-            pinAnswer(waitBrain ? NovaLlm.readyStatus() : "Let me think…");
+            pinAnswer(NovaConvo.THINKING_TEXT);
             if (fromVoice) showListenStatus(NovaConvo.youSaid(heard));
             startThinkTick();
             final String question = q;
             final int gen = askGen;
-            // Files on disk: always try to load. Do not require phoneStrongEnough
-            // here — availMem can look tight after Heart is loaded.
-            if (NovaLlm.smarterUsesModel(getContext(), prefs)) {
-                new Thread(new NovaLlmJob(this, question, gen), "nova-llm").start();
-            } else {
-                new Thread(new NovaWikiJob(this, question), "nova-wiki").start();
-            }
+            postDelayed(new NovaLlmBudget(this, question, gen), NovaReplyQuick.BRAIN_BUDGET_MS);
+            new Thread(new NovaLlmJob(this, question, gen), "nova-llm").start();
             invalidate();
             return;
         }
-        String fallback = NovaHelp.answer(q, kids);
-        if (kids && NovaHelp.kidsUnsafe(fallback)) fallback = NovaHelp.KIDS_UNSURE;
-        if (!NovaLlm.filesReady(getContext()) && fromVoice) {
-            showListenStatus(NovaConvo.BRAIN_OFFER);
+        // Brain missing or still loading: answer at once from built-in knowledge.
+        // Keep a background load going so a later turn can use the model.
+        if (NovaLlm.filesReady(getContext()) && !NovaLlm.isLoaded()) {
+            try { new Thread(new NovaEngineWarmup(getContext()), "nova-brain-load").start(); }
+            catch (Throwable ignored) { }
         }
-        answerAloud(fallback, heard, fromVoice, kids);
+        answerAloud(NovaHelp.bestEffort(q, kids), heard, fromVoice, kids || !muted());
+    }
+
+    /** Instant local reply when the brain is missing, late, or off. */
+    void finishInstantAsk(String question, int gen) {
+        if (gen != 0 && askGen != gen) return;
+        if (!awaitingAnswer) return;
+        awaitingAnswer = false;
+        cancelThinkTick();
+        String a = NovaHelp.bestEffort(question, kids);
+        if (NovaSmallTalk.isUnreadyPhrase(a)) a = NovaSmallTalk.brainFallback(question, kids);
+        speakStreamed(a);
+        invalidate();
     }
 
     /** Pin one string and speak that same string, first sentence first. */
@@ -635,11 +641,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         String a = local;
         if (wiki != null && !wiki.isEmpty() && !NovaHelp.kidsUnsafe(wiki)) a = wiki;
         else if (a == null || NovaHelp.kidsUnsafe(a) || a.equals(NovaHelp.KIDS_FOOT)) a = NovaHelp.KIDS_UNSURE;
-        if (a != null && NovaSmallTalk.isBareGreetingReply(a) && !NovaSmallTalk.isBareGreeting(question))
-            a = NovaSmallTalk.brainFallback(question, true);
-        awaitingAnswer = false;
+        if (a != null && (NovaSmallTalk.isUnreadyPhrase(a)
+                || (NovaSmallTalk.isBareGreetingReply(a) && !NovaSmallTalk.isBareGreeting(question))))
+            a = NovaHelp.bestEffort(question, true);
         final String ans = a;
         final int gen = askGen;
+        awaitingAnswer = true;
         post(new NovaWikiDone(this, ans, gen));
     }
 
@@ -741,7 +748,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void stopListen() {
         cancelListenWatch();
         cancelMeterDecay();
-        if (speech != null) speech.stop();
+        if (speech != null) speech.pauseListening();
         if (micMeter != null && !isListening()) micMeter.setLevel(0f);
         refreshMicLabel();
     }
@@ -797,14 +804,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     String thinkStatus(long elapsedMs) {
-        if (NovaLlm.needsReadyStatus(getContext())) {
-            String s = NovaLlm.readyStatus();
-            if (answerView != null && lastAnswer != null && lastAnswer.startsWith(NovaConvo.BRAIN_READY_TEXT)) {
-                lastAnswer = s;
-                answerView.setText(s);
-            }
-            return s;
-        }
         return NovaReplyQuick.thinkingText(elapsedMs);
     }
 
@@ -918,8 +917,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     public void onPartialHeard(String text) {
         text = NovaAsrText.tidy(text);
-        if (text != null && !text.isEmpty()) heardThisListen = true;
+        if (text == null || text.isEmpty()) return;
+        heardThisListen = true;
         setLiveCaption(text);
+        // Live transcript in the reply bubble so he can see words as he talks.
+        if (answerView != null) answerView.setText(text);
+        showListenStatus(NovaConvo.youSaid(text));
     }
 
     public void onMicNoSound(String message) {

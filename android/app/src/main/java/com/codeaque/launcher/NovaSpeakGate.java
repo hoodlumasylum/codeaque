@@ -7,8 +7,8 @@ package com.codeaque.launcher;
 public final class NovaSpeakGate {
     private NovaSpeakGate() {}
 
-    /** After audio ends, keep the mic closed briefly so the last syllable is not heard as a question. */
-    public static final long HANGOVER_MS = 800L;
+    /** After audio ends, wait this long before opening the mic, so her last syllable is not heard. */
+    public static final long HANGOVER_MS = 200L;
 
     public static int nextGen(int current) {
         int n = current + 1;
@@ -72,13 +72,14 @@ public final class NovaSpeakGate {
     }
 
     /**
-     * Drop a recognizer result that arrived while she is speaking, during the
-     * hangover, or that repeats the line she just said.
+     * Drop a result that arrived while she is still speaking, or that repeats
+     * the line she just said (her echo). Do not drop a new question just
+     * because it arrived in the short hangover — that clips his first words
+     * and makes him repeat himself.
      */
     public static boolean shouldDropHeard(String heard, String lastSpoken, boolean speaking,
                                           boolean jobInFlight, long now, long silentUntil) {
         if (speaking || jobInFlight) return true;
-        if (now < silentUntil) return true;
         return sameLine(heard, lastSpoken);
     }
 

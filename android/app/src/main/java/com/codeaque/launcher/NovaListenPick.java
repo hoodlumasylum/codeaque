@@ -8,10 +8,10 @@ public final class NovaListenPick {
     private NovaListenPick() {}
 
     /**
-     * EXTRA_PREFER_OFFLINE first breaks phones that have a recognizer but no
-     * offline language pack (common without Google). Default is off.
+     * Prefer on-device / offline recognition when the pack is present (faster,
+     * no network lag). The listener falls back to online if this fails.
      */
-    public static boolean preferOfflineFirst() { return false; }
+    public static boolean preferOfflineFirst() { return true; }
 
     /**
      * The on-device system recognizer is often "available" once Speech
@@ -47,7 +47,7 @@ public final class NovaListenPick {
      * After one empty system result (or a busy/hard error), switch to the
      * built-in pack if it is on the phone. Do not wait for five deaf cycles.
      */
-    public static final int EMPTY_BEFORE_BUILTIN = 1;
+    public static final int EMPTY_BEFORE_BUILTIN = 3;
 
     public static boolean shouldFallToBuiltin(boolean builtinReady, boolean alreadyBuiltin,
             int emptyCycles, boolean hardSystemError) {

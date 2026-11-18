@@ -1357,8 +1357,10 @@ public class CatalogTest {
                 "a heard slice of her greeting is treated as her echo");
         check(!NovaSpeakGate.sameLine("hello", NovaHelp.KIDS_GREETING), "a real hello is not her greeting");
         check(NovaSpeakGate.shouldDropHeard("how do I play", NovaHelp.KIDS_GREETING, true, false, 5000, 0), "drop any result while she is talking");
-        check(NovaSpeakGate.shouldDropHeard("how do I play", NovaHelp.KIDS_FOOT, false, false, 500, 1000), "drop results in the hangover");
+        check(!NovaSpeakGate.shouldDropHeard("how do I play", NovaHelp.KIDS_FOOT, false, false, 500, 1000), "a new question in the hangover is kept so the first words are not clipped");
+        check(NovaSpeakGate.shouldDropHeard(NovaHelp.KIDS_FOOT, NovaHelp.KIDS_FOOT, false, false, 500, 1000), "her own last line is still dropped as echo");
         check(!NovaSpeakGate.shouldDropHeard("hello", NovaHelp.KIDS_GREETING, false, false, 2000, 1000), "hello after she finishes is kept");
+        check(NovaSpeakGate.HANGOVER_MS <= 250L, "hangover is short so the mic opens quickly");
         check(NovaSpeakGate.speakTag(true).equals("Heart") && NovaSpeakGate.speakTag(false).equals("Phone voice"), "on-screen engine tags");
         check(NovaVoiceStatus.failed("lib failed").equals("Heart failed: lib failed"), "Heart load error is shown in full");
         check(NovaSpeakGate.norm("Hellooo!").equals("hellooo") && NovaSpeakGate.norm("  How do I play? ").equals("how do i play"), "norm strips punctuation");
@@ -1403,9 +1405,9 @@ public class CatalogTest {
         check(HomeDrawGate.tileKey("a", 144, 200, 400, 400).equals("a@144x200#400x400"), "tile cache keys are stable sizes");
 
         // 0.10.62: Listening chip stays on between restarts; empty cycles back off and then give up.
-        check(NovaListenGate.retryDelayMs(0) == 300 && NovaListenGate.retryDelayMs(1) == 600
-                && NovaListenGate.retryDelayMs(2) == 1200 && NovaListenGate.retryDelayMs(3) == 2000
-                && NovaListenGate.retryDelayMs(9) == 2000, "restart delay starts at 300 ms and caps at 2 s");
+        check(NovaListenGate.retryDelayMs(0) == 200 && NovaListenGate.retryDelayMs(1) == 400
+                && NovaListenGate.retryDelayMs(2) == 400 && NovaListenGate.retryDelayMs(9) == 400,
+                "restart delay starts at 200 ms and caps at 400 ms");
         check(NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_NO_MATCH)
                 && NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_SPEECH_TIMEOUT)
                 && NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_CLIENT)
@@ -1413,7 +1415,8 @@ public class CatalogTest {
         check(NovaListenGate.nextEmptyCycles(0, true) == 1 && NovaListenGate.nextEmptyCycles(4, true) == 5
                 && NovaListenGate.nextEmptyCycles(3, false) == 0, "empty cycles increment, a real result resets them");
         check(NovaListenGate.shouldRetryEmpty(0) && NovaListenGate.shouldRetryEmpty(4)
-                && !NovaListenGate.shouldRetryEmpty(5), "give up after 5 empty cycles");
+                && NovaListenGate.shouldRetryEmpty(5) && NovaListenGate.shouldRetryEmpty(50),
+                "hands-free loop keeps restarting after no-match or timeout");
         check(NovaListenGate.showListeningChip(true, true, false, false, false, true), "chip stays on between restarts");
         check(!NovaListenGate.showListeningChip(true, true, false, true, false, true), "chip hides while she is speaking or thinking");
         check(!NovaListenGate.showListeningChip(true, true, true, false, false, true), "chip hides after the loop gives up");
@@ -1496,9 +1499,9 @@ public class CatalogTest {
             long d = NovaListenGate.retryDelayMs(cycles);
             cycles = NovaListenGate.nextEmptyCycles(cycles, true);
             if (!NovaListenGate.shouldRetryEmpty(cycles)) { gaveUp = true; break; }
-            check(d >= 300 && d <= 2000, "each backoff stays in range");
+            check(d >= 200 && d <= 400, "each restart stays short");
         }
-        check(gaveUp && cycles == 5, "five silent restarts then Tap Mic to talk");
+        check(!gaveUp, "silent no-match restarts stay hands-free");
 
         // 0.10.63: built-in ASR path, diagnostics, no vibrate-from-duck, language fallback.
         check(NovaSpeechAvail.path(false, false, false, false, false) == NovaSpeechAvail.NEED_PERMISSION, "no mic permission is its own path");
@@ -1513,7 +1516,7 @@ public class CatalogTest {
         check(NovaSpeechAvail.showBuiltinButton(NovaSpeechAvail.NEED_BUILTIN, false)
                 && !NovaSpeechAvail.showBuiltinButton(NovaSpeechAvail.NEED_BUILTIN, true), "offer download only when the pack is missing");
         check(NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN), "Play Store remains a secondary offer");
-        check(!NovaListenPick.preferOfflineFirst(), "do not start with EXTRA_PREFER_OFFLINE");
+        check(NovaListenPick.preferOfflineFirst(), "prefer offline recognition when it is available");
         check(NovaListenPick.firstLanguage().equals("en-GB"), "first language is en-GB");
         check(NovaListenPick.nextLanguage("en-GB", true).equals("en-US")
                 && NovaListenPick.nextLanguage("en-US", true) == null
@@ -1522,13 +1525,15 @@ public class CatalogTest {
                 && !NovaListenPick.useBuiltinNow(false, true, true, false)
                 && NovaListenPick.useBuiltinNow(true, true, true, false)
                 && !NovaListenPick.useBuiltinNow(true, false, false, false), "built-in is the fallback when there is no system service, or when forced");
-        check(NovaListenPick.shouldFallToBuiltin(true, false, 1, false)
+        check(!NovaListenPick.shouldFallToBuiltin(true, false, 1, false)
+                && NovaListenPick.shouldFallToBuiltin(true, false, 3, false)
                 && !NovaListenPick.shouldFallToBuiltin(false, false, 5, false)
                 && NovaListenPick.shouldFallToBuiltin(true, false, 0, true)
-                && !NovaListenPick.shouldFallToBuiltin(true, true, 5, true), "fall to built-in after one empty cycle or a hard error, not twice");
+                && !NovaListenPick.shouldFallToBuiltin(true, true, 5, true), "fall to built-in after a few empty cycles or a hard error, not on the first pause");
         check(NovaListenPick.shouldOfferBuiltin(false, false, false, 0)
                 && !NovaListenPick.shouldOfferBuiltin(true, false, false, 0)
-                && NovaListenPick.shouldOfferBuiltin(false, true, false, 1), "offer the pack when there is no service, or after one empty try");
+                && !NovaListenPick.shouldOfferBuiltin(false, true, false, 1)
+                && NovaListenPick.shouldOfferBuiltin(false, true, false, 3), "offer the pack when there is no service, or after a few empty tries");
         check(NovaListenPick.retryBusyAfterPause(false) && !NovaListenPick.retryBusyAfterPause(true), "busy mic retries once after pausing hidden listen");
         check(NovaAsrFiles.sizesOk(60_000_000L, 100_000L, 100_000L, 10L)
                 && !NovaAsrFiles.sizesOk(50_000_000L, 100_000L, 100_000L, 10L)
@@ -1583,18 +1588,19 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.71") && NovaAppVer.CODE == 171, "shipping version is 0.10.71");
-        check(NovaAppVer.label().equals("CodeAque 0.10.71")
-                && NovaAppVer.label("0.10.71").equals("CodeAque 0.10.71")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.71")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.71"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.72") && NovaAppVer.CODE == 172, "shipping version is 0.10.72");
+        check(NovaAppVer.label().equals("CodeAque 0.10.72")
+                && NovaAppVer.label("0.10.72").equals("CodeAque 0.10.72")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.72")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.72"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
-        check(NovaListenPick.EMPTY_BEFORE_BUILTIN == 1
-                && NovaListenPick.shouldFallToBuiltin(true, false, 1, false, false)
+        check(NovaListenPick.EMPTY_BEFORE_BUILTIN == 3
+                && !NovaListenPick.shouldFallToBuiltin(true, false, 1, false, false)
+                && NovaListenPick.shouldFallToBuiltin(true, false, 3, false, false)
                 && !NovaListenPick.shouldFallToBuiltin(true, false, 0, false, false)
-                && NovaListenPick.shouldFallToBuiltin(true, false, 0, false, true), "one empty result or a busy mic is enough to switch to built-in");
+                && NovaListenPick.shouldFallToBuiltin(true, false, 0, false, true), "a few empty results or a busy mic can switch to built-in");
         check(NovaListenPick.switchBusyToBuiltin(true, false, true)
                 && !NovaListenPick.switchBusyToBuiltin(true, false, false)
                 && !NovaListenPick.switchBusyToBuiltin(false, false, true)
@@ -1617,7 +1623,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.71") && NovaAppVer.CODE == 171, "shipping version is 0.10.71");
+        check(NovaAppVer.NAME.equals("0.10.72") && NovaAppVer.CODE == 172, "shipping version is 0.10.72");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1641,13 +1647,19 @@ public class CatalogTest {
                 && NovaSmallTalk.reply("bye", true).equals(NovaSmallTalk.BYE_KIDS)
                 && NovaSmallTalk.reply("o hallo", true).equals(NovaSmallTalk.HELLO_KIDS)
                 && NovaSmallTalk.reply("find a racing game", true) == null, "small talk after fillers, not a greeting swallow");
-        check(NovaSmallTalk.brainFallback("u how were you", true).contains("isn't ready")
-                && !NovaSmallTalk.brainFallback("u how were you", true).contains("\"")
-                && !NovaSmallTalk.brainFallback("u how were you", true).contains("Hello there")
-                && !NovaSmallTalk.brainFallback("u how were you", true).contains("or ask me about a game")
+        check(!NovaSmallTalk.isUnreadyPhrase(NovaSmallTalk.brainFallback("u how were you", true))
+                && !NovaSmallTalk.brainFallback("u how were you", true).toLowerCase().contains("isn't ready")
+                && !NovaSmallTalk.brainFallback("u how were you", true).toLowerCase().contains("try again in a moment")
+                && !NovaSmallTalk.brainFallback("", false).toLowerCase().contains("isn't ready")
+                && NovaSmallTalk.brainFallback("u how were you", true).contains("game")
+                && NovaSmallTalk.isUnreadyPhrase("My thinking brain isn't ready yet. Try again in a moment.")
                 && NovaSmallTalk.isBareGreetingReply("Hello there! I'm Nova.")
                 && !NovaSmallTalk.isBareGreetingReply("I'm really well, thank you! How are you?"),
-                "brain fallback is short, has no quotes, and is not the greeting");
+                "fallback is a short best-effort reply and never says the brain isn't ready");
+        check(NovaHelp.bestEffort("tell me about something odd", true).length() > 0
+                && !NovaSmallTalk.isUnreadyPhrase(NovaHelp.bestEffort("tell me about something odd", true))
+                && NovaReplyQuick.BRAIN_BUDGET_MS >= 2000L && NovaReplyQuick.BRAIN_BUDGET_MS <= 3000L,
+                "best-effort replies are instant and the brain budget is 2-3 seconds");
         check(NovaGameTalk.stripLeadingNoise("o tell me about roe box").equals("tell me about roe box")
                 && NovaGameTalk.stripLeadingNoise("ut robecks").equals("robecks")
                 && NovaGameTalk.cleanHeard("o tell me about roe box").equals("tell me about Roblox")
@@ -1747,7 +1759,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.71") && NovaAppVer.CODE == 171, "shipping version is 0.10.71");
+        check(NovaAppVer.NAME.equals("0.10.72") && NovaAppVer.CODE == 172, "shipping version is 0.10.72");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

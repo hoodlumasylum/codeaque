@@ -19,6 +19,9 @@ public final class NovaWikiDone implements Runnable {
     @Override public void run() {
         if (view == null) return;
         if (gen != 0 && view.askGen != gen) return;
+        if (!view.awaitingAnswer) return;
+        view.awaitingAnswer = false;
+        view.cancelThinkTick();
         view.speakStreamed(ans);
         view.invalidate();
     }

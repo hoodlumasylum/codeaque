@@ -15,6 +15,8 @@ public final class NovaReplyQuick {
     public static final long LISTEN_MAX_MS = 15000L;
     /** On-device LLM cap — short spoken answers, not essays. */
     public static final int MAX_TOKENS = 40;
+    /** Use the brain only if it answers within this budget, then fall back. */
+    public static final long BRAIN_BUDGET_MS = 2500L;
 
     public static final String SPEAKING_TEXT = "Speaking…";
     public static final String NO_SOUND =
