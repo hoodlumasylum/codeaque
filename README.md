@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.60
+
+**One voice at a time, and no looping intro.** Opening Chat or asking a question starts a single utterance. A new line cancels any leftover on-device job and the phone's text-to-speech, so she cannot talk over herself. After she finishes, the mic stays closed for a short moment and anything that matches the line she just said is ignored, so her own speech cannot restart the same greeting.
+
+**The Chat field and suggestion chips stay put while she is talking.** Heard results and chip taps are not applied mid-speech, so "Hello" cannot jump to "How do I play?" while she is still answering.
+
+**You can see which voice is speaking.** A small Heart or Phone voice tag is shown next to her while she talks (and in the Chat header). If Heart is downloaded but cannot start, the real error is shown in Chat and she falls back to the phone's voice.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. Heart load and playback on a device, and the on-screen engine tag during speech, remain untested.
+
 ## What's new in 0.10.59
 
 **The Install button stays until you install.** If a new CodeAque is ready, an Install bar stays on the home screen and in Kids mode until the installed version is no longer older than the one offered. It comes back after a restart. Later or Back only closes the pop-up; the bar does not time out or hide for a few hours.

@@ -9,7 +9,7 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
     @Override public void onSpeechResult(String text) {
         if (view == null) return;
         view.refreshMicLabel();
-        view.ask(text);
+        view.onHeard(text);
     }
 
     @Override public void onSpeechError(String message) {

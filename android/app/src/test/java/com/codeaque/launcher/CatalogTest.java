@@ -1339,6 +1339,27 @@ public class CatalogTest {
         check(!NovaTtsVoice.acceptFallbackLocale("zh") && NovaTtsVoice.acceptFallbackLocale("en"), "never fall back to a zh locale");
         check(NovaVoiceGate.canStartListen(true, true, false, false, false) && !NovaVoiceGate.canStartListen(true, true, true, false, false), "listen waits while she is talking");
 
+        // 0.10.60: single-flight speak, ignore her own echo, stable listen gate, engine tags.
+        check(NovaSpeakGate.nextGen(0) == 1 && NovaSpeakGate.nextGen(7) == 8, "speak gen increments");
+        check(NovaSpeakGate.isCurrent(3, 3) && !NovaSpeakGate.isCurrent(2, 3) && NovaSpeakGate.stale(2, 3), "stale jobs are dropped");
+        check(NovaSpeakGate.stale(0, 0), "gen 0 is never current");
+        check(NovaSpeakGate.canStartListen(true, true, false, false, false, 2000, 1000), "listen after hangover");
+        check(!NovaSpeakGate.canStartListen(true, true, true, false, false, 2000, 0), "no listen while talking");
+        check(!NovaSpeakGate.canStartListen(true, true, false, false, true, 2000, 0), "no listen while a speak job is in flight");
+        check(!NovaSpeakGate.canStartListen(true, true, false, false, false, 500, 1000), "no listen during hangover");
+        check(NovaSpeakGate.sameLine("Hi, I'm Nova! I can help you find a game.",
+                "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up."),
+                "a heard slice of her greeting is treated as her echo");
+        check(!NovaSpeakGate.sameLine("hello", NovaHelp.KIDS_GREETING), "a real hello is not her greeting");
+        check(NovaSpeakGate.shouldDropHeard("how do I play", NovaHelp.KIDS_GREETING, true, false, 5000, 0), "drop any result while she is talking");
+        check(NovaSpeakGate.shouldDropHeard("how do I play", NovaHelp.KIDS_FOOT, false, false, 500, 1000), "drop results in the hangover");
+        check(!NovaSpeakGate.shouldDropHeard("hello", NovaHelp.KIDS_GREETING, false, false, 2000, 1000), "hello after she finishes is kept");
+        check(NovaSpeakGate.speakTag(true).equals("Heart") && NovaSpeakGate.speakTag(false).equals("Phone voice"), "on-screen engine tags");
+        check(NovaVoiceStatus.failed("lib failed").equals("Heart failed: lib failed"), "Heart load error is shown in full");
+        check(NovaSpeakGate.norm("Hellooo!").equals("hellooo") && NovaSpeakGate.norm("  How do I play? ").equals("how do i play"), "norm strips punctuation");
+
+
+
 
 
 

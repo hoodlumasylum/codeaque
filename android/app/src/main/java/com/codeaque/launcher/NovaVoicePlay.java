@@ -19,11 +19,24 @@ public final class NovaVoicePlay {
 
     static AudioTrack track;
     static boolean stopFlag;
+    /** 0.10.60: incremented by stop() so a late play() cannot revive a cancelled line. */
+    static int session;
 
     private NovaVoicePlay() {}
 
+    public static synchronized int newSession() {
+        session = session == Integer.MAX_VALUE ? 1 : session + 1;
+        stopFlag = false;
+        return session;
+    }
+
+    public static synchronized int currentSession() { return session; }
+
     public static void stop() {
-        stopFlag = true;
+        synchronized (NovaVoicePlay.class) {
+            session = session == Integer.MAX_VALUE ? 1 : session + 1;
+            stopFlag = true;
+        }
         AudioTrack t = track;
         track = null;
         if (t != null) {
@@ -32,9 +45,16 @@ public final class NovaVoicePlay {
         }
     }
 
-    /** Blocking play. Call off the UI thread. */
+    /** Blocking play. Call off the UI thread. Pass the session from newSession(). */
     public static void play(float[] samples, int sampleRate, Listener cb) {
-        stopFlag = false;
+        play(samples, sampleRate, cb, currentSession());
+    }
+
+    public static void play(float[] samples, int sampleRate, Listener cb, int wantSession) {
+        if (wantSession != currentSession()) {
+            if (cb != null) post(cb, 2, 0);
+            return;
+        }
         if (samples == null || samples.length < 16 || sampleRate <= 0) {
             if (cb != null) post(cb, 2, 0);
             return;
