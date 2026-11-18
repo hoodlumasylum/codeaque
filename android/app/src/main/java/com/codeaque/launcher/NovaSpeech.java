@@ -41,6 +41,10 @@ public final class NovaSpeech {
     public boolean isListening() { return listening; }
 
     public void start(Context ctx, Callbacks callbacks) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            ui.post(new NovaSpeechStart(this, ctx, callbacks));
+            return;
+        }
         stop();
         destroyed = false;
         cb = callbacks;
@@ -125,9 +129,7 @@ public final class NovaSpeech {
 
     /** Soft errors that should restart listening in a hands-free loop (not a hard failure). */
     public static boolean softListenError(int code) {
-        return code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
-                || code == SpeechRecognizer.ERROR_NO_MATCH
-                || code == SpeechRecognizer.ERROR_RECOGNIZER_BUSY;
+        return NovaVoiceGate.shouldRecycleRecognizer(code);
     }
 
     void onError(int code) {

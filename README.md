@@ -31,7 +31,22 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.58
+
+**Nova stays in CodeAque.** The over-other-apps bubble is gone, so she no longer blocks the game under her. A leftover overlay from 0.10.57 is stopped when you install this update. (Display over other apps may still be asked for Screen Time Strict mode, which is separate.)
+
+**Double-tap hides her.** A single tap still opens Chat immediately. A second tap hides her until you turn **Show Nova** on in the Nova tab (also in Kids mode). You will see: "Nova hidden - turn her back on in the Nova tab."
+
+**Listen after Type instead.** Tapping Listen (when you leave text mode) hides the keyboard, asks for the mic if needed, and starts hands-free listening (after she finishes speaking). Soft mic errors restart the recognizer.
+
+**Optional: Keep listening while hidden** (off by default), in the Kids Nova tab and in Grown-ups > Nova. If you turn it on and then hide her, a "Nova is listening" notification can keep listening even in a game. She answers by voice only and is not drawn over the game. Stop on the notification, or turn the switch off, ends it. This has to be started while CodeAque is open.
+
+**Heart voice actually used once downloaded.** 0.10.57 only used Heart if the engine was already loaded, so after a download or restart she kept the phone's voice. She now loads Heart when the pack is on disk, without a restart. Nova's tab shows **Using phone voice**, **Downloading x%**, **Heart ready**, or **Heart failed: reason**, plus **Test voice** (it tells you which engine spoke) and a **voice speed** slider. Heart defaults to 0.85 (a little slower); the phone's voice defaults to 0.90.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. Background SpeechRecognizer while a game holds audio focus varies by phone and is untested. Heart load and mouth sync on a real device remain untested.
+
 ## What's new in 0.10.57
+
 
 **She speaks straight away, and her mouth moves.** Until Nova's own voice is downloaded, she uses the phone's text-to-speech, and she does that even if the download is missing or the on-device engine cannot start. Her mouth moves whenever she is speaking, from a talking timer (and from the playback volume once her own voice is installed). Opening Chat no longer starts the mic while she is still saying hello, which could stop the phone's voice and freeze her mouth.
 

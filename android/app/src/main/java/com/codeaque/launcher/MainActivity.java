@@ -63,6 +63,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         Catalog.VERSION = myVersion();   // 0.10.28
         super.onCreate(b);
         prefs = getSharedPreferences("codeaque", MODE_PRIVATE);
+        NovaOverlayService.retire(this);             // 0.10.58: stop any leftover over-apps bubble
         ensurePin();                                  // 0.10.23: default parent PIN 1234 (hashed)
         applyAlwaysKids();                            // 0.10.37: default on — cold start / Home after reboot opens in Kids mode
         edgeToEdge();
@@ -171,21 +172,23 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             nova.applyPref();
             nova.bringToFront();
         }
-        NovaOverlayService.setHostVisible(this, true);
-        NovaOverlayService.sync(this);
+        NovaListenService.appInForeground = true;
+        NovaOverlayService.retire(this);
+        // If she is visible again, stop hidden listening — in-app Chat can take over.
+        if (prefs.getBoolean(NovaView.PREF_BUBBLE, true) && !prefs.getBoolean(NovaView.PREF_HIDDEN, false))
+            NovaListenService.stopOnly(this);
         view.invalidate();
     }
 
     @Override protected void onPause() {
         super.onPause();
+        NovaListenService.appInForeground = false;
         maybeBounceKidsLeave();
     }
 
     @Override protected void onUserLeaveHint() {
         super.onUserLeaveHint();
         maybeBounceKidsLeave();
-        NovaOverlayService.setHostVisible(this, false);
-        NovaOverlayService.sync(this);
     }
 
     @Override public void onWindowFocusChanged(boolean has) {
@@ -857,7 +860,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 || action.equals("kidsprofile") || action.equals("screentime") || action.equals("alwayskids") || action.equals("kidslock")
                 || action.equals("lockphone") || action.equals("removeowner") || action.equals("exitcodeaque")
                 || action.equals("phonesettings") || action.equals("phoneaccounts") || action.equals("homeapp")
-                || action.equals("installkids") || action.equals("kidsemus") || action.equals("installpin") || action.equals("novaoverlay")) return true;
+                || action.equals("installkids") || action.equals("kidsemus") || action.equals("installpin")) return true;
         return locked() && LockPin.needsPin(action);
     }
     /** A correct PIN opens grown-up things for 2 minutes. */
@@ -1546,7 +1549,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             }
         } else if (req == REQ_MIC) {
             if (nova != null) nova.onMicPermission(ok);
-            if (!ok) toast("The mic was not allowed, so you can still type your question.");
+            if (ok) NovaListenService.tryStartFromUser(this);
+            else toast("The mic was not allowed, so you can still type your question.");
         }
     }
 
@@ -1788,7 +1792,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             case "novavoice": novaToggleVoice(); break;
             case "novasmarter": novaToggleSmarter(); break;
             case "novahide": novaHide(); break;
-            case "novaoverlay": novaSettings(); break;   // 0.10.54: same dialog, overlay still PIN in mustPin
+            case "novalistenhidden": novaToggleListenHidden(); break;
             case "installpin": installPinToggle(); break;  // 0.10.52
             case "kids": enterKids(); break;          // 0.10.54: no PIN, no extra question
             case "kidsprofile": kidsProfilePicker(); break;   // 0.10.37: always PIN (mustPin)
@@ -1833,8 +1837,38 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         if (on) ed.putBoolean(NovaView.PREF_HIDDEN, false);
         ed.apply();
         if (nova != null) nova.applyPref();
-        toast(on ? "Nova is on." : "Nova is hidden completely.");
+        if (on) {
+            NovaListenService.stopOnly(this);
+            toast("Nova is on.");
+        } else {
+            toast(NovaListenHidden.TOAST_HIDDEN);
+            novaMaybeStartHiddenListen();
+        }
     }
+
+    private void novaToggleListenHidden() {
+        boolean on = !prefs.getBoolean(NovaListenHidden.PREF, false);
+        prefs.edit().putBoolean(NovaListenHidden.PREF, on).apply();
+        if (on) {
+            toast("Keep listening while hidden is on. Hide Nova and she can still hear you, even in a game, and will answer by voice.");
+            novaMaybeStartHiddenListen();
+        } else {
+            NovaListenService.stopOnly(this);
+            toast("Keep listening while hidden is off.");
+        }
+        if (nova != null) nova.applyPref();
+    }
+
+    /** User action in the foreground: start hidden listening if the switch is on and she is hidden. */
+    void novaMaybeStartHiddenListen() {
+        if (!NovaListenService.shouldRun(this)) return;
+        if (!novaMicAllowed()) { novaRequestMic(); return; }
+        NovaListenService.tryStartFromUser(this);
+    }
+
+    @Override public void onNovaHiddenByUser() { novaMaybeStartHiddenListen(); }
+
+    void speakNovaLine(String s) { if (nova != null) nova.speak(s); }
 
     private void novaToggleVoice() {
         boolean on = !prefs.getBoolean(NovaView.PREF_VOICE_TALK, true);
@@ -1850,12 +1884,17 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     private void novaHide() {
-        if (nova != null) nova.hideAway();
-        else prefs.edit().putBoolean(NovaView.PREF_HIDDEN, true).putBoolean(NovaView.PREF_TUCKED, false).apply();
-        toast("Nova is tucked away. A gold tab on the edge brings her back, or use Show Nova.");
+        if (nova != null) nova.hideCompletely();
+        else {
+            prefs.edit().putBoolean(NovaView.PREF_BUBBLE, false).putBoolean(NovaView.PREF_HIDDEN, false)
+                    .putBoolean(NovaView.PREF_TUCKED, false).apply();
+            toast(NovaListenHidden.TOAST_HIDDEN);
+            novaMaybeStartHiddenListen();
+        }
     }
 
     private void novaSettings() {
+        if (prefs.getBoolean("kidsMode", false)) { kidsNovaSettings(); return; }
         float d = getResources().getDisplayMetrics().density;
         int pad = Math.round(12 * d);
         android.widget.LinearLayout box = new android.widget.LinearLayout(this);
@@ -1864,21 +1903,17 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         // 0.10.57: put the voice download first so it is not hidden under the long note.
         NovaSettingsUi.add(this, box, prefs, d);
         android.widget.TextView msg = new android.widget.TextView(this);
-        msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Open her and, if Voice talk is on, she greets you and then listens; say another question after she answers, or tap Type instead / Back to type, or Close to leave. Double-tap tucks her into a corner (still her face, smaller). Hide in Chat, or Hide Nova here, leaves a gold tab; turn Show Nova off to hide her completely. Smarter Nova can look up a short fact when she isn't sure, or use an optional on-device brain if a grown-up downloads it. Nova's voice can be downloaded too. Licence details are in About. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
+        msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Open her and, if Voice talk is on, she greets you and then listens; say another question after she answers, or tap Type instead / Listen to switch, or Close to leave. Double-tap hides her until you turn Show Nova on in this tab. Keep listening while hidden (optional, off by default) lets her hear you and answer by voice while she is hidden, including in a game — she never sits over other apps. Smarter Nova can look up a short fact when she isn't sure, or use an optional on-device brain if a grown-up downloads it. Nova's voice can be downloaded too. Licence details are in About.");
         msg.setPadding(0, 0, 0, pad);
         box.addView(msg);
         android.widget.CheckBox show = new android.widget.CheckBox(this);
         show.setText("Show Nova");
         show.setChecked(prefs.getBoolean(NovaView.PREF_BUBBLE, true));
         box.addView(show);
-        android.widget.CheckBox over = new android.widget.CheckBox(this);
-        boolean want = prefs.getBoolean(NovaView.PREF_OVERLAY, false);
-        boolean granted = NovaOverlayService.canOverlay(this);
-        boolean kids = prefs.getBoolean("kidsMode", false);
-        over.setText("Show Nova over other games" + (kids ? " (off in Kids mode)" : (want && !granted ? " (needs Android permission)" : "")));
-        over.setChecked(want && granted && !kids);
-        over.setEnabled(!kids);
-        box.addView(over);
+        android.widget.CheckBox listenHidden = new android.widget.CheckBox(this);
+        listenHidden.setText("Keep listening while hidden");
+        listenHidden.setChecked(prefs.getBoolean(NovaListenHidden.PREF, false));
+        box.addView(listenHidden);
         android.widget.CheckBox voice = new android.widget.CheckBox(this);
         voice.setText("Voice talk");
         voice.setChecked(prefs.getBoolean(NovaView.PREF_VOICE_TALK, true));
@@ -1896,42 +1931,52 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Nova")
                 .setView(sc)
-                .setPositiveButton("OK", (dlg, w) -> {
-                    android.content.SharedPreferences.Editor ed = prefs.edit()
-                            .putBoolean(NovaView.PREF_BUBBLE, show.isChecked())
-                            .putBoolean(NovaView.PREF_VOICE_TALK, voice.isChecked())
-                            .putBoolean(NovaView.PREF_SMARTER, smarter.isChecked());
-                    if (show.isChecked()) ed.putBoolean(NovaView.PREF_HIDDEN, false);
-                    ed.apply();
-                    if (nova != null) nova.rebuildPanel();
-                    if (nova != null) nova.applyPref();
-                    if (kids) {
-                        prefs.edit().putBoolean(NovaView.PREF_OVERLAY, false).apply();
-                        NovaOverlayService.sync(this);
-                        return;
-                    }
-                    if (over.isChecked() == want && (over.isChecked() ? granted : true)) {
-                        NovaOverlayService.sync(this);
-                        return;
-                    }
-                    if (!over.isChecked()) {
-                        prefs.edit().putBoolean(NovaView.PREF_OVERLAY, false).apply();
-                        NovaOverlayService.sync(this);
-                        toast("Nova will stay in CodeAque only.");
-                        return;
-                    }
-                    Runnable enable = () -> {
-                        prefs.edit().putBoolean(NovaView.PREF_OVERLAY, true).apply();
-                        if (!NovaOverlayService.canOverlay(this)) {
-                            toast("Android needs Display over other apps for Nova. Grant it, then return to CodeAque.");
-                            NovaOverlayService.openOverlaySettings(this);
-                        } else toast("Nova can appear over other apps. Some games or phones may still hide her.");
-                        NovaOverlayService.sync(this);
-                    };
-                    if (!pinFresh()) askPin("Parent PIN: Nova over games", enable);
-                    else enable.run();
-                })
+                .setPositiveButton("OK", (dlg, w) -> applyNovaSettings(show.isChecked(), listenHidden.isChecked(), voice.isChecked(), smarter.isChecked()))
                 .setNegativeButton("Cancel", null).show();
+    }
+
+    /** Kids-mode Nova tab: Show Nova and optional listen-while-hidden. No overlay, no PIN. */
+    private void kidsNovaSettings() {
+        float d = getResources().getDisplayMetrics().density;
+        int pad = Math.round(12 * d);
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(pad, pad / 2, pad, 0);
+        android.widget.TextView msg = new android.widget.TextView(this);
+        msg.setText("Double-tap Nova to hide her. Turn Show Nova on here to bring her back. Keep listening while hidden (off unless you turn it on) lets her hear you and answer by voice while she is hidden, even in a game. She does not sit over the game.");
+        msg.setPadding(0, 0, 0, pad);
+        box.addView(msg);
+        android.widget.CheckBox show = new android.widget.CheckBox(this);
+        show.setText("Show Nova");
+        show.setChecked(prefs.getBoolean(NovaView.PREF_BUBBLE, true));
+        box.addView(show);
+        android.widget.CheckBox listenHidden = new android.widget.CheckBox(this);
+        listenHidden.setText("Keep listening while hidden");
+        listenHidden.setChecked(prefs.getBoolean(NovaListenHidden.PREF, false));
+        box.addView(listenHidden);
+        NovaSettingsUi.addVoicePanel(this, box, prefs, d);
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Nova")
+                .setView(box)
+                .setPositiveButton("OK", (dlg, w) -> applyNovaSettings(show.isChecked(), listenHidden.isChecked(),
+                        prefs.getBoolean(NovaView.PREF_VOICE_TALK, true),
+                        prefs.getBoolean(NovaView.PREF_SMARTER, true)))
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void applyNovaSettings(boolean show, boolean listenHidden, boolean voice, boolean smarter) {
+        android.content.SharedPreferences.Editor ed = prefs.edit()
+                .putBoolean(NovaView.PREF_BUBBLE, show)
+                .putBoolean(NovaListenHidden.PREF, listenHidden)
+                .putBoolean(NovaView.PREF_VOICE_TALK, voice)
+                .putBoolean(NovaView.PREF_SMARTER, smarter)
+                .putBoolean(NovaView.PREF_OVERLAY, false);
+        if (show) ed.putBoolean(NovaView.PREF_HIDDEN, false);
+        ed.apply();
+        NovaOverlayService.retire(this);
+        if (nova != null) { nova.rebuildPanel(); nova.applyPref(); }
+        if (show || !listenHidden) NovaListenService.stopOnly(this);
+        else novaMaybeStartHiddenListen();
     }
 
     /** 0.10.52: Grown-ups setting, off by default. PIN already asked via mustPin. */
@@ -3041,7 +3086,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply();
         timeUpScreen = false;
         parentStoreGen++;
-        ScreenTimeService.sync(this); NovaOverlayService.sync(this); rescan();
+        ScreenTimeService.sync(this); NovaOverlayService.retire(this); rescan();
         syncDeviceOwnerKiosk();
         syncKidsPinning();
         toast(kids12() ? "Kids 12+ is on. Leaving it needs the parent PIN." : "Kids mode is on. Leaving it needs the parent PIN.");
@@ -3099,7 +3144,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                     if (!on) { timeUpScreen = false; stopKidsPinning(); }
                     if (deviceOwner()) { if (on || locked()) { syncDeviceOwnerKiosk(); } }
                     else if (!on) { /* not owner: screen pin already stopped */ }
-                    ScreenTimeService.sync(this); NovaOverlayService.sync(this); rescan();
+                    ScreenTimeService.sync(this); NovaOverlayService.retire(this); rescan();
                     if (on) { syncDeviceOwnerKiosk(); syncKidsPinning(); toast(kids12() ? "Kids 12+ is on." : "Kids mode is on."); }
                     else syncDeviceOwnerKiosk();
                 })

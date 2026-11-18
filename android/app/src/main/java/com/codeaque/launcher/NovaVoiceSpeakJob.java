@@ -17,7 +17,8 @@ public final class NovaVoiceSpeakJob implements Runnable, NovaVoicePlay.Listener
                 return;
             }
         }
-        float[] samples = NovaKokoro.synthesize(text, sid);
+        float speed = NovaKokoro.speedFrom(view.prefs);
+        float[] samples = NovaKokoro.synthesize(text, sid, speed);
         if (samples == null || samples.length < 16) {
             view.post(new NovaVoiceFallback(view, text));
             return;

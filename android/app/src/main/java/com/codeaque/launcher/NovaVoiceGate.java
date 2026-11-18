@@ -13,8 +13,9 @@ public final class NovaVoiceGate {
      * the phone's TextToSpeech so she still speaks out of the box.
      */
     public static boolean useOnDevice(boolean filesReady, boolean engineLoaded, String voiceId) {
-        if (!filesReady || !engineLoaded) return false;
-        return voiceId != null && voiceId.startsWith("kokoro-");
+        // engineLoaded is kept for callers that want to know if it already started.
+        // Trying Heart only needs the pack on disk; the speak job loads the engine.
+        return NovaVoiceStatus.shouldTryOnDevice(filesReady, voiceId);
     }
 
     /**
@@ -28,5 +29,17 @@ public final class NovaVoiceGate {
         if (talking || pendingSpeak) return false;
         if (muted) return true;
         return true;
+    }
+
+    /** SpeechRecognizer error codes (android.speech.SpeechRecognizer). */
+    public static final int ERR_CLIENT = 5;
+    public static final int ERR_SPEECH_TIMEOUT = 6;
+    public static final int ERR_NO_MATCH = 7;
+    public static final int ERR_RECOGNIZER_BUSY = 8;
+
+    /** Recreate the recognizer and keep the hands-free loop going. */
+    public static boolean shouldRecycleRecognizer(int code) {
+        return code == ERR_CLIENT || code == ERR_SPEECH_TIMEOUT
+                || code == ERR_NO_MATCH || code == ERR_RECOGNIZER_BUSY;
     }
 }

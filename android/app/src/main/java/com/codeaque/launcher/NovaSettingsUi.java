@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -22,6 +23,7 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
     final Button previewBtn;
     final Button gemmaBtn;
     boolean voiceBusy, gemmaBusy;
+    int dlPercent;
 
     NovaSettingsUi(Activity act, SharedPreferences prefs,
                    TextView voiceStatus, Button voiceBtn, Button previewBtn,
@@ -44,16 +46,17 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
         TextView vs = hint(act, "");
         box.addView(vs);
         Button dl = btn(act, "Download Nova's voice");
-        Button prev = btn(act, "Preview");
+        Button prev = btn(act, "Test voice");
         Button heart = btn(act, "Heart (default)");
         Button bella = btn(act, "Bella");
         Button emma = btn(act, "Emma");
         box.addView(dl);
         box.addView(prev);
+        addSpeedRow(act, box, prefs, d);
         box.addView(heart);
         box.addView(bella);
         box.addView(emma);
-        TextView notice = hint(act, "This is Nova's voice (Apache-2.0 Kokoro). The model is downloaded, not stored in the app. Until then she uses the phone's voice. Bella and Emma are extras that use the same download.");
+        TextView notice = hint(act, "This is Nova's voice (Apache-2.0 Kokoro). The model is downloaded, not stored in the app. Until then she uses the phone's voice. Bella and Emma are extras that use the same download. Test voice speaks a line and tells you which voice was used.");
         notice.setPadding(0, pad / 4, 0, pad);
         box.addView(notice);
 
@@ -77,6 +80,35 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
         ui.refresh();
     }
 
+    /** Status, Test voice, and speed — also used by the Kids Nova tab. */
+    static void addVoicePanel(Activity act, LinearLayout box, SharedPreferences prefs, float d) {
+        int pad = Math.round(12 * d);
+        TextView vs = hint(act, NovaVoiceStatus.of(NovaKokoro.filesReady(act), NovaKokoro.isLoaded(), false, 0, NovaKokoro.lastError()));
+        box.addView(vs);
+        Button test = btn(act, "Test voice");
+        box.addView(test);
+        addSpeedRow(act, box, prefs, d);
+        TextView live = vs;
+        test.setOnClickListener(new NovaVoicePreviewClick(new NovaSettingsUi(act, prefs, live, test, test, hint(act, ""), test)));
+        // Refresh status on a short timer is not needed; Test voice and download update it.
+    }
+
+    static void addSpeedRow(Activity act, LinearLayout box, SharedPreferences prefs, float d) {
+        int pad = Math.round(8 * d);
+        TextView lab = hint(act, speedLabel(NovaKokoro.speedFrom(prefs)));
+        lab.setPadding(0, pad, 0, 0);
+        box.addView(lab);
+        SeekBar bar = new SeekBar(act);
+        bar.setMax(60);
+        bar.setProgress(NovaVoiceStatus.speedToProgress(NovaKokoro.speedFrom(prefs)));
+        bar.setOnSeekBarChangeListener(new NovaVoiceSpeedChange(prefs, lab));
+        box.addView(bar);
+    }
+
+    static String speedLabel(float speed) {
+        return "Voice speed  " + Math.round(speed * 100f) + "%";
+    }
+
     static TextView hint(Context c, String t) {
         TextView v = new TextView(c);
         v.setText(t);
@@ -97,12 +129,14 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
         String name = "Heart";
         if (NovaVoices.ID_KOKORO_BELLA.equals(id)) name = "Bella";
         else if (NovaVoices.ID_KOKORO_EMMA.equals(id)) name = "Emma";
-        if (voiceBusy) voiceStatus.setText("Downloading Nova's voice…");
-        else if (v) voiceStatus.setText("Nova's voice is on this phone. Using " + name + ".");
-        else voiceStatus.setText("Not downloaded. She will use the phone's voice until you download Nova's voice (about 360 MB).");
-        voiceBtn.setText(v ? "Remove Nova's voice" : "Download Nova's voice");
-        voiceBtn.setEnabled(!voiceBusy);
-        previewBtn.setEnabled(!voiceBusy && v);
+        if (voiceBusy) voiceStatus.setText(NovaVoiceStatus.downloading(dlPercent));
+        else voiceStatus.setText(NovaVoiceStatus.of(v, NovaKokoro.isLoaded(), false, 0, NovaKokoro.lastError()));
+        if (voiceBtn != previewBtn) {
+            voiceBtn.setText(v ? "Remove Nova's voice" : "Download Nova's voice");
+            voiceBtn.setEnabled(!voiceBusy);
+        }
+        previewBtn.setEnabled(!voiceBusy);
+        previewBtn.setText("Test voice");
 
         boolean g = NovaLlm.filesReady(act);
         if (gemmaBusy) gemmaStatus.setText("Downloading the on-device brain…");
@@ -132,9 +166,14 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
 
     void voiceDone(boolean ok, String error) {
         voiceBusy = false;
-        refresh();
-        if (ok) toast("Nova's voice is ready. You can preview it.");
-        else toast(error != null ? error : "Nova's voice didn't finish downloading.");
+        if (ok) {
+            toast("Nova's voice is downloaded. Starting Heart…");
+            new Thread(new NovaVoiceWarmupAndRefresh(this), "nova-voice-load").start();
+        } else {
+            if (error != null) NovaKokoro.lastError = error;
+            refresh();
+            toast(error != null ? error : "Nova's voice didn't finish downloading.");
+        }
     }
 
     void gemmaDone(boolean ok, String error) {
@@ -145,7 +184,8 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
     }
 
     @Override public void onDlProgress(int percent, long got, long total) {
-        if (voiceStatus != null) voiceStatus.setText("Downloading Nova's voice… " + percent + "%");
+        dlPercent = percent;
+        if (voiceStatus != null) voiceStatus.setText(NovaVoiceStatus.downloading(percent));
     }
 
     @Override public void onDlDone(boolean ok, String error) { voiceDone(ok, error); }
@@ -199,27 +239,88 @@ final class NovaVoicePreviewClick implements android.view.View.OnClickListener {
     final NovaSettingsUi ui;
     NovaVoicePreviewClick(NovaSettingsUi ui) { this.ui = ui; }
     @Override public void onClick(android.view.View v) {
-        if (!NovaKokoro.filesReady(ui.act)) {
-            ui.toast("Download Nova's voice first.");
-            return;
-        }
         ui.toast("Playing a short hello…");
-        new Thread(new NovaVoicePreviewJob(ui.act, NovaKokoro.speakerId(ui.prefs)), "nova-voice-preview").start();
+        new Thread(new NovaVoicePreviewJob(ui), "nova-voice-preview").start();
     }
 }
 
 final class NovaVoicePreviewJob implements Runnable, NovaVoicePlay.Listener {
+    final NovaSettingsUi ui;
     final Context app;
-    final int sid;
-    NovaVoicePreviewJob(Context c, int sid) { this.app = c.getApplicationContext(); this.sid = sid; }
+    NovaVoicePreviewJob(NovaSettingsUi ui) {
+        this.ui = ui;
+        this.app = ui.act.getApplicationContext();
+    }
     @Override public void run() {
-        if (!NovaKokoro.isLoaded()) NovaKokoro.load(app);
-        float[] s = NovaKokoro.synthesize(NovaVoices.HELLO_LINE, sid);
-        if (s != null) NovaVoicePlay.play(s, NovaKokoro.sampleRate(), this);
+        boolean heart = false;
+        if (NovaVoiceStatus.shouldTryOnDevice(NovaKokoro.filesReady(app), NovaKokoro.selectedId(ui.prefs))) {
+            if (!NovaKokoro.isLoaded()) NovaKokoro.load(app);
+            float[] s = NovaKokoro.synthesize(NovaVoices.HELLO_LINE, NovaKokoro.speakerId(ui.prefs), NovaKokoro.speedFrom(ui.prefs));
+            if (s != null && s.length > 16) {
+                heart = true;
+                NovaVoicePlay.play(s, NovaKokoro.sampleRate(), this);
+            }
+        }
+        final boolean usedHeart = heart;
+        ui.act.runOnUiThread(new NovaVoiceTestResult(ui, usedHeart));
+        if (!usedHeart) ui.act.runOnUiThread(new NovaVoiceTestSystem(ui));
     }
     @Override public void onVoiceStart() { }
     @Override public void onVoiceAmp(float amp) { }
     @Override public void onVoiceEnd() { }
+}
+
+final class NovaVoiceTestResult implements Runnable {
+    final NovaSettingsUi ui;
+    final boolean heart;
+    NovaVoiceTestResult(NovaSettingsUi ui, boolean heart) { this.ui = ui; this.heart = heart; }
+    @Override public void run() {
+        ui.refresh();
+        ui.toast(NovaVoiceStatus.testResult(heart));
+    }
+}
+
+final class NovaVoiceTestSystem implements Runnable {
+    final NovaSettingsUi ui;
+    NovaVoiceTestSystem(NovaSettingsUi ui) { this.ui = ui; }
+    @Override public void run() {
+        // Speak the hello line with the phone's voice so the test always makes a sound.
+        if (ui.act instanceof MainActivity) {
+            ((MainActivity) ui.act).speakNovaLine(NovaVoices.HELLO_LINE);
+        }
+    }
+}
+
+final class NovaVoiceWarmupAndRefresh implements Runnable {
+    final NovaSettingsUi ui;
+    NovaVoiceWarmupAndRefresh(NovaSettingsUi ui) { this.ui = ui; }
+    @Override public void run() {
+        try { NovaKokoro.load(ui.act.getApplicationContext()); }
+        catch (Throwable t) { android.util.Log.w(NovaKokoro.TAG, "warmup after download failed", t); }
+        ui.act.runOnUiThread(new NovaVoiceStatusRefresh(ui));
+    }
+}
+
+final class NovaVoiceStatusRefresh implements Runnable {
+    final NovaSettingsUi ui;
+    NovaVoiceStatusRefresh(NovaSettingsUi ui) { this.ui = ui; }
+    @Override public void run() { ui.refresh(); ui.toast(NovaVoiceStatus.of(NovaKokoro.filesReady(ui.act), NovaKokoro.isLoaded(), false, 0, NovaKokoro.lastError())); }
+}
+
+final class NovaVoiceSpeedChange implements android.widget.SeekBar.OnSeekBarChangeListener {
+    final SharedPreferences prefs;
+    final TextView label;
+    NovaVoiceSpeedChange(SharedPreferences prefs, TextView label) {
+        this.prefs = prefs;
+        this.label = label;
+    }
+    @Override public void onProgressChanged(android.widget.SeekBar bar, int progress, boolean fromUser) {
+        float sp = NovaVoiceStatus.progressToSpeed(progress);
+        if (label != null) label.setText(NovaSettingsUi.speedLabel(sp));
+        if (fromUser && prefs != null) prefs.edit().putFloat(NovaVoiceStatus.PREF_SPEED, sp).apply();
+    }
+    @Override public void onStartTrackingTouch(android.widget.SeekBar bar) { }
+    @Override public void onStopTrackingTouch(android.widget.SeekBar bar) { }
 }
 
 final class NovaVoicePickClick implements android.view.View.OnClickListener {

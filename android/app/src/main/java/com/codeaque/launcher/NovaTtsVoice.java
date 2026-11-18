@@ -11,7 +11,7 @@ public final class NovaTtsVoice {
     private NovaTtsVoice() {}
 
     public static final float PITCH = 1.08f;
-    public static final float RATE = 0.92f;
+    public static final float RATE = 0.90f; // 0.10.58: slightly slower fallback; slider may override
     public static final int PAUSE_MS = 280;
 
     /**

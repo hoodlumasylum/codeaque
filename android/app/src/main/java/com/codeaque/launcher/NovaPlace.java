@@ -63,8 +63,8 @@ public final class NovaPlace {
 
     public static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-    /** Wait this long after a tap to see if a second tap (hide) is coming. */
-    public static final int DOUBLE_MS = 250;
+    /** Window for a second tap to count as a double-tap. The first tap already fires immediately. */
+    public static final int DOUBLE_MS = 280;
     /** Pinch-out past this scale goes to the large portrait + Chat. */
     public static final float PINCH_OUT = 1.25f;
     /** Pinch-in past this scale shrinks back to the bubble. */
@@ -73,6 +73,11 @@ public final class NovaPlace {
     public static boolean isDoubleTap(long firstUpMs, long secondDownMs, int windowMs) {
         long dt = secondDownMs - firstUpMs;
         return dt >= 0 && dt <= windowMs;
+    }
+
+    /** First tap already fired; a second tap in the window is a double-tap (hide). */
+    public static boolean isImmediateDoubleTap(long lastSingleUpMs, long thisUpMs, int windowMs) {
+        return lastSingleUpMs > 0 && isDoubleTap(lastSingleUpMs, thisUpMs, windowMs);
     }
 
     public static float span(float x0, float y0, float x1, float y1) {
@@ -92,7 +97,7 @@ public final class NovaPlace {
         return wasBig;
     }
 
-    /** Parent "Show Nova" off hides her completely (no edge tab). Double-tap hide keeps a tab if the parent still allows her. */
+    /** Parent "Show Nova" off hides her completely. Double-tap also turns Show Nova off until the Nova tab turns her back on. */
     public static boolean showBubble(boolean parentShow, boolean hidden) {
         return parentShow && !hidden;
     }

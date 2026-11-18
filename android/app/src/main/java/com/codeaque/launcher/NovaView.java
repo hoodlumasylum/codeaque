@@ -84,6 +84,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         void onNovaExpandChanged(boolean expanded);
         default boolean novaMicAllowed() { return false; }
         default void novaRequestMic() { }
+        /** 0.10.58: double-tap or Hide turned Show Nova off. May start hidden-listen if opted in. */
+        default void onNovaHiddenByUser() { }
     }
 
     public NovaView(Context ctx) { this(ctx, ctx.getSharedPreferences("codeaque", Context.MODE_PRIVATE), false); }
@@ -357,7 +359,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         actions.setPadding(0, pad / 2, 0, 0);
         actions.addView(btn("Ask", v -> { ask(askField.getText().toString()); hideSoftIme(); }), lpBtn());
         if (!kids) actions.addView(btn("Hear it", v -> speak(lastAnswer)), lpBtn());
-        typeBtn = btn("Type instead", v -> exitVoiceMode());
+        typeBtn = btn("Type instead", new NovaTypeListenClick(this));
         typeBtn.setVisibility(voiceLoop ? VISIBLE : GONE);
         actions.addView(typeBtn, lpBtn());
         hideBtn = btn("Hide", v -> hideAway());
@@ -447,7 +449,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (ok) {
             voiceLoop = true;
             refreshVoiceButtons();
-            startListen();
+            if (NovaVoiceGate.canStartListen(true, expanded, talking, pendingSpeak != null, muted()))
+                startListen();
+            else
+                postDelayed(new NovaListenSoon(this), 200);
+            if (host != null) host.onNovaHiddenByUser();
         } else {
             exitVoiceMode();
             lastAnswer = "The mic wasn't allowed, so you can type your question instead.";
@@ -600,8 +606,38 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     void refreshVoiceButtons() {
-        if (typeBtn != null) typeBtn.setVisibility(voiceLoop ? VISIBLE : GONE);
+        if (typeBtn != null) {
+            boolean talk = voiceTalkOn();
+            typeBtn.setVisibility(talk ? VISIBLE : GONE);
+            typeBtn.setText(voiceLoop ? "Type instead" : "Listen");
+        }
         refreshMicLabel();
+    }
+
+    /** Type instead / Listen toggle. Leaving text mode starts hands-free listen. */
+    void toggleTextMode() {
+        if (!voiceTalkOn()) return;
+        if (voiceLoop) {
+            exitVoiceMode();
+            if (askField != null) askField.requestFocus();
+            return;
+        }
+        enterListenFromText();
+    }
+
+    void enterListenFromText() {
+        hideSoftIme();
+        voiceLoop = true;
+        refreshVoiceButtons();
+        if (host != null && !host.novaMicAllowed()) {
+            micAsked = true;
+            host.novaRequestMic();
+            return;
+        }
+        if (NovaListenHidden.shouldListenAfterTextOff(expanded, true, talking, pendingSpeak != null))
+            startListen();
+        else
+            postDelayed(new NovaListenSoon(this), 200);
     }
 
     /** After she finishes speaking, listen again if the conversation loop is still on. */
@@ -700,7 +736,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             pickVoice();
             try {
                 tts.setPitch(NovaTtsVoice.PITCH);
-                tts.setSpeechRate(NovaTtsVoice.RATE);
+                tts.setSpeechRate(NovaKokoro.systemRateFrom(prefs));
                 tts.setOnUtteranceProgressListener(new NovaTtsListen(this));
             } catch (Exception ignored) { }
             ttsReady = true;
@@ -751,6 +787,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void flushSpeak() {
         if (tts == null || pendingSpeak == null) return;
+        try { tts.setSpeechRate(NovaKokoro.systemRateFrom(prefs)); } catch (Exception ignored) { }
         String s = pendingSpeak;
         pendingSpeak = null;
         stopListen();
@@ -823,6 +860,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         super.onAttachedToWindow();
         if (!faceLoaded) faceLoaded = face.load(getContext().getAssets());
         if (kids) ensureTts();
+        if (NovaKokoro.filesReady(getContext()) && !NovaKokoro.isLoaded())
+            new Thread(new NovaVoiceWarmup(getContext()), "nova-voice-load").start();
         startAnim();
     }
 
@@ -887,12 +926,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             else { talking = false; talkUntil = 0; }
         }
         // Cap at ~30 fps: blink and breath don't need 60, and we stay off the scroll thread.
-        if (tapArmedAt != 0 && !downOnBubble && !pinching && now - tapArmedAt >= NovaPlace.DOUBLE_MS) {
-            long armed = tapArmedAt;
-            boolean mute = tapArmedMute;
-            tapArmedAt = 0;
-            if (armed != 0) onSingleTap(mute);
-        }
         if (downOnBubble && !dragging && !pinching && !hidden && !ignoreUntilUp && now - downAt >= longPressMs) startDrag();
         if (snapping) tickSnap(now);
         NovaAnim.tick(st, now, dt, rng.nextInt());
@@ -1220,14 +1253,16 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
                 cancelArmedTap();
                 return true;
             }
-            // Clean tap: if a first tap is still waiting, this is a double-tap (hide).
-            if (tapArmedAt != 0 && NovaPlace.isDoubleTap(tapArmedAt, downAt, NovaPlace.DOUBLE_MS)) {
+            // 0.10.58: first tap opens her immediately; a second tap in the
+            // window hides her (no wait before the single-tap action).
+            if (NovaPlace.isImmediateDoubleTap(tapArmedAt, upAt, NovaPlace.DOUBLE_MS)) {
                 tapArmedAt = 0;
-                setTucked(!tucked);
+                hideCompletely();
                 return true;
             }
             tapArmedAt = upAt;
             tapArmedMute = mute;
+            onSingleTap(mute);
             return true;
         }
         return true;
@@ -1336,17 +1371,32 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         invalidate();
     }
 
-    void hideAway() {
+    void hideAway() { hideCompletely(); }
+
+    /**
+     * 0.10.58: hide her completely (Show Nova off) until the Nova tab turns her back on.
+     * Persists across restarts. May start optional hidden listening from this user action.
+     */
+    void hideCompletely() {
         cancelArmedTap();
-        if (prefs != null) prefs.edit().putBoolean(PREF_HIDDEN, true).putBoolean(PREF_BIG, false).putBoolean(PREF_TUCKED, false).apply();
-        hidden = true;
+        if (prefs != null) prefs.edit()
+                .putBoolean(PREF_BUBBLE, false)
+                .putBoolean(PREF_HIDDEN, false)
+                .putBoolean(PREF_BIG, false)
+                .putBoolean(PREF_TUCKED, false)
+                .apply();
+        hidden = false;
         big = false;
         tucked = false;
         exitVoiceMode();
-        collapse();
+        if (expanded) setExpanded(false);
         stopSpeak();
         stopAnim();
+        setVisibility(GONE);
         try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); } catch (Exception ignored) { }
+        try { android.widget.Toast.makeText(getContext(), NovaListenHidden.TOAST_HIDDEN, android.widget.Toast.LENGTH_SHORT).show(); }
+        catch (Exception ignored) { }
+        if (host != null) host.onNovaHiddenByUser();
         requestLayout();
         invalidate();
     }

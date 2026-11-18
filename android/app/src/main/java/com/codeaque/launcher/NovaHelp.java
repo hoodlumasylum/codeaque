@@ -11,7 +11,7 @@ public final class NovaHelp {
 
     public static final String GREETING = "Hi, I'm Nova. I can help with CodeAque on this phone — updates, Kids mode, search, Screen Time, the parent PIN, and a few other Settings. If Smarter Nova is on I can look up a short fact when I'm not sure. I don't collect data.";
 
-    public static final String LIMITS = "I know simple CodeAque help stored on this phone. If Smarter Nova is on I can look up a short fact when a question isn't already here. I don't use an account. Licence details are in About. Nova over other games needs a parent PIN and Android's Display over other apps permission — some phones, full-screen games, or Kids lock may still hide or block me.";
+    public static final String LIMITS = "I know simple CodeAque help stored on this phone. If Smarter Nova is on I can look up a short fact when a question isn't already here. I don't use an account. Licence details are in About. I stay in CodeAque — I don't sit over other apps. Double-tap hides me until you turn Show Nova on in the Nova tab.";
 
     public static final String KIDS_GREETING = "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.";
 
@@ -64,7 +64,7 @@ public final class NovaHelp {
     }
 
     public static String[] chips() {
-        return new String[] { "How do I update?", "Kids mode", "Search", "Screen Time", "Parent PIN", "Nova over games" };
+        return new String[] { "How do I update?", "Kids mode", "Search", "Screen Time", "Parent PIN", "Nova" };
     }
 
     /** Learning + games help only (jokes have their own button). */
@@ -126,9 +126,9 @@ public final class NovaHelp {
         if (has(q, "change pin", "changepin", "new pin", "parent pin", "the pin", "pin"))
             return "The parent PIN protects Kids mode, Screen Time, and other grown-up Settings. Change it in Settings > Change PIN (you'll enter the current PIN first). If Kids or Lock mode is on, grown-up tiles ask for the PIN. Don't share it with the child.";
         if (has(q, "overlay", "over other", "over games", "display over", "bubble over", "float", "system_alert", "draw over"))
-            return "Nova can sit in the CodeAque corner without any extra permission. Showing her over other games is optional and off by default. A parent turns it on in Settings > Nova (PIN), then grants Android's Display over other apps permission. It stays off while Kids mode is on. Some phones, full-screen or lock-task games, or OEM game modes may still cover or block the bubble. You can revoke the permission in Android Settings at any time.";
+            return "Nova stays in CodeAque and does not sit over other apps. Double-tap hides her until you turn Show Nova on in the Nova tab (also in Kids mode). Keep listening while hidden is optional and off unless you turn it on — then she can hear you and answer by voice while hidden, even in a game, without drawing over it.";
         if (has(q, "hide nova", "turn off nova", "remove nova", "show nova", "where is nova"))
-            return "Nova is the helper in the corner of CodeAque, including in Kids mode. Tap her to open Chat, tap again or Back to close. Drag her to move her. Show or hide her in Settings > Nova. That does not need a PIN. Showing her over other games does, and is off in Kids mode.";
+            return "Nova is the helper in the corner of CodeAque, including in Kids mode. Tap her to open Chat, tap again or Back to close. Drag her to move her. Double-tap hides her until you turn Show Nova on in the Nova tab. That does not need a PIN.";
         if (has(q, "cover", "box art", "boxart", "poster", "artwork", "screenshot"))
             return "Game tiles fill the cover edge-to-edge. Art comes from the game's icon, a saved screenshot, or downloaded box art for some retro files. If a cover looks wrong, try Rescan for games in Settings, or add a game folder for retro files.";
         if (has(q, "wifi", "wi-fi", "internet", "network"))
@@ -143,7 +143,7 @@ public final class NovaHelp {
             return "Nova has no account and no API key. Local answers are written into CodeAque. If Smarter Nova is on, a question that isn't already on the phone may look up a short fact; licence details are in About. I don't collect what you type. Speech, if you use it, uses the phone's own recognizer and voice.";
         if (has(q, "scroll", "smooth", "stutter", "lag"))
             return "The home rows should still scroll smoothly — Nova is drawn in her own corner view, not on the game-row scroller. You can hide her in Settings > Nova if you want the corner clear.";
-        return "I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova over games. " + LIMITS;
+        return "I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova. " + LIMITS;
     }
 
     static String norm(String s) {

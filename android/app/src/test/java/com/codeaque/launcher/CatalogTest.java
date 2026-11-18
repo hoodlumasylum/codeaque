@@ -73,7 +73,7 @@ public class CatalogTest {
                 && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(kr).items.get(0) == Catalog.ROBLOX
                 && kst < 0 && Catalog.kidsBlocked(Catalog.PLAY_STORE), "kids mode rows");
         for (Catalog.Category k : km) for (Catalog.Item i : k.items)
-            check(!i.isRom() && !Catalog.cloudGaming(i) && (!i.isAction() || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin")), "kids mode has only Android games: " + i.label);
+            check(!i.isRom() && !Catalog.cloudGaming(i) && (!i.isAction() || i.action.startsWith("roblox:") || i.action.equals("goto:roblox") || i.action.equals("wifi") || i.action.equals("update") || i.action.equals("kthemes") || i.action.equals("adultpin") || i.action.equals("settingspin") || i.action.equals("nova") || i.action.equals("novashow") || i.action.equals("novalistenhidden")), "kids mode has only Android games: " + i.label);
         playArtChecks();
         check(c.get(0).items.get(7) == Catalog.MARVEL_RIVALS && Catalog.indexOf(km, "kcloud") < 0, "Marvel Rivals on Featured, not in Kids");
         check(Catalog.RIVALS_GFN.equals("https://play.geforcenow.com/games?game-id=4b44eb06-3d68-4ca0-92b8-ce4ffd20dff4&utm_source=codeaque&utm_campaign=launcher"), "GFN deep link");
@@ -368,7 +368,7 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.containsAll(java.util.List.of("ksearch", "kpuzzle", "kracing", "kadventure", "klearning", "kstyle", "kroblox", "kadded", "kthemes", "kwifi", "kparent"))
+                    check(ids.containsAll(java.util.List.of("ksearch", "kpuzzle", "kracing", "kadventure", "klearning", "kstyle", "kroblox", "kadded", "kthemes", "kwifi", "knova", "kparent"))
                             && !ids.contains("kcloud") && !ids.contains("kplay") && !ids.contains("kgames") && !ids.contains("retro") && !ids.contains("dreamcast") && !ids.contains("psp"), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
@@ -1028,7 +1028,7 @@ public class CatalogTest {
         PlaySearch.Hit teen = new PlaySearch.Hit("com.example.teengame", "Made-up Teen Game", 12);
         check(!KidsPlay.ageFilteredGet(teen.item(), false, false) && KidsPlay.ageFilteredGet(teen.item(), false, true), "search PEGI 12 follows Kids 12+");
 
-        check(LockPin.needsPin("installpin") && LockPin.needsPin("novaoverlay"), "Ask PIN to install and Nova-over-games need the PIN when Lock mode is on");
+        check(LockPin.needsPin("installpin") && !LockPin.needsPin("novashow") && !LockPin.needsPin("novalistenhidden"), "Ask PIN to install still needs the PIN; Show Nova and listen-while-hidden do not");
         check(!LockPin.needsPin("nova") && LockPin.needsPin("kidsoff") && LockPin.needsPin("screentime") && !LockPin.needsPin("update") && !LockPin.needsPin("kids"), "Nova settings tile is not lock-gated; leaving Kids and Screen Time still are; entering Kids and Update are not");
 
         String a = NovaHelp.answer("How do I update?");
@@ -1076,7 +1076,7 @@ public class CatalogTest {
 
         String kg = NovaHelp.answer("", true);
         check(kg.equals(NovaHelp.KIDS_GREETING) && !NovaHelp.kidsUnsafe(kg), "kids greeting");
-        for (String q : new String[]{"Find a game", "How do I play?", "Learning", "search", "How do I update?", "parent PIN", "leave Kids mode", "Screen Time", "Nova over games", "sideload"}) {
+        for (String q : new String[]{"Find a game", "How do I play?", "Learning", "search", "How do I update?", "parent PIN", "leave Kids mode", "Screen Time", "Nova", "sideload"}) {
             String ka = NovaHelp.answer(q, true);
             check(!NovaHelp.kidsUnsafe(ka), "kids answer is safe for: " + q + " -> " + ka);
             check(!ka.toLowerCase().contains("http") && !ka.contains("1234"), "no links or default PIN in kids answer: " + q);
@@ -1182,14 +1182,14 @@ public class CatalogTest {
         check(parts.length == 3 && parts[0].startsWith("Hello") && parts[2].contains("Nova"), "sentence split keeps the marks");
         check(NovaTtsVoice.sentences("CodeAque 0.10.54 is ready.").length == 1, "a version number is not a sentence break");
         check(NovaTtsVoice.estimateMs("Hi") > 500 && NovaTtsVoice.estimateMs("one two three four") > NovaTtsVoice.estimateMs("one"), "longer answers last longer");
-        check(!LockPin.needsPin("novashow") && !LockPin.needsPin("novavoice") && !LockPin.needsPin("novasmarter") && !LockPin.needsPin("novahide") && LockPin.needsPin("novaoverlay"),
+        check(!LockPin.needsPin("novashow") && !LockPin.needsPin("novavoice") && !LockPin.needsPin("novasmarter") && !LockPin.needsPin("novahide") && !LockPin.needsPin("novalistenhidden"),
                 "Nova show/voice/smarter/hide are not lock-gated; overlay still is");
         List<Catalog.Category> cats54 = Catalog.categories();
         int ni = Catalog.indexOf(cats54, "nova");
         check(ni > 0 && "Nova".equals(cats54.get(ni).label) && cats54.get(ni).items.size() >= 5, "grown-ups Settings has a Nova section");
         java.util.List<String> na = new java.util.ArrayList<>();
         for (Catalog.Item i : cats54.get(ni).items) na.add(i.action);
-        check(na.contains("nova") && na.contains("novashow") && na.contains("novavoice") && na.contains("novasmarter") && na.contains("novahide") && na.contains("novaoverlay"),
+        check(na.contains("nova") && na.contains("novashow") && na.contains("novavoice") && na.contains("novasmarter") && na.contains("novahide") && na.contains("novalistenhidden") && !na.contains("novaoverlay"),
                 "Nova section has the panel, toggles, hide and overlay");
 
         NovaAnim.State ex = new NovaAnim.State();
@@ -1259,8 +1259,9 @@ public class CatalogTest {
         // 0.10.57: always fall back to system TTS; don't start the mic mid-utterance;
         // the mouth flaps from a timer while talking.
         check(!NovaVoiceGate.useOnDevice(false, false, "kokoro-af_heart"), "no files: use system TTS");
-        check(!NovaVoiceGate.useOnDevice(true, false, "kokoro-af_heart"), "files present but engine not loaded: use system TTS");
+        check(NovaVoiceGate.useOnDevice(true, false, "kokoro-af_heart"), "pack on disk: try Heart and load the engine (do not require a prior load)");
         check(NovaVoiceGate.useOnDevice(true, true, "kokoro-af_heart"), "loaded Heart voice may be used");
+        check(NovaVoiceStatus.shouldTryOnDevice(true, "kokoro-af_heart") && !NovaVoiceStatus.shouldTryOnDevice(false, "kokoro-af_heart"), "try Heart only when the pack is on disk");
         check(!NovaVoiceGate.canStartListen(true, true, true, false, false), "do not start the mic while she is talking");
         check(!NovaVoiceGate.canStartListen(true, true, false, true, false), "do not start the mic while speech is pending");
         check(NovaVoiceGate.canStartListen(true, true, false, false, false), "mic may start after she finishes");
@@ -1272,6 +1273,49 @@ public class CatalogTest {
         check(lips.mouth > 0.05f, "the mouth also follows playback amplitude");
         NovaAnim.tickTalk(lips, 600, false);
         check(lips.mouth < 0.5f, "the mouth eases shut when she stops");
+
+
+        // 0.10.58: overlay gone; double-tap hides until Show Nova; listen after text mode;
+        // optional listen-while-hidden; Heart is tried whenever the pack is on disk;
+        // slower default speed and clear status lines.
+        List<Catalog.Category> kn = Catalog.kidsMode();
+        int knova = Catalog.indexOf(kn, "knova");
+        int kpar = Catalog.indexOf(kn, "kparent");
+        check(knova >= 0 && kpar == kn.size() - 1 && knova == kpar - 1, "Kids mode has a Nova tab before Grown-ups");
+        Catalog.Category novaTab = kn.get(knova);
+        boolean hasShow = false, hasListen = false, hasPanel = false;
+        for (Catalog.Item it : novaTab.items) {
+            if ("novashow".equals(it.action)) hasShow = true;
+            if ("novalistenhidden".equals(it.action)) hasListen = true;
+            if ("nova".equals(it.action)) hasPanel = true;
+        }
+        check(hasShow && hasListen && hasPanel, "Kids Nova tab has Show Nova and Keep listening while hidden");
+        check(!NovaListenHidden.switchOn(null) && !NovaListenHidden.switchOn(Boolean.FALSE), "Keep listening while hidden defaults off");
+        check(NovaListenHidden.isHidden(false, false) && !NovaListenHidden.isHidden(true, false), "Show Nova off means she is hidden");
+        check(NovaListenHidden.shouldRun(true, true, true) && !NovaListenHidden.shouldRun(false, true, true), "hidden listen runs only with the switch on");
+        check(NovaListenHidden.canStartFromUser(true, true, true) && !NovaListenHidden.canStartFromUser(true, false, true), "start hidden listen only in the foreground");
+        check(NovaListenHidden.canListenNow(true, false) && !NovaListenHidden.canListenNow(true, true), "mic stays off while she is speaking");
+        check(NovaListenHidden.shouldListenAfterTextOff(true, true, false, false), "leaving text mode starts listen when she is not talking");
+        check(!NovaListenHidden.shouldListenAfterTextOff(true, true, true, false), "leaving text mode waits if she is still talking");
+        check(NovaListenHidden.wantsVoiceLoopAfterTextOff(true, true), "leaving text mode enters the voice loop");
+        check(NovaPlace.isImmediateDoubleTap(1000, 1200, NovaPlace.DOUBLE_MS), "a second tap in the window is a double-tap");
+        check(!NovaPlace.isImmediateDoubleTap(1000, 2000, NovaPlace.DOUBLE_MS), "a late second tap is not a double-tap");
+        check(!NovaPlace.isImmediateDoubleTap(0, 1200, NovaPlace.DOUBLE_MS), "the first tap is a single tap and fires immediately");
+        check(NovaVoiceStatus.of(false, false, false, 0, null).equals(NovaVoiceStatus.PHONE), "status: Using phone voice");
+        check(NovaVoiceStatus.of(false, false, true, 42, null).equals("Downloading 42%"), "status: Downloading x%");
+        check(NovaVoiceStatus.of(true, true, false, 0, null).equals(NovaVoiceStatus.HEART_READY), "status: Heart ready");
+        check(NovaVoiceStatus.of(true, false, false, 0, "lib failed").equals("Heart failed: lib failed"), "status: Heart failed: reason");
+        check(NovaVoiceStatus.testResult(true).equals("Spoke with Heart") && NovaVoiceStatus.testResult(false).equals("Spoke with the phone's voice"), "test voice names the engine");
+        check(Math.abs(NovaVoiceStatus.kokoroSpeed(null) - 0.85f) < 1e-4, "Kokoro default speed is 0.85");
+        check(Math.abs(NovaVoiceStatus.systemRate(null) - 0.90f) < 1e-4, "system TTS default rate is 0.90");
+        check(Math.abs(NovaVoiceStatus.progressToSpeed(NovaVoiceStatus.speedToProgress(0.85f)) - 0.85f) < 1e-4, "speed slider round-trips 0.85");
+        check(NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_CLIENT)
+                && NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_RECOGNIZER_BUSY)
+                && NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_NO_MATCH)
+                && NovaVoiceGate.shouldRecycleRecognizer(NovaVoiceGate.ERR_SPEECH_TIMEOUT),
+                "recycle the recognizer after client/busy/no-match/timeout");
+        check(NovaListenHidden.TOAST_HIDDEN.contains("Nova tab"), "hide toast points at the Nova tab");
+
 
     }
 

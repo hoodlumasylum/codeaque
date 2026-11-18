@@ -66,7 +66,7 @@ public final class NovaKokoro {
 
     public static boolean usesOnDevice(Context c, SharedPreferences p) {
         if (c == null) return false;
-        return NovaVoiceGate.useOnDevice(filesReady(c), isLoaded(), selectedId(p));
+        return NovaVoiceStatus.shouldTryOnDevice(filesReady(c), selectedId(p));
     }
 
     public static String lastError() { return lastError; }
@@ -148,12 +148,27 @@ public final class NovaKokoro {
      * Must not run on the UI thread for long lines.
      */
     public static float[] synthesize(String text, int sid) {
+        return synthesize(text, sid, NovaVoiceStatus.DEFAULT_KOKORO);
+    }
+
+    public static float[] synthesize(String text, int sid, float speed) {
         if (text == null || text.trim().isEmpty()) return null;
+        float sp = NovaVoiceStatus.clampSpeed(speed);
         synchronized (LOCK) {
             if (handle == 0) return null;
-            try { return nativeSynthesize(handle, text, sid, 1.0f); }
+            try { return nativeSynthesize(handle, text, sid, sp); }
             catch (Throwable t) { return null; }
         }
+    }
+
+    public static float speedFrom(SharedPreferences p) {
+        if (p == null || !p.contains(NovaVoiceStatus.PREF_SPEED)) return NovaVoiceStatus.DEFAULT_KOKORO;
+        return NovaVoiceStatus.kokoroSpeed(p.getFloat(NovaVoiceStatus.PREF_SPEED, NovaVoiceStatus.DEFAULT_KOKORO));
+    }
+
+    public static float systemRateFrom(SharedPreferences p) {
+        if (p == null || !p.contains(NovaVoiceStatus.PREF_SPEED)) return NovaVoiceStatus.DEFAULT_SYSTEM;
+        return NovaVoiceStatus.systemRate(p.getFloat(NovaVoiceStatus.PREF_SPEED, NovaVoiceStatus.DEFAULT_SYSTEM));
     }
 
     public static void deleteFiles(Context c) {
