@@ -1255,6 +1255,24 @@ public class CatalogTest {
         check(NovaLlmFilter.filter("See https://example.com for more.") == null, "filter rejects links");
         check(NovaLlmFilter.firstSentences("One. Two. Three.", 2).equals("One. Two."), "keeps at most two sentences");
 
+
+        // 0.10.57: always fall back to system TTS; don't start the mic mid-utterance;
+        // the mouth flaps from a timer while talking.
+        check(!NovaVoiceGate.useOnDevice(false, false, "kokoro-af_heart"), "no files: use system TTS");
+        check(!NovaVoiceGate.useOnDevice(true, false, "kokoro-af_heart"), "files present but engine not loaded: use system TTS");
+        check(NovaVoiceGate.useOnDevice(true, true, "kokoro-af_heart"), "loaded Heart voice may be used");
+        check(!NovaVoiceGate.canStartListen(true, true, true, false, false), "do not start the mic while she is talking");
+        check(!NovaVoiceGate.canStartListen(true, true, false, true, false), "do not start the mic while speech is pending");
+        check(NovaVoiceGate.canStartListen(true, true, false, false, false), "mic may start after she finishes");
+        NovaAnim.State lips = new NovaAnim.State();
+        NovaAnim.reset(lips, 0);
+        NovaAnim.tickTalk(lips, 200, true);
+        check(lips.talking && lips.mouth > 0.05f, "the mouth opens from a timer while talking");
+        NovaAnim.tickTalk(lips, 400, true, 0.6f);
+        check(lips.mouth > 0.05f, "the mouth also follows playback amplitude");
+        NovaAnim.tickTalk(lips, 600, false);
+        check(lips.mouth < 0.5f, "the mouth eases shut when she stops");
+
     }
 
 }

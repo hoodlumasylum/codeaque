@@ -31,7 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.57
+
+**She speaks straight away, and her mouth moves.** Until Nova's own voice is downloaded, she uses the phone's text-to-speech, and she does that even if the download is missing or the on-device engine cannot start. Her mouth moves whenever she is speaking, from a talking timer (and from the playback volume once her own voice is installed). Opening Chat no longer starts the mic while she is still saying hello, which could stop the phone's voice and freeze her mouth.
+
+**A clear button to get her voice.** If her own voice is not on the phone, Chat shows a short note and a "Get Nova's voice" button, with download progress and an error if it fails. The same download is at the top of Grown-ups > Nova, not hidden under the long explanation.
+
+These changes have not been tried on a real phone, a K56, or a Win600. The listen-while-speaking guard, the system-TTS fallback rule, and the mouth timer were unit-tested here. Real-device speech, the 360 MB download, and mouth sync on a phone remain untested.
+
 ## What's new in 0.10.56
+
 
 **Nova's own voice.** A grown-up can download Nova's voice in Grown-ups > Nova (about 360 MB, not bundled in the app). The default is a warm American English voice from the Apache-2.0 Kokoro model (Heart). Bella and Emma are optional extras that use the same download, with a Preview button. Until it is downloaded, or if it cannot load, she uses the phone's text-to-speech. Her mouth still moves with the speech (from the playback volume for the new voice). This is Nova's voice only.
 

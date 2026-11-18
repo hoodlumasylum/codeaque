@@ -58,13 +58,15 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     final SharedPreferences prefs;
     final java.util.Random rng = new java.util.Random();
     LinearLayout panel;
-    TextView answerView, muteLabel;
+    TextView answerView, muteLabel, voiceOfferStatus;
+    Button voiceOfferBtn;
     EditText askField;
     Button micBtn, typeBtn, hideBtn;
     TextToSpeech tts;
     NovaSpeech speech;
     String pendingSpeak, lastAnswer = NovaHelp.GREETING;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady, deviceVoice;
+    int ttsInitTries;
     final RectF tabHit = new RectF();
     boolean dragging, snapping, pinching, hidden, big, tucked, downOnMute, downOnBubble, downOnTab, placed;
     boolean voiceLoop, awaitingAnswer, micAsked;
@@ -203,6 +205,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         askField = null;
         answerView = null;
         muteLabel = null;
+        voiceOfferBtn = null;
+        voiceOfferStatus = null;
         micBtn = null;
         typeBtn = null;
         hideBtn = null;
@@ -336,6 +340,16 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         foot.setTextColor(0xFF8A98A4);
         foot.setTextSize(11);
         panel.addView(foot);
+
+        // 0.10.57: a clear offer to download Nova's voice when it is not installed.
+        voiceOfferStatus = new TextView(getContext());
+        voiceOfferStatus.setTextColor(0xFFE8C872);
+        voiceOfferStatus.setTextSize(12);
+        voiceOfferStatus.setPadding(0, pad / 2, 0, 0);
+        panel.addView(voiceOfferStatus);
+        voiceOfferBtn = btn("Get Nova's voice", new NovaVoiceOfferClick(this));
+        panel.addView(voiceOfferBtn);
+        refreshVoiceOffer();
 
         // Ask / Close sit under the answer and foot so they stay in the measured panel box.
         LinearLayout actions = new LinearLayout(getContext());
@@ -489,6 +503,54 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         invalidate();
     }
 
+    void refreshVoiceOffer() {
+        if (voiceOfferBtn == null || voiceOfferStatus == null) return;
+        if (NovaKokoro.filesReady(getContext())) {
+            voiceOfferBtn.setVisibility(GONE);
+            String err = NovaKokoro.lastError();
+            if (err != null && !NovaKokoro.isLoaded()) {
+                voiceOfferStatus.setVisibility(VISIBLE);
+                voiceOfferStatus.setText("Nova's voice is on this phone but didn't start, so she is using the phone's voice.");
+            } else {
+                voiceOfferStatus.setVisibility(GONE);
+            }
+            return;
+        }
+        voiceOfferBtn.setVisibility(VISIBLE);
+        voiceOfferBtn.setEnabled(true);
+        voiceOfferStatus.setVisibility(VISIBLE);
+        voiceOfferStatus.setText("Nova is using the phone's voice for now. You can download her own voice (about 360 MB) when you're on Wi-Fi.");
+    }
+
+    void onVoiceOfferProgress(int percent) {
+        if (voiceOfferStatus != null) {
+            voiceOfferStatus.setVisibility(VISIBLE);
+            voiceOfferStatus.setText("Downloading Nova's voice… " + percent + "%");
+        }
+        if (voiceOfferBtn != null) voiceOfferBtn.setEnabled(false);
+    }
+
+    void onVoiceOfferDone(boolean ok, String error) {
+        if (ok) {
+            if (voiceOfferStatus != null) {
+                voiceOfferStatus.setVisibility(VISIBLE);
+                voiceOfferStatus.setText("Nova's voice is ready. She will use it the next time she speaks.");
+            }
+            if (voiceOfferBtn != null) voiceOfferBtn.setVisibility(GONE);
+            // Load in the background so the next line can use it; she still speaks if this fails.
+            new Thread(new NovaVoiceWarmup(getContext()), "nova-voice-load").start();
+        } else {
+            if (voiceOfferStatus != null) {
+                voiceOfferStatus.setVisibility(VISIBLE);
+                voiceOfferStatus.setText(error != null ? error : "The download didn't finish. You can try again.");
+            }
+            if (voiceOfferBtn != null) {
+                voiceOfferBtn.setVisibility(VISIBLE);
+                voiceOfferBtn.setEnabled(true);
+            }
+        }
+    }
+
     boolean muted() { return prefs != null && prefs.getBoolean(PREF_KIDS_MUTE, false); }
 
     void setMuted(boolean on) {
@@ -520,7 +582,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         voiceLoop = true;
         refreshVoiceButtons();
         greet();
-        if (muted() || pendingSpeak == null) postDelayed(new NovaListenSoon(this), 400);
+        // 0.10.57: if she is muted, listen straight away. Otherwise wait until
+        // speech ends (maybeResumeListen). Starting the mic mid-utterance ducks
+        // or stops TTS on many phones and freezes the mouth.
+        if (muted()) postDelayed(new NovaListenSoon(this), 400);
     }
 
     void exitVoiceMode() {
@@ -542,7 +607,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     /** After she finishes speaking, listen again if the conversation loop is still on. */
     public void maybeResumeListen() {
         if (!voiceLoop || !expanded || !voiceTalkOn() || awaitingAnswer) return;
-        if (talking) return;
+        if (!NovaVoiceGate.canStartListen(true, true, talking, pendingSpeak != null, muted())) return;
         if (speech != null && speech.isListening()) return;
         if (host != null && !host.novaMicAllowed()) {
             if (!micAsked) { micAsked = true; host.novaRequestMic(); }
@@ -563,15 +628,26 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (s == null || s.isEmpty()) return;
         if (muted()) return;
         stopListen();   // 0.10.55: do not hear herself while speaking
+        // 0.10.57: start the mouth now, even before TTS is ready, so it always
+        // moves while she is meant to be talking (system TTS or on-device).
+        beginTalk(s);
+        // Only use Kokoro if the pack is on disk AND the engine already loaded.
+        // Otherwise always speak through the phone's TextToSpeech.
         if (NovaKokoro.usesOnDevice(getContext(), prefs)) {
-            pendingSpeak = null;
-            talking = true;
-            deviceVoice = true;
-            talkUntil = android.os.SystemClock.uptimeMillis() + NovaTtsVoice.estimateMs(s);
             new Thread(new NovaVoiceSpeakJob(this, s, NovaKokoro.speakerId(prefs)), "nova-voice").start();
             return;
         }
         speakSystem(s);
+    }
+
+    /** Mark her as talking so the mouth animates from a timer even if audio is late. */
+    void beginTalk(String s) {
+        talking = true;
+        deviceVoice = false;
+        talkUntil = android.os.SystemClock.uptimeMillis() + NovaTtsVoice.estimateMs(s);
+        st.talking = true;
+        startAnim();
+        invalidate();
     }
 
     /** System TTS path (also the fallback if the on-device voice fails). */
@@ -580,8 +656,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (muted()) return;
         deviceVoice = false;
         pendingSpeak = s;
+        beginTalk(s);
         ensureTts();
         if (ttsReady) flushSpeak();
+        else android.util.Log.i("NovaVoice", "waiting for system TTS to start");
     }
 
     public void onDeviceVoiceStart() {
@@ -595,7 +673,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onDeviceVoiceAmp(float amp) {
-        st.mouth = amp;
+        st.talkAmp = amp;
         st.talking = true;
         talking = true;
         deviceVoice = true;
@@ -626,11 +704,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
                 tts.setOnUtteranceProgressListener(new NovaTtsListen(this));
             } catch (Exception ignored) { }
             ttsReady = true;
+            ttsInitTries = 0;
             flushSpeak();
         } else {
             ttsReady = false;
-            pendingSpeak = null;
-            if (voiceLoop) postDelayed(new NovaListenSoon(this), 400);
+            android.util.Log.w("NovaVoice", "system TTS init failed, status=" + status + " try=" + ttsInitTries);
+            if (tts != null) {
+                try { tts.shutdown(); } catch (Exception ignored) { }
+                tts = null;
+            }
+            ttsInitTries++;
+            if (pendingSpeak != null && ttsInitTries < 2) {
+                tts = new TextToSpeech(getContext(), new NovaTtsInit(this));
+            } else if (voiceLoop && !talking) {
+                postDelayed(new NovaListenSoon(this), 400);
+            }
         }
     }
 
@@ -679,9 +767,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
                 try { tts.playSilentUtterance(NovaTtsVoice.PAUSE_MS, TextToSpeech.QUEUE_ADD, "nova-" + speakSeq + "-s" + i); }
                 catch (Exception ignored) { }
             }
-            tts.speak(parts[i], mode, null, id);
+            int ok = tts.speak(parts[i], mode, null, id);
+            if (ok == TextToSpeech.ERROR) {
+                android.util.Log.w("NovaVoice", "tts.speak failed, retrying with the default language");
+                try {
+                    tts.setLanguage(Locale.getDefault());
+                    ok = tts.speak(parts[i], mode, null, id);
+                } catch (Exception ignored) { }
+            }
+            if (ok == TextToSpeech.ERROR) {
+                android.util.Log.w("NovaVoice", "system TTS could not speak this line");
+            }
             talkId = id;   // last sentence; onDone of this one ends the mouth + may resume listen
         }
+        talking = true;
+        startAnim();
     }
 
     public void onTtsStart(String id) {
@@ -796,12 +896,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (downOnBubble && !dragging && !pinching && !hidden && !ignoreUntilUp && now - downAt >= longPressMs) startDrag();
         if (snapping) tickSnap(now);
         NovaAnim.tick(st, now, dt, rng.nextInt());
-        if (deviceVoice) {
-            st.talking = talking && !(kids && muted());
-            // Mouth opening comes from playback amplitude (onDeviceVoiceAmp).
-        } else {
-            NovaAnim.tickTalk(st, now, talking && !(kids && muted()));
-        }
+        boolean lips = talking && !(kids && muted());
+        // 0.10.57: always drive the mouth from a talking timer so it moves for
+        // system TTS as well as the on-device voice. Amplitude, if present, is
+        // already in st.mouth and tickTalk will ease toward a flapping target.
+        NovaAnim.tickTalk(st, now, lips);
         invalidate();
         choreo.postFrameCallbackDelayed(this, 33);
     }

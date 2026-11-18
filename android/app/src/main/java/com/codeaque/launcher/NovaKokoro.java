@@ -3,6 +3,8 @@ package com.codeaque.launcher;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import android.util.Log;
+
 import java.io.File;
 
 /**
@@ -28,6 +30,8 @@ public final class NovaKokoro {
     private static long handle;
     private static int sampleRate;
     private static final Object LOCK = new Object();
+    public static final String TAG = "NovaVoice";
+    static String lastError;
 
     private NovaKokoro() {}
 
@@ -61,10 +65,11 @@ public final class NovaKokoro {
     }
 
     public static boolean usesOnDevice(Context c, SharedPreferences p) {
-        if (c == null || !filesReady(c)) return false;
-        String id = selectedId(p);
-        return id != null && id.startsWith("kokoro-");
+        if (c == null) return false;
+        return NovaVoiceGate.useOnDevice(filesReady(c), isLoaded(), selectedId(p));
     }
+
+    public static String lastError() { return lastError; }
 
     public static synchronized boolean loadLibrary() {
         if (libTried) return libOk;
@@ -74,8 +79,12 @@ public final class NovaKokoro {
             System.loadLibrary("sherpa-onnx-c-api");
             System.loadLibrary("nova-tts");
             libOk = true;
-        } catch (Throwable t) {
+            lastError = null;
+            Log.i(TAG, "native TTS libraries loaded");
+        } catch (Throwable e) {
             libOk = false;
+            lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
+            Log.w(TAG, "native TTS libraries failed to load: " + lastError, e);
         }
         return libOk;
     }
@@ -95,16 +104,29 @@ public final class NovaKokoro {
             String lex = new File(d, LEX_US).getAbsolutePath() + ","
                     + new File(d, LEX_GB).getAbsolutePath();
             if (!new File(d, LEX_GB).isFile()) lex = new File(d, LEX_US).getAbsolutePath();
-            long h = nativeLoad(
-                    new File(d, MODEL).getAbsolutePath(),
-                    new File(d, VOICES).getAbsolutePath(),
-                    new File(d, TOKENS).getAbsolutePath(),
-                    lex);
-            if (h == 0) return false;
-            handle = h;
-            sampleRate = nativeSampleRate(h);
-            if (sampleRate <= 0) sampleRate = 24000;
-            return true;
+            try {
+                long h = nativeLoad(
+                        new File(d, MODEL).getAbsolutePath(),
+                        new File(d, VOICES).getAbsolutePath(),
+                        new File(d, TOKENS).getAbsolutePath(),
+                        lex);
+                if (h == 0) {
+                    lastError = "The voice engine did not start.";
+                    Log.w(TAG, lastError);
+                    return false;
+                }
+                handle = h;
+                sampleRate = nativeSampleRate(h);
+                if (sampleRate <= 0) sampleRate = 24000;
+                lastError = null;
+                Log.i(TAG, "Kokoro voice loaded, sampleRate=" + sampleRate);
+                return true;
+            } catch (Throwable e) {
+                lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
+                Log.w(TAG, "Kokoro load failed: " + lastError, e);
+                handle = 0;
+                return false;
+            }
         }
     }
 

@@ -25,6 +25,7 @@ public final class NovaAnim {
         public float brow;      // 0 rest … 1 slightly raised
         public float sway;      // degrees, a slow lean (hair / shoulders)
         public boolean talking;
+        public float talkAmp; // <0 = timer flap, >=0 = playback amplitude
         public boolean doublePending;
         long blinkAt, nextBlink, nextGaze, doubleAt, nextExpr, exprUntil;
         float gazeTx, gazeTy, smileT, browT;
@@ -42,6 +43,7 @@ public final class NovaAnim {
         s.brow = s.browT = 0;
         s.sway = 0;
         s.talking = false;
+        s.talkAmp = -1f;
         s.doublePending = false;
         s.blinkAt = 0;
         s.nextBlink = now + 1800;
@@ -151,16 +153,31 @@ public final class NovaAnim {
 
     /** Flap the mouth while talking; ease shut when idle. Rest (photo) lids/lips stay closed. */
     public static void tickTalk(State s, long now, boolean talking) {
+        tickTalk(s, now, talking, s == null ? -1f : s.talkAmp);
+    }
+
+    /**
+     * Flap the mouth while talking. amp &lt; 0 uses a timer so system TTS still
+     * moves her mouth; amp &gt;= 0 (from playback) is used as the opening.
+     */
+    public static void tickTalk(State s, long now, boolean talking, float amp) {
         if (s == null) return;
         s.talking = talking;
         if (!talking) {
+            s.talkAmp = -1f;
             s.mouth += (0f - s.mouth) * 0.4f;
             if (s.mouth < 0.02f) s.mouth = 0f;
             return;
         }
-        float a = (float) (0.55 + 0.45 * Math.sin(now / 90.0 * 2.0 * Math.PI));
-        float b = (float) (0.5 + 0.5 * Math.sin(now / 145.0 * 2.0 * Math.PI + 0.8));
-        float target = clamp(a * b, 0.08f, 1f);
+        float target;
+        if (amp >= 0f) {
+            s.talkAmp = amp;
+            target = clamp(0.12f + amp * 0.95f, 0.10f, 1f);
+        } else {
+            float a = (float) (0.55 + 0.45 * Math.sin(now / 90.0 * 2.0 * Math.PI));
+            float b = (float) (0.5 + 0.5 * Math.sin(now / 145.0 * 2.0 * Math.PI + 0.8));
+            target = clamp(a * b, 0.08f, 1f);
+        }
         s.mouth += (target - s.mouth) * 0.45f;
     }
 }

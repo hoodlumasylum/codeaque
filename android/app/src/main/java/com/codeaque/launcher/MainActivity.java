@@ -1861,6 +1861,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         android.widget.LinearLayout box = new android.widget.LinearLayout(this);
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding(pad, pad / 2, pad, 0);
+        // 0.10.57: put the voice download first so it is not hidden under the long note.
+        NovaSettingsUi.add(this, box, prefs, d);
         android.widget.TextView msg = new android.widget.TextView(this);
         msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Open her and, if Voice talk is on, she greets you and then listens; say another question after she answers, or tap Type instead / Back to type, or Close to leave. Double-tap tucks her into a corner (still her face, smaller). Hide in Chat, or Hide Nova here, leaves a gold tab; turn Show Nova off to hide her completely. Smarter Nova can look up a short fact when she isn't sure, or use an optional on-device brain if a grown-up downloads it. Nova's voice can be downloaded too. Licence details are in About. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
         msg.setPadding(0, 0, 0, pad);
@@ -1889,7 +1891,6 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         cred.setText("Smarter Nova may look up a short fact when she isn't sure, or use an optional on-device brain if you download it. Licence details are in About.");
         cred.setPadding(0, pad / 2, 0, pad / 2);
         box.addView(cred);
-        NovaSettingsUi.add(this, box, prefs, d);
         android.widget.ScrollView sc = new android.widget.ScrollView(this);
         sc.addView(box);
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
