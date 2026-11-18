@@ -278,7 +278,11 @@ public final class NovaSpeech {
             fail("I didn't catch that. Try again, or type it.");
             return;
         }
-        final String said = text.trim();
+        final String said = NovaAsrText.tidy(text);
+        if (said.isEmpty()) {
+            fail("I didn't catch that. Try again, or type it.");
+            return;
+        }
         if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false, gen));
     }
 
@@ -286,7 +290,9 @@ public final class NovaSpeech {
         if (destroyed || !listening) return;
         String text = firstResult(b);
         if (text == null || text.trim().isEmpty()) return;
-        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.PARTIAL, text.trim(), false, listenGen));
+        String said = NovaAsrText.tidy(text);
+        if (said.isEmpty()) return;
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.PARTIAL, said, false, listenGen));
     }
 
     /** Soft errors that should restart listening in a hands-free loop (not a hard failure). */

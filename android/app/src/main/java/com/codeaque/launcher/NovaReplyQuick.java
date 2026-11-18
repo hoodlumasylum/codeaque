@@ -8,11 +8,11 @@ public final class NovaReplyQuick {
     private NovaReplyQuick() {}
 
     /** Listen up to this long when no speech is heard, then stop or switch engine. */
-    public static final long LISTEN_WINDOW_MS = 8000L;
+    public static final long LISTEN_WINDOW_MS = 15000L;
     /** After speech, wait this long for end-of-speech (trailing silence). */
-    public static final long SPEECH_TAIL_MS = 1800L;
+    public static final long SPEECH_TAIL_MS = 1200L;
     /** Hard cap once the user has started speaking. */
-    public static final long LISTEN_MAX_MS = 12000L;
+    public static final long LISTEN_MAX_MS = 15000L;
     /** On-device LLM cap — short spoken answers, not essays. */
     public static final int MAX_TOKENS = 40;
 
@@ -81,7 +81,13 @@ public final class NovaReplyQuick {
 
     /** Peak absolute PCM in 16-bit counts. All-zeros (or near) for the whole window. */
     public static boolean allZeros(int peakAbs, long frames) {
-        if (frames <= 0) return true;
+        return allZeros(peakAbs, frames, false);
+    }
+
+    /** Only when the capture never had a voice-like peak. A moving meter means this must be false. */
+    public static boolean allZeros(int peakAbs, long frames, boolean hadVoice) {
+        if (hadVoice) return false;
+        if (frames <= 0) return false;
         return peakAbs < 8;
     }
 }

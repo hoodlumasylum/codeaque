@@ -87,6 +87,7 @@ public class HomeView extends View {
     /** 0.10.34: swap one row's tiles (Roblox pages) without rebuilding the rest of the home or resetting the scroll. */
     public void replaceRow(String id, List<Catalog.Item> items) {
         cats = Catalog.replaceItems(cats, id, items);
+        tabsDirty = true;
         tile = Math.max(0, Math.min(tile, Math.max(0, items().size() - 1)));
         if (scrollAnim > Math.max(0, items().size())) { scrollAnim = 0; tile = 0; }
         row.focusTile(tile, items().size());
@@ -98,6 +99,7 @@ public class HomeView extends View {
     public void setCategories(List<Catalog.Category> n) {
         String id = cats.get(cat).id;
         cats = n;
+        tabsDirty = true;
         int i = Catalog.indexOf(cats, id);
         cat = i < 0 ? 0 : i; catAnim = cat;
         tile = Math.max(0, Math.min(tile, items().size() - 1));
@@ -111,6 +113,9 @@ public class HomeView extends View {
     private float catAnim = 0, scrollAnim = 0, t = 0, tabScroll, tabScrollTo, tabTotal;
     private float[] tabX, tabW;
     private boolean tabDrag, tabFollow = true;
+    private boolean tabsDirty = true;
+    private int tabsLaidN, tabsLaidW;
+    private float tabsLaidS;
     private long last = 0, lastFrame = 0;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG), stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
@@ -614,7 +619,7 @@ public class HomeView extends View {
                     }
                 }
                 if (tabDrag) {
-                    layoutTabs();
+                    layoutTabsIfNeeded();
                     tabScroll = tabScrollTo = clampTabScroll(tabScroll + (lastTouchX - x));
                     lastTouchX = x;
                     invalidate();
@@ -681,31 +686,41 @@ public class HomeView extends View {
     public void focus(String catId, int i) { cat = Math.max(0, Catalog.indexOf(cats, catId)); tile = i; catAnim = cat; inCats = false; tabFollow = true; invalidate(); notifyRoblox(false); }
 
     // ---------- geometry (scaled from the 1280x720 design) ----------
-    private float catsBottom() { return getHeight() * 0.26f; }
-    private float tabStripTop() { return getHeight() * 0.11f; }
-    private float tabMinGap() { return 16 * s; }
-    private float tabPad() { return 14 * s; }
+    private float catsBottom() { return HomeTabs.stripBot(getHeight()); }
+    private float tabStripTop() { return HomeTabs.stripTop(getHeight()); }
+    private float tabMinGap() { return HomeTabs.GAP * s; }
+    private float tabPad() { return HomeTabs.PAD * s; }
     private float tabMaxScroll() { return Math.max(0, tabTotal - getWidth()); }
     private float clampTabScroll(float v) { float m = tabMaxScroll(); return v < 0 ? 0 : v > m ? m : v; }
 
-    /** Each tab is at least wide enough for its full label; gaps never shrink. */
+    /** Widths are measured only when the category list, width, or scale changes — never per scroll frame. */
+    private void layoutTabsIfNeeded() {
+        int n = cats.size();
+        int w = getWidth();
+        if (!HomeTabs.needsLayout(n, w, s, tabsLaidN, tabsLaidW, tabsLaidS, tabsDirty)
+                && tabX != null && tabX.length == n) return;
+        layoutTabs();
+        tabsLaidN = n;
+        tabsLaidW = w;
+        tabsLaidS = s;
+        tabsDirty = false;
+    }
+
+    /** Each tab is at least wide enough for its single-line label; gaps never shrink. */
     private void layoutTabs() {
         int n = cats.size();
         if (n == 0) { tabX = new float[0]; tabW = new float[0]; tabTotal = 0; return; }
         if (tabX == null || tabX.length != n) { tabX = new float[n]; tabW = new float[n]; }
         p.setTypeface(tfMedium != null ? tfMedium : tfBold);
-        p.setTextSize(20 * s);
+        p.setTextSize(HomeTabs.labelSize(s));
         float x = tabPad();
         for (int i = 0; i < n; i++) {
             float tw = p.measureText(cats.get(i).label);
-            tabW[i] = Math.max(72 * s, tw + 2 * tabPad());
+            tabW[i] = Math.max(HomeTabs.MIN_WIDTH * s, tw + 2 * tabPad());
             tabX[i] = x;
             x += tabW[i] + tabMinGap();
         }
         tabTotal = x - tabMinGap() + tabPad();
-        if (tabFollow) ensureTabInView(cat);
-        tabScrollTo = clampTabScroll(tabScrollTo);
-        tabScroll = clampTabScroll(tabScroll);
     }
     private void ensureTabInView(int i) {
         if (tabX == null || i < 0 || i >= tabX.length) return;
@@ -793,13 +808,15 @@ public class HomeView extends View {
         recordFrame(dt, coast || moving);
         float focusTarget = row.focusTarget(vis, maxScroll);
 
-        layoutTabs();
+        layoutTabsIfNeeded();
         if (!tabDrag) {
             if (tabFollow) ensureTabInView(cat);
+            tabScrollTo = clampTabScroll(tabScrollTo);
             float tdist = tabScrollTo - tabScroll;
             tabScroll += tdist * Math.min(1f, dt * 12f);
             if (Math.abs(tabScrollTo - tabScroll) < 0.5f) tabScroll = tabScrollTo;
         }
+        tabScroll = clampTabScroll(tabScroll);
         boolean freezeChrome = row.busy() && chromeReady && chromeSnap != null && chromeSnap.getWidth() == W && chromeSnap.getHeight() == H;
         if (freezeChrome) {
             p.setShader(null); p.setAlpha(255); p.setFilterBitmap(false);
@@ -1141,30 +1158,37 @@ public class HomeView extends View {
         }
     }
 
-    /** 0.10.46: horizontally scrolling tab strip. Each label keeps its full width and a fixed gap, so
-     *  tabs never overlap or merge; the selected tab is scrolled fully into view (L1/R1 / setCat). */
+    /** 0.10.46: horizontally scrolling tab strip. 0.10.66: fixed height, one-line
+     *  labels, pixel-aligned Y, and no per-scroll remeasure, so a swipe cannot
+     *  bounce the row 1–2 px. The game row stays still by freezing this chrome;
+     *  this row has to move, so its geometry is locked instead. */
     private void categories(Canvas c, int W, int H) {
-        layoutTabs();
-        float y = H * 0.16f, top = tabStripTop(), bot = catsBottom();
+        layoutTabsIfNeeded();
+        float y = HomeTabs.iconY(H), top = tabStripTop(), bot = catsBottom();
+        float size = HomeTabs.iconSize(s);
+        float labY = HomeTabs.labelY(y, s);
+        float labSize = HomeTabs.labelSize(s);
+        float underTop = HomeTabs.underlineTop(H, s);
         c.save();
         c.clipRect(0, top, W, bot);
         for (int i = 0; i < cats.size(); i++) {
             float x = tabX[i] - tabScroll + tabW[i] / 2f;
             if (x + tabW[i] < -20 * s || x - tabW[i] > W + 20 * s) continue;
             float sel = Math.max(0, 1 - Math.abs(catAnim - i));
-            float size = (36 + 10 * sel) * s;
             if (sel > 0.05f) {
                 p.setShader(new RadialGradient(x, y, 50 * s, (((int) (0x55 * sel)) << 24) | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(x, y, 50 * s, p); p.setShader(null);
             }
             int col = i == cat ? (inCats ? GOLD : T.accent) : 0xFFDDE7E1;
             icon(c, cats.get(i).icon, x, y, size, col, i == cat ? 2.6f : 2.2f);
-            // Full, unclipped label (the strip clips only at the screen edges as it scrolls).
-            text(c, cats.get(i).label, x, y + size * 0.5f + 20 * s, (i == cat ? 20 : 16) * s, i == cat ? 0xFFFFFFFF : 0xFFC9D6CF, Paint.Align.CENTER, i == cat);
+            String lab = cats.get(i).label;
+            p.setTextSize(labSize);
+            lab = ellipsize(lab, tabW[i] - 4 * s);
+            text(c, lab, x, labY, labSize, i == cat ? 0xFFFFFFFF : 0xFFC9D6CF, Paint.Align.CENTER, i == cat);
             if (i == cat) {
-                float uw = Math.min(tabW[i] - 8 * s, p.measureText(cats.get(i).label) + 8 * s);
+                float uw = Math.min(tabW[i] - 8 * s, p.measureText(lab) + 8 * s);
                 p.setShader(null); p.setColor(GOLD);
-                c.drawRoundRect(new RectF(x - uw / 2, bot - 6 * s, x + uw / 2, bot - 3 * s), 2 * s, 2 * s, p);
+                c.drawRoundRect(new RectF(x - uw / 2, underTop, x + uw / 2, underTop + 3 * s), 2 * s, 2 * s, p);
             }
         }
         c.restore();

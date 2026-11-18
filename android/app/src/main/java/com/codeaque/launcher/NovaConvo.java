@@ -14,8 +14,8 @@ public final class NovaConvo {
     public static final int SPEAKING = 4;
     public static final int MIC_BUSY = 5;
 
-    public static final long SILENCE_COMPLETE_MS = 1800L;
-    public static final long SILENCE_POSSIBLY_MS = 1500L;
+    public static final long SILENCE_COMPLETE_MS = 1200L;
+    public static final long SILENCE_POSSIBLY_MS = 1200L;
     public static final long SILENCE_MIN_MS = 400L;
     public static final long REPLY_TIMEOUT_MS = 12000L;
 

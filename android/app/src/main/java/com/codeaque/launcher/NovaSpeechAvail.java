@@ -14,7 +14,7 @@ public final class NovaSpeechAvail {
     public static final String NO_SERVICE_BUILTIN =
             "No speech service on this phone, using built-in";
     public static final String NO_SERVICE_NEED_BUILTIN =
-            "No speech service on this phone. You can download built-in listening (about 45 MB).";
+            "No speech service on this phone. You can download built-in listening (" + NovaAsrFiles.SIZE_LABEL + ").";
     public static final String SYSTEM_ERROR_BUILTIN =
             "The phone's speech service isn't working, using built-in";
     public static final String USING_BUILTIN = "Listening with built-in";

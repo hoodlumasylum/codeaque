@@ -52,9 +52,9 @@ Java_com_codeaque_launcher_NovaAsr_nativeLoad(JNIEnv *env, jclass cls,
     config.decoding_method = "greedy_search";
     config.max_active_paths = 4;
     config.enable_endpoint = 1;
-    config.rule1_min_trailing_silence = 2.0f;
-    config.rule2_min_trailing_silence = 1.8f;
-    config.rule3_min_utterance_length = 20.0f;
+    config.rule1_min_trailing_silence = 1.2f;
+    config.rule2_min_trailing_silence = 1.2f;
+    config.rule3_min_utterance_length = 15.0f;
 
     pthread_mutex_lock(&g_lock);
     const SherpaOnnxOnlineRecognizer *rec = SherpaOnnxCreateOnlineRecognizer(&config);

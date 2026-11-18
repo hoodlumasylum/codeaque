@@ -31,6 +31,20 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.66
+
+**The top category row no longer shakes while you swipe it.** In 0.10.65 the icons and labels were redrawn every frame of a horizontal swipe at a fractional Y, and the selected tab grew and shrank (which also moved its label). That made the whole strip crawl up and down by 1–2 pixels until the row came to rest. The game row was already steady — while it scrolls, the rest of the home is frozen as a snapshot. The category row has to move, so this build locks it instead: a fixed row height, a fixed icon size, one-line labels at one size, pixel-aligned Y, and widths measured only when the list or the screen size changes, not on every scroll frame. Kids mode uses the same tab strip, so it gets the same fix. This is a custom-drawn row, not a RecyclerView.
+
+**Listening waits for you to finish talking.** She no longer cuts off after a fixed 5-second window. Built-in listening now uses end-of-speech: it keeps the mic open while you talk, stops about 1.2 seconds after you go quiet, and allows up to about 15 seconds. If the phone's own speech service returns words, those are preferred; built-in listening is the fallback, with a better English model (about 75 MB, downloaded if you want it).
+
+**"What is eight times eight" is no longer treated as playtime.** Canned replies only match whole words or phrases, with a confidence check, so the word "times" does not trip the "If play time is finished…" line. A small arithmetic helper answers things like "eight times eight" and "what's 5 plus 3" (including number words, and tidying slips such as "S EIGHT TIMES EH"). Anything that is not a confident canned match is sent to the on-device brain when it is available.
+
+**You can read her reply while she speaks.** The answer stays pinned in Chat, not only in a scrolling area that was clipped to nothing on a short landscape window. Built-in transcripts are shown in lowercase.
+
+**"Another app is using the microphone" is only for a truly silent mic.** If the level meter is moving, that message is not shown — it was a false alarm when the capture was not actually all zeros.
+
+Untested: these changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. The still category row, 1.2-second end-of-speech listening, the new 75 MB listening pack, arithmetic answers, pinned reply text, and the silent-mic warning on a device remain untested.
+
 ## What's new in 0.10.65
 
 **The greeting starts at once.** Opening Chat no longer sits on "Thinking…" for a long silent wait. Nova speaks a canned greeting (no on-device brain, no Grok) and shows **Speaking…** while she talks, never Thinking. Heart and the on-device brain warm up in the background when the app starts, so they are ready for later replies. If Heart is still loading, that first greeting may use the phone's voice so it is not silent.

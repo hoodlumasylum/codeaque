@@ -389,6 +389,18 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         listenStatus.setVisibility(VISIBLE);
         panel.addView(listenStatus);
 
+        // 0.10.66: keep the reply on screen while she speaks. On a short
+        // landscape card the answer used to live only in the scrolling area
+        // and was clipped to zero height.
+        answerView = new TextView(getContext());
+        answerView.setText(lastAnswer);
+        answerView.setTextColor(0xFFE8E0D4);
+        answerView.setTextSize(kids ? 16 : 14);
+        answerView.setPadding(0, pad / 2, 0, pad / 2);
+        answerView.setMinHeight(dp(44));
+        answerView.setMaxLines(4);
+        panel.addView(answerView);
+
         asrOfferStatus = new TextView(getContext());
         asrOfferStatus.setTextColor(0xFFE8C872);
         asrOfferStatus.setTextSize(12);
@@ -430,12 +442,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         // so a short landscape card cannot clip the listen controls or actions.
         LinearLayout mid = new LinearLayout(getContext());
         mid.setOrientation(LinearLayout.VERTICAL);
-        answerView = new TextView(getContext());
-        answerView.setText(lastAnswer);
-        answerView.setTextColor(0xFFE8E0D4);
-        answerView.setTextSize(kids ? 16 : 14);
-        answerView.setPadding(0, pad, 0, pad / 2);
-        mid.addView(answerView);
 
         TextView foot = new TextView(getContext());
         foot.setText(kids ? NovaHelp.KIDS_FOOT : NovaHelp.LIMITS);
@@ -524,7 +530,32 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             invalidate();
             return;
         }
-        if (kids && smarterOn() && NovaHelp.kidsMayAskOnline(q)) {
+        String arith = NovaArith.answer(q);
+        if (arith != null) {
+            lastAnswer = NovaConvo.speakText(arith);
+            if (answerView != null) answerView.setText(lastAnswer);
+            if (!fromVoice && askField != null && q != null) askField.setText(q);
+            showListenStatus(fromVoice ? NovaConvo.youSaid(q) : NovaConvo.SPEAKING_TEXT);
+            convoState = NovaConvo.SPEAKING;
+            if (kids || !muted()) speakAuto(lastAnswer);
+            invalidate();
+            return;
+        }
+        String canned = NovaHelp.cannedOrNull(q, kids);
+        if (canned != null) {
+            if (kids && NovaHelp.kidsUnsafe(canned)) canned = NovaHelp.KIDS_UNSURE;
+            lastAnswer = NovaConvo.speakText(canned);
+            if (answerView != null) answerView.setText(lastAnswer);
+            if (!fromVoice && !NovaConvo.writeHeardToField() && askField != null && q != null) askField.setText(q);
+            if (fromVoice) showListenStatus(NovaConvo.youSaid(q));
+            else showListenStatus(NovaConvo.SPEAKING_TEXT);
+            convoState = NovaConvo.SPEAKING;
+            if (kids) speakAuto(lastAnswer);
+            invalidate();
+            return;
+        }
+        if (smarterOn() && (NovaLlm.smarterUsesModel(getContext(), prefs)
+                || (kids && NovaLlm.phoneStrongEnough(getContext())))) {
             awaitingAnswer = true;
             if (!fromVoice && askField != null && q != null) askField.setText(q);
             convoState = NovaConvo.THINKING;
@@ -546,7 +577,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         lastAnswer = NovaConvo.speakText(lastAnswer);
         if (answerView != null) answerView.setText(lastAnswer);
         if (!fromVoice && !NovaConvo.writeHeardToField() && askField != null && q != null) askField.setText(q);
-        if (fromVoice) { /* field stays put */ }
         if (fromVoice) showListenStatus(NovaConvo.youSaid(q));
         else showListenStatus(NovaConvo.SPEAKING_TEXT);
         convoState = NovaConvo.SPEAKING;
@@ -774,7 +804,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onPartialHeard(String text) {
-        if (text != null && !text.trim().isEmpty()) heardThisListen = true;
+        text = NovaAsrText.tidy(text);
+        if (text != null && !text.isEmpty()) heardThisListen = true;
         setLiveCaption(text);
     }
 
@@ -1372,9 +1403,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     /** Drop recognizer results that are her own echo or that arrived while she is speaking. */
     public void onHeard(String text) {
+        text = NovaAsrText.tidy(text);
         long now = android.os.SystemClock.uptimeMillis();
-        setLiveCaption("");
         if (NovaSpeakGate.shouldDropHeard(text, lastSpoken, talking, speakJobInFlight, now, silentUntil)) {
+            setLiveCaption("");
             refreshMicLabel();
             if (voiceLoop) postDelayed(new NovaListenSoon(this), 400);
             return;
@@ -1384,6 +1416,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         listenGiveUp = false;
         convoState = NovaConvo.HEARD;
         showListenStatus(NovaConvo.youSaid(text));
+        setLiveCaption(NovaConvo.youSaid(text));
         ask(text, true);
     }
 

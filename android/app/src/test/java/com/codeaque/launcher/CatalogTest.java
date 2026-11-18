@@ -1385,8 +1385,8 @@ public class CatalogTest {
         check(NovaConvo.FALLBACK_TEXT.equals(loop.lastSpoken) && !loop.locksHeld(), "a reply timeout speaks the canned fallback and releases locks");
         check(NovaHelp.KIDS_GREETING.contains("find a game") && !NovaHelp.KIDS_GREETING.contains("find a games"), "greeting says find a game");
         check(!NovaHelp.KIDS_GREETING.contains("find a game,"), "game is its own sentence so Heart does not say games");
-        check(NovaConvo.SILENCE_COMPLETE_MS >= 1500 && NovaConvo.SILENCE_COMPLETE_MS <= 2000
-                && NovaConvo.SILENCE_POSSIBLY_MS >= 1500 && NovaConvo.SILENCE_POSSIBLY_MS <= 2000, "recognizer silence is 1.5-2s");
+        check(NovaConvo.SILENCE_COMPLETE_MS == 1200L
+                && NovaConvo.SILENCE_POSSIBLY_MS == 1200L, "recognizer silence is 1.2s after speech");
         NovaMouth.Ring ring = new NovaMouth.Ring(8);
         ring.add(0, 0.08f);
         ring.add(2000, 0.01f);
@@ -1441,7 +1441,7 @@ public class CatalogTest {
         check(NovaSpeechAvail.status(NovaSpeechAvail.USE_BUILTIN, true, null).equals(NovaSpeechAvail.USING_BUILTIN), "listening with built-in wording");
         check(NovaSpeechAvail.status(NovaSpeechAvail.NEED_BUILTIN, false, null).equals(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN), "need built-in wording");
         check(NovaSpeechAvail.NO_SERVICE_BUILTIN.contains("using built-in"), "using built-in status");
-        check(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN.contains("about 45 MB"), "download size is in the offer");
+        check(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN.contains("about 75 MB"), "download size is in the offer");
         check(NovaSpeechAvail.showBuiltinButton(NovaSpeechAvail.NEED_BUILTIN, false)
                 && !NovaSpeechAvail.showBuiltinButton(NovaSpeechAvail.NEED_BUILTIN, true), "offer download only when the pack is missing");
         check(NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN), "Play Store remains a secondary offer");
@@ -1451,9 +1451,9 @@ public class CatalogTest {
                 && NovaListenPick.nextLanguage("en-US", true) == null
                 && NovaListenPick.nextLanguage("en-GB", false) == null, "en-US is the one language fallback");
         check(NovaListenPick.useBuiltinNow(false, true, false, false)
-                && NovaListenPick.useBuiltinNow(false, true, true, false)
+                && !NovaListenPick.useBuiltinNow(false, true, true, false)
                 && NovaListenPick.useBuiltinNow(true, true, true, false)
-                && !NovaListenPick.useBuiltinNow(true, false, false, false), "built-in is the default once the pack is on the phone");
+                && !NovaListenPick.useBuiltinNow(true, false, false, false), "built-in is the fallback when there is no system service, or when forced");
         check(NovaListenPick.shouldFallToBuiltin(true, false, 1, false)
                 && !NovaListenPick.shouldFallToBuiltin(false, false, 5, false)
                 && NovaListenPick.shouldFallToBuiltin(true, false, 0, true)
@@ -1462,10 +1462,10 @@ public class CatalogTest {
                 && !NovaListenPick.shouldOfferBuiltin(true, false, false, 0)
                 && NovaListenPick.shouldOfferBuiltin(false, true, false, 1), "offer the pack when there is no service, or after one empty try");
         check(NovaListenPick.retryBusyAfterPause(false) && !NovaListenPick.retryBusyAfterPause(true), "busy mic retries once after pausing hidden listen");
-        check(NovaAsrFiles.sizesOk(20_000_000L, 100_000L, 100_000L, 10L)
-                && !NovaAsrFiles.sizesOk(19_000_000L, 100_000L, 100_000L, 10L)
-                && !NovaAsrFiles.filesReadyAt(new java.io.File("/no/such/nova-asr")), "20M int8 pack size gate");
-        check(NovaAsrFiles.SIZE_LABEL.contains("45 MB") && NovaAsrFiles.DOWNLOAD_BTN.contains("built-in listening"), "download copy");
+        check(NovaAsrFiles.sizesOk(60_000_000L, 100_000L, 100_000L, 10L)
+                && !NovaAsrFiles.sizesOk(50_000_000L, 100_000L, 100_000L, 10L)
+                && !NovaAsrFiles.filesReadyAt(new java.io.File("/no/such/nova-asr")), "75 MB int8 pack size gate");
+        check(NovaAsrFiles.SIZE_LABEL.contains("75 MB") && NovaAsrFiles.DOWNLOAD_BTN.contains("built-in listening"), "download copy");
         check(Math.abs(NovaListenDiag.meterFromRmsDb(-10f)) < 1e-4
                 && NovaListenDiag.meterFromRmsDb(12f) == 1f
                 && NovaListenDiag.meterFromRmsDb(1f) > 0.4f, "speech RMS dB maps into 0..1");
@@ -1483,11 +1483,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.65") && NovaAppVer.CODE == 165, "shipping version is 0.10.65");
-        check(NovaAppVer.label().equals("CodeAque 0.10.65")
-                && NovaAppVer.label("0.10.65").equals("CodeAque 0.10.65")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.65")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.65"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.66") && NovaAppVer.CODE == 166, "shipping version is 0.10.66");
+        check(NovaAppVer.label().equals("CodeAque 0.10.66")
+                && NovaAppVer.label("0.10.66").equals("CodeAque 0.10.66")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.66")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.66"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1517,7 +1517,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.65") && NovaAppVer.CODE == 165, "shipping version is 0.10.65");
+        check(NovaAppVer.NAME.equals("0.10.66") && NovaAppVer.CODE == 166, "shipping version is 0.10.66");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1536,18 +1536,59 @@ public class CatalogTest {
                 && NovaReplyQuick.afterFirst("Hello there. How can I help you today?").equals("How can I help you today?")
                 && NovaReplyQuick.afterFirst("Just one line!").isEmpty(), "the first sentence streams to TTS first");
         check(NovaReplyQuick.MAX_TOKENS <= 40 && NovaReplyQuick.MAX_TOKENS >= 20, "on-device replies stay short");
-        check(NovaReplyQuick.LISTEN_WINDOW_MS == 8000L
-                && NovaReplyQuick.SPEECH_TAIL_MS >= 1500L
-                && NovaReplyQuick.LISTEN_MAX_MS >= NovaReplyQuick.LISTEN_WINDOW_MS, "listen up to 8s, then end-of-speech");
+        check(NovaReplyQuick.LISTEN_WINDOW_MS == 15000L
+                && NovaReplyQuick.SPEECH_TAIL_MS == 1200L
+                && NovaReplyQuick.LISTEN_MAX_MS == 15000L, "listen while he talks, stop 1.2s after speech, max 15s");
         check(NovaReplyQuick.isSilentRms(0.001f) && !NovaReplyQuick.isSilentRms(0.05f)
                 && NovaReplyQuick.allZeros(0, 16000) && NovaReplyQuick.allZeros(3, 8000)
-                && !NovaReplyQuick.allZeros(200, 8000), "all-zero AudioRecord is flagged");
+                && !NovaReplyQuick.allZeros(200, 8000)
+                && !NovaReplyQuick.allZeros(0, 16000, true), "all-zero AudioRecord is flagged only when there was no voice");
         check(NovaReplyQuick.NO_SOUND.contains("no sound") && NovaReplyQuick.NO_SOUND.contains("Another app"), "no-sound wording");
-        check(NovaListenPick.preferBuiltinWhenReady(true) && !NovaListenPick.preferBuiltinWhenReady(false)
-                && NovaListenPick.useBuiltinNow(false, true, true, true), "built-in is the default once downloaded");
+        check(!NovaListenPick.preferBuiltinWhenReady(true)
+                && !NovaListenPick.useBuiltinNow(false, true, true, true)
+                && NovaListenPick.useBuiltinNow(false, true, false, false), "prefer the system recognizer when it can return text; built-in is the fallback");
+
+        check(NovaAsrText.tidy("S EIGHT TIMES EH").equals("s eight times eight"), "built-in ASR text is lowercased and number slips are tidied");
+        check(NovaAsrText.tidy("  What IS   Eight  ").equals("what is eight"), "extra spaces are collapsed");
+        check(NovaIntent.containsPhrase("eight times eight", "times")
+                && !NovaIntent.containsPhrase("eight times eight", "time")
+                && NovaIntent.containsPhrase("time is up", "time is up"), "intents match whole words and phrases only");
+        check(!NovaIntent.confident("eight times eight", "time", "times up", "finished", "limit")
+                && NovaIntent.confident("my time is up", "time is up", "play time")
+                && !NovaIntent.confident("what is eight times eight", "time"), "playtime canned line needs a confident phrase, not the word times");
+        check(NovaHelp.cannedOrNull("eight times eight", true) == null
+                && NovaHelp.cannedOrNull("what is eight times eight", true) == null
+                && NovaHelp.cannedOrNull("is my play time finished", true) != null
+                && NovaHelp.cannedOrNull("is my play time finished", true).contains("play time is finished"), "eight times eight is not a playtime question");
+        check(NovaArith.looksLike("eight times eight")
+                && NovaArith.answer("eight times eight").contains("64")
+                && NovaArith.answer("what is eight times eight").contains("64")
+                && NovaArith.answer("S EIGHT TIMES EH").contains("64")
+                && NovaArith.answer("what's 5 plus 3").contains("8")
+                && !NovaArith.looksLike("tell me a joke"), "spoken arithmetic answers 64");
+
         check(NovaSpeakGate.allowInstantPhone(true, false)
                 && !NovaSpeakGate.allowInstantPhone(true, true)
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
+
+        // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
+        check(NovaAppVer.NAME.equals("0.10.66") && NovaAppVer.CODE == 166, "shipping version is 0.10.66");
+        check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
+        check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
+                && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)
+                && HomeTabs.stripBot(720) == HomeTabs.snap(720 * HomeTabs.STRIP_BOT), "row edges are whole pixels");
+        check(HomeTabs.labelY(100f, 1f) == HomeTabs.labelY(100f, 1f)
+                && HomeTabs.iconSize(1.5f) == HomeTabs.iconSize(1.5f)
+                && !HomeTabs.selectionScalesIcon()
+                && !HomeTabs.selectionChangesLabelSize()
+                && !HomeTabs.twoLineLabels(), "icon and label size do not change with selection, and labels stay on one line");
+        check(HomeTabs.needsLayout(8, 1280, 1f, 8, 1280, 1f, false) == false
+                && HomeTabs.needsLayout(8, 1280, 1f, 8, 1280, 1f, true)
+                && HomeTabs.needsLayout(8, 1280, 1f, 8, 1279, 1f, false)
+                && HomeTabs.needsLayout(9, 1280, 1f, 8, 1280, 1f, false)
+                && !HomeTabs.needsLayout(8, 1280, 1f, 8, 1280, 1.00001f, false), "tab widths are not remeasured on a scroll frame");
+        check(HomeTabs.LABEL == 16f && HomeTabs.ICON == 36f, "fixed icon and label sizes for Kids and adult");
+
 
 
 

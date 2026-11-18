@@ -48,10 +48,9 @@ public final class NovaAsrMicLoop implements Runnable {
             float rms = count <= 0 ? 0f : (float) Math.sqrt(acc / count);
             mic.postRms(NovaListenDiag.meterFromPcmRms(rms));
             NovaAsr.accept(stream, fbuf, count, NovaAsrMic.SAMPLE_RATE);
-            boolean end = NovaAsr.isEndpoint(stream);
             String text = NovaAsr.result(stream);
             if (text == null) text = "";
-            text = text.trim();
+            text = NovaAsrText.tidy(text);
             if (!text.isEmpty() && !text.equals(lastPartial)) {
                 lastPartial = text;
                 heard = true;
@@ -63,16 +62,19 @@ public final class NovaAsrMicLoop implements Runnable {
                 lastVoice = android.os.SystemClock.uptimeMillis();
             }
             long now = android.os.SystemClock.uptimeMillis();
+            // End on our own trailing silence, not on sherpa's endpoint flag alone
+            // (that was cutting him off around 5 s mid-sentence).
+            boolean speechEnded = heard && lastVoice > 0
+                    && now - lastVoice >= NovaReplyQuick.SPEECH_TAIL_MS;
             boolean noSpeechTimeout = !heard && now - started >= NovaReplyQuick.LISTEN_WINDOW_MS;
-            boolean speechEnded = heard && lastVoice > 0 && now - lastVoice >= NovaReplyQuick.SPEECH_TAIL_MS && end;
             boolean tooLong = now - started >= NovaReplyQuick.LISTEN_MAX_MS;
-            if (end || noSpeechTimeout || speechEnded || tooLong) {
-                if (!end) NovaAsr.inputFinished(stream);
+            if (speechEnded || noSpeechTimeout || tooLong) {
+                NovaAsr.inputFinished(stream);
                 text = NovaAsr.result(stream);
                 if (text == null) text = "";
-                text = text.trim();
+                text = NovaAsrText.tidy(text);
                 mic.running = false;
-                if (text.isEmpty() && NovaReplyQuick.allZeros(peakAbs, frames))
+                if (text.isEmpty() && NovaReplyQuick.allZeros(peakAbs, frames, heard))
                     mic.postError(NovaReplyQuick.NO_SOUND);
                 else if (text.isEmpty()) mic.postError("I didn't catch that. Try again, or type it.");
                 else mic.postResult(text);

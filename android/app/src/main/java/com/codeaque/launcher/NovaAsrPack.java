@@ -45,7 +45,7 @@ public final class NovaAsrPack implements Runnable, NovaDl.Cb {
     }
 
     @Override public void onProgress(int percent, long got, long total) {
-        // Encoder is ~43 MB of the ~45 MB pack.
+        // Encoder is most of the ~75 MB pack.
         int base = index == 0 ? 0 : (index == 1 ? 90 : 95);
         int span = index == 0 ? 90 : 4;
         int overall = Math.min(99, base + percent * span / 100);

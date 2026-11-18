@@ -59,8 +59,14 @@ public final class NovaHelp {
     public static String answer(String question) { return answer(question, false); }
 
     public static String answer(String question, boolean kids) {
-        if (kids) return kidsAnswer(question);
-        return adultAnswer(question);
+        String a = kids ? kidsAnswer(question) : adultAnswer(question);
+        if (a != null) return a;
+        return kids ? KIDS_UNSURE : ("I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova. " + LIMITS);
+    }
+
+    /** A confident canned reply, or null so the caller can send the question to the LLM. */
+    public static String cannedOrNull(String question, boolean kids) {
+        return kids ? kidsAnswer(question) : adultAnswer(question);
     }
 
     public static String[] chips() {
@@ -101,9 +107,10 @@ public final class NovaHelp {
             return "You can change how CodeAque looks with the Themes tile. Pick a look you like. If you want help with something else, ask a grown-up.";
         if (has(q, "wifi", "wi-fi", "internet", "network"))
             return "If the internet isn't working, ask a grown-up to help with Wi-Fi.";
-        if (has(q, "time", "times up", "time's up", "finished", "limit"))
+        if (NovaIntent.confident(q, "times up", "time's up", "time is up", "play time",
+                "playtime", "screen time", "time limit", "time is finished"))
             return "If play time is finished, ask a grown-up whether you can play more.";
-        return KIDS_FOOT;
+        return null;
     }
 
     static String adultAnswer(String question) {
@@ -143,7 +150,7 @@ public final class NovaHelp {
             return "Nova has no account and no API key. Local answers are written into CodeAque. If Smarter Nova is on, a question that isn't already on the phone may look up a short fact; licence details are in About. I don't collect what you type. Speech, if you use it, uses the phone's own recognizer and voice.";
         if (has(q, "scroll", "smooth", "stutter", "lag"))
             return "The home rows should still scroll smoothly — Nova is drawn in her own corner view, not on the game-row scroller. You can hide her in Settings > Nova if you want the corner clear.";
-        return "I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova. " + LIMITS;
+        return null;
     }
 
     static String norm(String s) {
@@ -158,7 +165,7 @@ public final class NovaHelp {
     }
 
     static boolean has(String q, String... keys) {
-        for (String k : keys) if (q.contains(k)) return true;
+        for (String k : keys) if (NovaIntent.containsPhrase(q, k)) return true;
         return false;
     }
 
@@ -192,7 +199,7 @@ public final class NovaHelp {
         if (has(q, "time's up", "times up", "screen time", "play time")) return false;
         // Already-answered local topics (games row, learning tab, themes) stay on the phone.
         String local = kidsAnswer(question);
-        return local.equals(KIDS_FOOT);
+        return local == null;
     }
 
     static boolean hasWord(String t, String... words) {
