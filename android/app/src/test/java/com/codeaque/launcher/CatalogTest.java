@@ -1112,6 +1112,14 @@ public class CatalogTest {
         check(NovaPlace.yFromFrac(1f, 96, 1280, 0, 0, 14) == 1280 - 14 - 96, "default fraction 1 is the bottom");
         check(!NovaPlace.movedPast(4, 4, 8) && NovaPlace.movedPast(10, 0, 8), "touch slop");
         check(NovaPlace.clamp(5, 0, 3) == 3 && NovaPlace.clamp(-1, 0, 3) == 0, "clamp");
+
+        check(NovaPlace.isDoubleTap(1000, 1200, NovaPlace.DOUBLE_MS) && !NovaPlace.isDoubleTap(1000, 1300, NovaPlace.DOUBLE_MS), "double-tap window is 250 ms");
+        check(!NovaPlace.isDoubleTap(1200, 1000, NovaPlace.DOUBLE_MS), "second tap cannot precede the first");
+        check(NovaPlace.span(0, 0, 3, 4) == 5f, "pinch span");
+        check(Math.abs(NovaPlace.pinchScale(100, 150) - 1.5f) < 1e-5 && NovaPlace.pinchScale(0, 10) == 1f, "pinch scale");
+        check(NovaPlace.goBig(false, 1.3f) && !NovaPlace.goBig(false, 1.1f) && !NovaPlace.goBig(true, 0.7f) && NovaPlace.goBig(true, 1.0f), "pinch-out grows, pinch-in shrinks, unclear keeps the mode");
+        check(NovaPlace.showBubble(true, false) && !NovaPlace.showBubble(true, true) && !NovaPlace.showBubble(false, false), "bubble only when the parent allows her and she is not hidden");
+        check(NovaPlace.showTab(true, true) && !NovaPlace.showTab(false, true) && !NovaPlace.showTab(true, false), "edge tab only after a double-tap hide while Show Nova is on");
     }
 
 }

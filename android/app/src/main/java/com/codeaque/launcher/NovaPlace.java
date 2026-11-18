@@ -54,4 +54,42 @@ public final class NovaPlace {
     }
 
     public static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+    /** Wait this long after a tap to see if a second tap (hide) is coming. */
+    public static final int DOUBLE_MS = 250;
+    /** Pinch-out past this scale goes to the large portrait + Chat. */
+    public static final float PINCH_OUT = 1.25f;
+    /** Pinch-in past this scale shrinks back to the bubble. */
+    public static final float PINCH_IN = 0.80f;
+
+    public static boolean isDoubleTap(long firstUpMs, long secondDownMs, int windowMs) {
+        long dt = secondDownMs - firstUpMs;
+        return dt >= 0 && dt <= windowMs;
+    }
+
+    public static float span(float x0, float y0, float x1, float y1) {
+        float dx = x1 - x0, dy = y1 - y0;
+        return (float) Math.sqrt(dx * dx + dy * dy);
+    }
+
+    public static float pinchScale(float startSpan, float endSpan) {
+        if (startSpan <= 1f) return 1f;
+        return clamp(endSpan / startSpan, 0.4f, 3f);
+    }
+
+    /** After a pinch ends: true = large portrait + Chat, false = bubble. Unclear scale keeps the current mode. */
+    public static boolean goBig(boolean wasBig, float scale) {
+        if (scale >= PINCH_OUT) return true;
+        if (scale <= PINCH_IN) return false;
+        return wasBig;
+    }
+
+    /** Parent "Show Nova" off hides her completely (no edge tab). Double-tap hide keeps a tab if the parent still allows her. */
+    public static boolean showBubble(boolean parentShow, boolean hidden) {
+        return parentShow && !hidden;
+    }
+
+    public static boolean showTab(boolean parentShow, boolean hidden) {
+        return parentShow && hidden;
+    }
 }

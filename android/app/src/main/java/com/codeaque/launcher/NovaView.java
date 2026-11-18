@@ -39,6 +39,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     public static final String PREF_JOKE = "novaJokeAt";
     public static final String PREF_LEFT = "novaBubbleLeft";
     public static final String PREF_Y = "novaBubbleY";
+    public static final String PREF_HIDDEN = "novaHidden";
+    public static final String PREF_BIG = "novaBig";
 
     final NovaFace face = new NovaFace();
     final NovaAnim.State st = new NovaAnim.State();
@@ -53,9 +55,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     TextToSpeech tts;
     String pendingSpeak, lastAnswer = NovaHelp.GREETING;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady;
-    boolean dragging, snapping, downOnMute, downOnBubble, placed;
+    final RectF tabHit = new RectF();
+    boolean dragging, snapping, pinching, hidden, big, downOnMute, downOnBubble, downOnTab, placed;
+    boolean ignoreUntilUp, tapArmedMute;
     float downX, downY, startLeft, startTop, slop, snapX0, snapY0, snapX1, snapY1;
-    long lastFrameNs, talkUntil, downAt, snapStart;
+    float pinchStartSpan, pinchScale;
+    long lastFrameNs, talkUntil, downAt, snapStart, tapArmedAt;
     int bubbleSize, margin, longPressMs;
     Host host;
 
@@ -99,16 +104,35 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     public boolean kids() { return kids; }
 
     public void applyPref() {
-        boolean show = prefs == null || prefs.getBoolean(PREF_BUBBLE, true);
-        setVisibility(show ? VISIBLE : GONE);
-        if (!show) collapse();
-        if (show) startAnim(); else stopAnim();
+        boolean parent = prefs == null || prefs.getBoolean(PREF_BUBBLE, true);
+        hidden = prefs != null && prefs.getBoolean(PREF_HIDDEN, false);
+        big = prefs != null && prefs.getBoolean(PREF_BIG, false);
+        if (!parent) {
+            setVisibility(GONE);
+            hidden = false;
+            big = false;
+            collapse();
+            stopAnim();
+            return;
+        }
+        setVisibility(VISIBLE);
+        if (hidden) {
+            big = false;
+            collapse();
+            stopSpeak();
+            stopAnim();
+        } else {
+            startAnim();
+        }
+        requestLayout();
+        invalidate();
     }
 
     public boolean isExpanded() { return expanded; }
 
-    /** Collapse if open. Returns true if it consumed Back. */
+    /** Collapse Chat, or shrink from the large view first. Returns true if it consumed Back. */
     public boolean collapse() {
+        if (big) { setBig(false); return true; }
         if (!expanded) return false;
         setExpanded(false);
         return true;
@@ -121,16 +145,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     public int bubbleSize() { return bubbleSize; }
 
     void setExpanded(boolean on) {
-        if (expanded == on) {
-            if (on && kids) greet();
-            return;
-        }
+        if (expanded == on) return;
         expanded = on;
         setPanelShown(on);
         if (host != null) host.onNovaExpandChanged(on);
         if (on) {
             if (askField != null) askField.clearFocus();
-            if (kids) greet();
         } else {
             stopSpeak();
         }
@@ -138,9 +158,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     void greet() {
-        lastAnswer = NovaHelp.KIDS_GREETING;
+        lastAnswer = kids ? NovaHelp.KIDS_GREETING : NovaHelp.GREETING;
         if (answerView != null) answerView.setText(lastAnswer);
-        speakAuto(lastAnswer);
+        if (!muted()) speak(lastAnswer);
     }
 
     void setPanelShown(boolean on) {
@@ -187,10 +207,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         title.setTypeface(Typeface.DEFAULT_BOLD);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
         head.addView(title, tlp);
-        if (kids) {
-            muteLabel = btn(muted() ? "Muted" : "Sound on", v -> toggleMute());
-            head.addView(muteLabel);
-        }
+        muteLabel = btn(muted() ? "Muted" : "Sound on", v -> toggleMute());
+        head.addView(muteLabel);
         panel.addView(head);
 
         HorizontalScrollView chips = new HorizontalScrollView(getContext());
@@ -302,22 +320,36 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     boolean muted() { return prefs != null && prefs.getBoolean(PREF_KIDS_MUTE, false); }
 
-    void toggleMute() {
-        boolean next = !muted();
-        if (prefs != null) prefs.edit().putBoolean(PREF_KIDS_MUTE, next).apply();
-        if (next) stopSpeak();
-        if (muteLabel != null) muteLabel.setText(next ? "Muted" : "Sound on");
+    void setMuted(boolean on) {
+        if (prefs != null) prefs.edit().putBoolean(PREF_KIDS_MUTE, on).apply();
+        if (on) stopSpeak();
+        if (muteLabel != null) muteLabel.setText(on ? "Muted" : "Sound on");
         invalidate();
     }
 
+    void toggleMute() { setMuted(!muted()); }
+
+    /** Bubble single-tap: voice on opens Chat and greets; voice off closes Chat (stays open if she is big). */
+    void onSingleTap(boolean muteBadge) {
+        if (muteBadge) { toggleMute(); return; }
+        if (muted() || !expanded) {
+            setMuted(false);
+            setExpanded(true);
+            greet();
+        } else {
+            setMuted(true);
+            if (!big) setExpanded(false);
+        }
+    }
+
     void speakAuto(String s) {
-        if (!kids || muted()) return;
+        if (muted()) return;
         speak(s);
     }
 
     void speak(String s) {
         if (s == null || s.isEmpty()) return;
-        if (kids && muted()) return;
+        if (muted()) return;
         pendingSpeak = s;
         ensureTts();
         if (ttsReady) flushSpeak();
@@ -383,7 +415,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     @Override protected void onDetachedFromWindow() {
         snapping = false;
         dragging = false;
+        pinching = false;
         downOnBubble = false;
+        downOnTab = false;
+        ignoreUntilUp = false;
+        tapArmedAt = 0;
         stopAnim();
         shutdownTts();
         super.onDetachedFromWindow();
@@ -406,7 +442,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     void startAnim() {
-        if (running || getVisibility() != VISIBLE) return;
+        if (running || getVisibility() != VISIBLE || hidden) return;
         running = true;
         lastFrameNs = 0;
         choreo.postFrameCallback(this);
@@ -431,7 +467,13 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             if (!still) { talking = false; talkUntil = 0; }
         }
         // Cap at ~30 fps: blink and breath don't need 60, and we stay off the scroll thread.
-        if (downOnBubble && !dragging && now - downAt >= longPressMs) startDrag();
+        if (tapArmedAt != 0 && !downOnBubble && !pinching && now - tapArmedAt >= NovaPlace.DOUBLE_MS) {
+            long armed = tapArmedAt;
+            boolean mute = tapArmedMute;
+            tapArmedAt = 0;
+            if (armed != 0) onSingleTap(mute);
+        }
+        if (downOnBubble && !dragging && !pinching && !hidden && !ignoreUntilUp && now - downAt >= longPressMs) startDrag();
         if (snapping) tickSnap(now);
         NovaAnim.tick(st, now, dt, rng.nextInt());
         NovaAnim.tickTalk(st, now, talking && !(kids && muted()));
@@ -447,7 +489,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
         layoutParts(r - l, b - t);
-        if (panel != null && panel.getVisibility() == VISIBLE) {
+        if (!hidden && panel != null && panel.getVisibility() == VISIBLE) {
             panel.layout(Math.round(panelBox().left), Math.round(panelBox().top),
                     Math.round(panelBox().right), Math.round(panelBox().bottom));
         }
@@ -456,10 +498,19 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     RectF panelBox() {
         int w = getWidth(), h = getHeight();
         float gap = dp(8);
-        float pw = Math.min(w - bubbleSize - margin * 2 - gap, Math.max(dp(280), w * 0.62f));
-        if (pw < dp(240)) pw = Math.max(dp(220), w - margin * 2);
         float top = margin + insetT();
         float bottom = h - margin - insetB();
+        if (big) {
+            float face = bigFaceSize(w, h);
+            boolean left = bubble.centerX() < w * 0.5f;
+            if (w >= h) {
+                if (left) return new RectF(margin + insetL() + face + gap, top, w - margin - insetR(), bottom);
+                return new RectF(margin + insetL(), top, w - margin - insetR() - face - gap, bottom);
+            }
+            return new RectF(margin + insetL(), top + face + gap, w - margin - insetR(), bottom);
+        }
+        float pw = Math.min(w - bubbleSize - margin * 2 - gap, Math.max(dp(280), w * 0.62f));
+        if (pw < dp(240)) pw = Math.max(dp(220), w - margin * 2);
         boolean left = bubble.centerX() < w * 0.5f;
         float leftX, rightX;
         if (left) {
@@ -474,20 +525,69 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         return new RectF(leftX, top, rightX, bottom);
     }
 
+    float bigFaceSize(int w, int h) {
+        float availW = Math.max(1, w - insetL() - insetR() - margin * 2);
+        float availH = Math.max(1, h - insetT() - insetB() - margin * 2);
+        if (w >= h) return Math.min(availH, availW * 0.40f);
+        return Math.min(availW, availH * 0.36f);
+    }
+
     void layoutParts(int w, int h) {
         if (w <= 0 || h <= 0) return;
-        if (dragging || snapping) {
+        layoutTab(w, h);
+        if (hidden) {
+            bubble.setEmpty();
+            muteHit.setEmpty();
+            return;
+        }
+        if (big && !dragging && !snapping) {
+            layoutBig(w, h);
+        } else if (dragging || snapping) {
             // bubble already follows the finger or the snap
         } else {
             boolean left = prefs != null && prefs.getBoolean(PREF_LEFT, false);
             float yFrac = prefs != null && prefs.contains(PREF_Y) ? prefs.getFloat(PREF_Y, 1f) : 1f;
-            float x = NovaPlace.xForSide(left, bubbleSize, w, insetL(), insetR(), margin);
-            float y = NovaPlace.yFromFrac(yFrac, bubbleSize, h, insetT(), insetB(), margin);
-            bubble.set(x, y, x + bubbleSize, y + bubbleSize);
+            float size = bubbleSize;
+            if (pinching) size = livePinchSize();
+            float x = NovaPlace.xForSide(left, size, w, insetL(), insetR(), margin);
+            float y = NovaPlace.yFromFrac(yFrac, size, h, insetT(), insetB(), margin);
+            bubble.set(x, y, x + size, y + size);
             placed = true;
         }
         float s = Math.max(dp(28), bubble.width() * 0.32f);
         muteHit.set(bubble.right - s, bubble.bottom - s, bubble.right + dp(4), bubble.bottom + dp(4));
+    }
+
+    void layoutBig(int w, int h) {
+        float size = pinching ? livePinchSize() : bigFaceSize(w, h);
+        boolean left = prefs != null && prefs.getBoolean(PREF_LEFT, false);
+        float availH = h - insetT() - insetB() - margin * 2;
+        if (w >= h) {
+            float x = left ? margin + insetL() : w - insetR() - margin - size;
+            float y = margin + insetT() + Math.max(0, (availH - size) / 2f);
+            bubble.set(x, y, x + size, y + size);
+        } else {
+            float x = (w - size) / 2f;
+            float y = margin + insetT();
+            bubble.set(x, y, x + size, y + size);
+        }
+    }
+
+    void layoutTab(int w, int h) {
+        float tw = dp(22), th = dp(56);
+        boolean left = prefs != null && prefs.getBoolean(PREF_LEFT, false);
+        float yFrac = prefs != null && prefs.contains(PREF_Y) ? prefs.getFloat(PREF_Y, 1f) : 1f;
+        float y = NovaPlace.yFromFrac(yFrac, th, h, insetT(), insetB(), margin);
+        if (left) tabHit.set(insetL(), y, insetL() + tw, y + th);
+        else tabHit.set(w - insetR() - tw, y, w - insetR(), y + th);
+    }
+
+    float livePinchSize() {
+        float small = bubbleSize;
+        float large = bigFaceSize(Math.max(1, getWidth()), Math.max(1, getHeight()));
+        float from = big ? large : small;
+        float to = from * pinchScale;
+        return NovaPlace.clamp(to, small * 0.7f, large * 1.05f);
     }
 
     int insetL() { return inset(true, false, false, false); }
@@ -508,9 +608,28 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     @Override protected void dispatchDraw(Canvas c) {
         super.dispatchDraw(c);
         if (getVisibility() != VISIBLE) return;
+        if (hidden) { drawTab(c); return; }
         float ring = Math.max(2, getResources().getDisplayMetrics().density * 2.2f);
-        face.draw(c, bubble, st, ring, true);
-        if (kids) drawMuteBadge(c);
+        if (!bubble.isEmpty()) face.draw(c, bubble, st, ring, true);
+        drawMuteBadge(c);
+    }
+
+    void drawTab(Canvas c) {
+        if (tabHit.isEmpty()) return;
+        float r = Math.min(tabHit.width(), tabHit.height()) * 0.5f;
+        mutePaint.setStyle(Paint.Style.FILL);
+        mutePaint.setColor(0xCC141A22);
+        c.drawRoundRect(tabHit, r, r, mutePaint);
+        mutePaint.setStyle(Paint.Style.STROKE);
+        mutePaint.setStrokeWidth(Math.max(2, getResources().getDisplayMetrics().density * 1.5f));
+        mutePaint.setColor(0xFFE8C872);
+        c.drawRoundRect(tabHit, r, r, mutePaint);
+        // A peek of her face in the tab, if loaded.
+        if (!tabHit.isEmpty()) {
+            float inset = dp(3);
+            RectF peek = new RectF(tabHit.left + inset, tabHit.top + inset, tabHit.right - inset, tabHit.bottom - inset);
+            face.draw(c, peek, st, 0, true);
+        }
     }
 
     void drawMuteBadge(Canvas c) {
@@ -544,22 +663,55 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     @Override public boolean dispatchTouchEvent(MotionEvent ev) {
         if (getVisibility() != VISIBLE) return false;
-        // Keep the gesture while a long-press or drag is in progress, even if the finger leaves the bubble.
-        if (dragging || downOnBubble) return super.dispatchTouchEvent(ev);
+        // Keep the gesture while a long-press, drag, pinch, or tab press is in progress.
+        if (dragging || pinching || downOnBubble || downOnTab || ignoreUntilUp) return super.dispatchTouchEvent(ev);
         if (!hitsInteractive(ev.getX(), ev.getY())) return false;
         return super.dispatchTouchEvent(ev);
     }
 
+    @Override public boolean onInterceptTouchEvent(MotionEvent ev) {
+        // Take a two-finger scale that starts on the bubble or the open Chat panel.
+        if (hidden) return false;
+        if (ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN && ev.getPointerCount() >= 2) {
+            if (downOnBubble || hitsInteractive(ev.getX(0), ev.getY(0)) || hitsInteractive(ev.getX(1), ev.getY(1))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override public boolean onTouchEvent(MotionEvent ev) {
         int action = ev.getActionMasked();
-        if (action == MotionEvent.ACTION_POINTER_DOWN) {
-            // A second finger is not a drag (and must not steal a pinch on the home).
-            cancelPress(false);
+        if (ignoreUntilUp) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) ignoreUntilUp = false;
             return true;
         }
+
+        if (hidden) return onTabTouch(ev);
+
+        if (action == MotionEvent.ACTION_POINTER_DOWN && ev.getPointerCount() >= 2) {
+            beginPinch(ev);
+            return true;
+        }
+
+        if (pinching) {
+            if (action == MotionEvent.ACTION_MOVE && ev.getPointerCount() >= 2) {
+                pinchScale = NovaPlace.pinchScale(pinchStartSpan, eventSpan(ev));
+                layoutParts(getWidth(), getHeight());
+                requestLayout();
+                invalidate();
+                return true;
+            }
+            if (action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                finishPinch(action == MotionEvent.ACTION_CANCEL);
+                return true;
+            }
+            return true;
+        }
+
         if (action == MotionEvent.ACTION_DOWN) {
-            downOnBubble = hitsBubble(ev.getX(), ev.getY()) || (kids && hitsMute(ev.getX(), ev.getY()));
-            downOnMute = kids && hitsMute(ev.getX(), ev.getY());
+            downOnBubble = hitsBubble(ev.getX(), ev.getY()) || hitsMute(ev.getX(), ev.getY());
+            downOnMute = hitsMute(ev.getX(), ev.getY());
             if (!downOnBubble) return false;
             downX = ev.getX();
             downY = ev.getY();
@@ -568,18 +720,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             startTop = bubble.top;
             dragging = false;
             snapping = false;
+            pinching = false;
+            // A second down inside the double-tap window is the start of hide, not a new single-tap.
             return true;
         }
         if (!downOnBubble && !dragging) return false;
         if (action == MotionEvent.ACTION_MOVE) {
             float dx = ev.getX() - downX, dy = ev.getY() - downY;
-            if (!dragging && NovaPlace.movedPast(dx, dy, slop)) {
+            if (!dragging && !big && NovaPlace.movedPast(dx, dy, slop)) {
                 // Moved before the long-press: not a drag and not a tap. Start a row scroll off the bubble.
+                cancelArmedTap();
                 downOnBubble = false;
                 downOnMute = false;
                 return false;
             }
-            if (!dragging && android.os.SystemClock.uptimeMillis() - downAt >= longPressMs) {
+            if (!dragging && !big && android.os.SystemClock.uptimeMillis() - downAt >= longPressMs) {
                 startDrag();
             }
             if (dragging) {
@@ -591,37 +746,145 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             boolean wasDrag = dragging;
             boolean mute = downOnMute;
+            long upAt = ev.getEventTime();
             downOnBubble = false;
             downOnMute = false;
             dragging = false;
-            if (action == MotionEvent.ACTION_UP && wasDrag) {
+            if (action == MotionEvent.ACTION_CANCEL) {
+                cancelArmedTap();
+                return true;
+            }
+            if (wasDrag) {
+                cancelArmedTap();
                 snapGently();
                 return true;
             }
-            if (action == MotionEvent.ACTION_UP && !wasDrag && !NovaPlace.movedPast(ev.getX() - downX, ev.getY() - downY, slop)) {
-                if (mute) toggleMute();
-                else toggle();
+            if (NovaPlace.movedPast(ev.getX() - downX, ev.getY() - downY, slop)) {
+                cancelArmedTap();
+                return true;
             }
+            // Clean tap: if a first tap is still waiting, this is a double-tap (hide).
+            if (tapArmedAt != 0 && NovaPlace.isDoubleTap(tapArmedAt, downAt, NovaPlace.DOUBLE_MS)) {
+                tapArmedAt = 0;
+                hideAway();
+                return true;
+            }
+            tapArmedAt = upAt;
+            tapArmedMute = mute;
             return true;
         }
         return true;
     }
 
+    boolean onTabTouch(MotionEvent ev) {
+        int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            downOnTab = hitsTab(ev.getX(), ev.getY());
+            return downOnTab;
+        }
+        if (!downOnTab) return false;
+        if (action == MotionEvent.ACTION_UP) {
+            downOnTab = false;
+            if (hitsTab(ev.getX(), ev.getY())) reveal();
+            return true;
+        }
+        if (action == MotionEvent.ACTION_CANCEL) { downOnTab = false; return true; }
+        return true;
+    }
+
+    void beginPinch(MotionEvent ev) {
+        pinching = true;
+        dragging = false;
+        snapping = false;
+        ignoreUntilUp = false;
+        cancelArmedTap();
+        downOnMute = false;
+        pinchStartSpan = eventSpan(ev);
+        if (pinchStartSpan < 1f) pinchStartSpan = 1f;
+        pinchScale = 1f;
+        try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); } catch (Exception ignored) { }
+    }
+
+    void finishPinch(boolean cancelled) {
+        float scale = pinchScale;
+        pinching = false;
+        pinchScale = 1f;
+        downOnBubble = false;
+        downOnMute = false;
+        ignoreUntilUp = true;
+        if (cancelled) {
+            requestLayout();
+            invalidate();
+            return;
+        }
+        setBig(NovaPlace.goBig(big, scale));
+    }
+
+    float eventSpan(MotionEvent ev) {
+        if (ev.getPointerCount() < 2) return pinchStartSpan;
+        return NovaPlace.span(ev.getX(0), ev.getY(0), ev.getX(1), ev.getY(1));
+    }
+
     void startDrag() {
-        if (dragging) return;
+        if (dragging || pinching || big || hidden) return;
         dragging = true;
         snapping = false;
+        cancelArmedTap();
         try { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); } catch (Exception ignored) { }
     }
+
+    void cancelArmedTap() { tapArmedAt = 0; }
 
     void cancelPress(boolean snapIfDrag) {
         downOnBubble = false;
         downOnMute = false;
+        cancelArmedTap();
         if (dragging) {
             dragging = false;
             if (snapIfDrag) snapGently();
             else placeClamped();
         }
+    }
+
+    void setBig(boolean on) {
+        if (big == on) {
+            requestLayout();
+            invalidate();
+            return;
+        }
+        if (prefs != null) prefs.edit().putBoolean(PREF_BIG, on).apply();
+        boolean was = big;
+        big = on;
+        if (on) {
+            setExpanded(true);
+            if (!muted() && !was) greet();
+        } else {
+            setExpanded(false);
+        }
+        requestLayout();
+        invalidate();
+    }
+
+    void hideAway() {
+        cancelArmedTap();
+        if (prefs != null) prefs.edit().putBoolean(PREF_HIDDEN, true).putBoolean(PREF_BIG, false).apply();
+        hidden = true;
+        big = false;
+        collapse();
+        stopSpeak();
+        stopAnim();
+        try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); } catch (Exception ignored) { }
+        requestLayout();
+        invalidate();
+    }
+
+    void reveal() {
+        if (prefs != null) prefs.edit().putBoolean(PREF_HIDDEN, false).apply();
+        hidden = false;
+        startAnim();
+        try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); } catch (Exception ignored) { }
+        requestLayout();
+        invalidate();
     }
 
     void moveBubble(float left, float top) {
@@ -696,16 +959,23 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     boolean hitsInteractive(float x, float y) {
-        if (kids && hitsMute(x, y)) return true;
+        if (hidden) return hitsTab(x, y);
+        if (hitsMute(x, y)) return true;
         if (hitsBubble(x, y)) return true;
-        if (expanded && panel != null && panel.getVisibility() == VISIBLE) {
+        if ((expanded || big) && panel != null && panel.getVisibility() == VISIBLE) {
             RectF p = panelBox();
             return p.contains(x, y);
         }
         return false;
     }
 
-    boolean hitsMute(float x, float y) { return muteHit.contains(x, y); }
+    boolean hitsMute(float x, float y) { return !muteHit.isEmpty() && muteHit.contains(x, y); }
+
+    boolean hitsTab(float x, float y) {
+        if (tabHit.isEmpty()) return false;
+        float pad = dp(8);
+        return x >= tabHit.left - pad && x <= tabHit.right + pad && y >= tabHit.top - pad && y <= tabHit.bottom + pad;
+    }
 
     boolean hitsBubble(float x, float y) {
         float cx = bubble.centerX(), cy = bubble.centerY(), r = bubble.width() * 0.5f + dp(4);

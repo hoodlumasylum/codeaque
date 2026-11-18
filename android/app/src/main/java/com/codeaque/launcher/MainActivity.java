@@ -1797,11 +1797,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding(pad, pad / 2, pad, 0);
         android.widget.TextView msg = new android.widget.TextView(this);
-        msg.setText("Nova is a corner helper for simple CodeAque questions. She works offline, has no account, and does not collect data. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
+        msg.setText("Nova is a corner helper for simple CodeAque questions. She works offline, has no account, and does not collect data. Double-tap her to hide her; a small tab on the edge brings her back. Turn Show Nova off to hide her completely, including the tab. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
         msg.setPadding(0, 0, 0, pad);
         box.addView(msg);
         android.widget.CheckBox show = new android.widget.CheckBox(this);
-        show.setText("Show Nova in CodeAque");
+        show.setText("Show Nova");
         show.setChecked(prefs.getBoolean(NovaView.PREF_BUBBLE, true));
         box.addView(show);
         android.widget.CheckBox over = new android.widget.CheckBox(this);
@@ -1816,7 +1816,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 .setTitle("Nova")
                 .setView(box)
                 .setPositiveButton("OK", (dlg, w) -> {
-                    prefs.edit().putBoolean(NovaView.PREF_BUBBLE, show.isChecked()).apply();
+                    android.content.SharedPreferences.Editor ed = prefs.edit().putBoolean(NovaView.PREF_BUBBLE, show.isChecked());
+                    if (show.isChecked()) ed.putBoolean(NovaView.PREF_HIDDEN, false);
+                    ed.apply();
                     if (nova != null) nova.applyPref();
                     if (kids) {
                         prefs.edit().putBoolean(NovaView.PREF_OVERLAY, false).apply();

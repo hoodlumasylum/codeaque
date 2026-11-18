@@ -156,6 +156,38 @@ def place_panel(bg, card, bubble_xy, bubble_w, gap=16):
     bg.alpha_composite(glass)
     bg.alpha_composite(card, (x, y))
 
+
+def place_panel_at(bg, card, x, y):
+    y = max(36, y)
+    region = bg.crop((x, y, x + card.width, y + card.height)).filter(ImageFilter.GaussianBlur(14))
+    mask = Image.new("L", card.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, card.width - 1, card.height - 1), radius=28, fill=255)
+    glass = Image.new("RGBA", bg.size, (0, 0, 0, 0))
+    glass.paste(region, (x, y), mask)
+    bg.alpha_composite(glass)
+    bg.alpha_composite(card, (x, y))
+
+def draw_edge_tab(bg, side="right", y_frac=1.0):
+    tw, th = 44, 120
+    miny, maxy = 36, bg.height - th - 36
+    y = round(miny + max(0.0, min(1.0, y_frac)) * (maxy - miny))
+    x = 0 if side == "left" else bg.width - tw
+    tab = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+    d = ImageDraw.Draw(tab)
+    d.rounded_rectangle((0, 0, tw - 1, th - 1), radius=22, fill=(20, 26, 34, 220), outline=(232, 200, 114, 255), width=3)
+    # Peek of Nova's face inside the tab
+    try:
+        src = Image.open(FACE).convert("RGBA")
+        peek = circle_bubble(apply_gaze(head_crop(src), 0.12, -0.04), th - 16, ring=0)
+        # crop to tab width so she peeks from the edge
+        left = 8 if side == "left" else peek.width - (tw - 8)
+        cropped = peek.crop((max(0, left), 0, max(0, left) + tw - 8, peek.height))
+        tab.alpha_composite(cropped, (4 if side == "left" else 2, 8))
+    except Exception:
+        pass
+    bg.alpha_composite(tab, (x, y))
+    return x, y
+
 def main():
     DIST.mkdir(parents=True, exist_ok=True)
     src = Image.open(FACE).convert("RGBA")
@@ -199,6 +231,29 @@ def main():
     out4 = DIST / "preview-0.10.53-kids-moved.png"
     moved.convert("RGB").save(out4, "PNG")
     print("wrote", out4)
+
+    # Near-full-screen portrait + Chat (pinch-out)
+    big = kids_home()
+    face_n = 520
+    faceb = circle_bubble(talk, face_n, ring=8)
+    # Portrait on the right (default edge), Chat fills the left — same as a right-edge bubble going big.
+    margin = 40
+    fx = big.width - faceb.width - margin
+    fy = (big.height - faceb.height) // 2
+    cardb = kids_panel(big.width - faceb.width - margin * 3, big.height - 80, "Chat",
+        "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.")
+    place_panel_at(big, cardb, margin, (big.height - cardb.height) // 2)
+    big.alpha_composite(faceb, (fx, fy))
+    out5 = DIST / "preview-0.10.53-kids-big.png"
+    big.convert("RGB").save(out5, "PNG")
+    print("wrote", out5, big.size)
+
+    # Double-tap hide: only a tiny edge tab where she was (bottom-right by default)
+    hid = kids_home()
+    draw_edge_tab(hid, side="right", y_frac=1.0)
+    out6 = DIST / "preview-0.10.53-kids-hidden.png"
+    hid.convert("RGB").save(out6, "PNG")
+    print("wrote", out6)
 
 if __name__ == "__main__":
     main()

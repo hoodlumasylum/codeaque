@@ -33,7 +33,7 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 ## What's new in 0.10.53
 
-**Nova in Kids mode.** The corner bubble is shown on the Kids home as well as in Adult mode (tap to open or close). In Kids mode she only talks about finding and playing games, the Learning tab, and clean jokes. She does not give Settings, PIN, or how-to-leave-Kids help, and she does not send anyone to a link. A parent can still hide the bubble in Settings > Nova. The optional overlay over other games stays off in Kids mode.
+**Nova in Kids mode.** The corner bubble is shown on the Kids home as well as in Adult mode. In Kids mode she only talks about finding and playing games, the Learning tab, and clean jokes. She does not give Settings, PIN, or how-to-leave-Kids help, and she does not send anyone to a link. A parent can still hide the bubble in Settings > Nova. The optional overlay over other games stays off in Kids mode.
 
 **She talks.** In Kids mode, opening Nova greets the child out loud (system text-to-speech) and she speaks her replies, with a simple talking-mouth animation. Sound is on by default; mute is on the bubble and in her panel.
 
@@ -41,7 +41,13 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 **Chat panel.** The open panel is titled Chat (not Nova). It uses a glassy dark card with a soft gold edge so it sits closer to the home tiles.
 
-**Move her about.** Long-press the bubble, then drag her. She snaps gently to the nearest left or right edge and remembers the spot. A short tap still opens or closes Chat. A swipe that moves before the long-press is not a drag, so it does not fight tapping or a pinch. A swipe that starts on the bubble cannot be handed to the game row (she sits above the home), so start a row scroll off the bubble.
+**Move her about.** Long-press the bubble, then drag her. She snaps gently to the nearest left or right edge and remembers the spot. A swipe that moves before the long-press is not a drag. A swipe that starts on the bubble cannot be handed to the game row (she sits above the home), so start a row scroll off the bubble.
+
+**Tap for voice.** A single tap on the bubble turns her voice on, opens Chat and speaks a greeting. Tap again and her voice goes off and Chat closes. In the large (pinched-out) view, the second tap only mutes; pinch in or Back to shrink. The Sound on / Muted control (and the speaker badge) can mute or unmute without closing Chat. A second tap within about 250 ms is a double-tap instead, so the single-tap action waits that beat.
+
+**Pinch to make her big.** Pinch out on the bubble or the open Chat panel for a large portrait plus Chat, nearly full screen. Pinch in to shrink back to the bubble. A second finger on her starts a pinch and no longer cancels a drag mid-way.
+
+**Double-tap to hide.** Double-tap the bubble to hide her. A small gold tab stays on the edge she was on; tap the tab to bring her back. Grown-ups > Nova has a Show Nova toggle. Turning that off hides her completely (no tab). Turning it back on also clears a double-tap hide so she appears again.
 
 These changes have not been tried on a real phone, a K56, or a Win600.
 
