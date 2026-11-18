@@ -7,7 +7,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 SHOT = Path("/tmp/kids-search-shot.jpg")
-OUT = DIST / "preview-0.10.55-kids-search.png"
+OUT = DIST / "preview-0.10.56-kids-search.png"
+CUTOUT = ROOT / "app/src/main/assets/nova-face-cutout.png"
 CHIPS = ["Puzzle", "Racing", "Adventure", "Learning", "Action", "Creative"]
 GOLD = (232, 200, 114, 255)
 HINT = "Search for a game"
@@ -118,6 +119,45 @@ def main():
         tw, th = bb[2] - bb[0], bb[3] - bb[1]
         dr.text((cl + (cw - tw) / 2, ct + ((cb - ct) - th) / 2 - bb[1]), lab, font=cf, fill=(255, 255, 255, 255))
         x += cw + cg
+
+    # Cover the old circular bubble (gold ring + dark disc) and place the cut-out only.
+    # Measured from Code's 2376x1060 screenshot: gold bbox ~2043,706 — 2375,1020.
+    cover = (2000, 680, W, H)
+    band = src.crop((1600, 680, 2000, H)).resize((cover[2]-cover[0], cover[3]-cover[1]), Image.Resampling.LANCZOS)
+    band = band.filter(ImageFilter.GaussianBlur(4))
+    out.paste(band, (cover[0], cover[1]))
+
+    head = Image.open(CUTOUT).convert("RGBA")
+    # Wide crop matching NovaFace FX,FY,FW,FH
+    FX, FY, FW, FH = 0.04, 0.00, 0.92, 0.90
+    hw, hh = head.size
+    head = head.crop((round(FX*hw), round(FY*hh), round((FX+FW)*hw), round((FY+FH)*hh)))
+    size = 280
+    pad = 16
+    face = head.resize((size, size), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (size + pad*2, size + pad*2), (0,0,0,0))
+    sh = Image.new("RGBA", canvas.size, (0,0,0,0))
+    sm = face.copy()
+    a = sm.split()[3].point(lambda v: int(v * 0.16) if v else 0)
+    sm = Image.merge("RGBA", (Image.new("L", face.size, 0), Image.new("L", face.size, 0), Image.new("L", face.size, 0), a))
+    sh.alpha_composite(sm, (pad+3, pad+4))
+    sh = sh.filter(ImageFilter.GaussianBlur(3))
+    canvas.alpha_composite(sh)
+    canvas.alpha_composite(face, (pad, pad))
+    bx = out.width - canvas.width - 20
+    by = out.height - canvas.height - 24
+    out.alpha_composite(canvas, (bx, by))
+
+    # Keep the small speaker button at the lower-right of the face.
+    import math
+    d = ImageDraw.Draw(out)
+    cx = bx + pad + size - 8
+    cy = by + pad + size - 8
+    r = 22
+    d.ellipse((cx-r, cy-r, cx+r, cy+r), fill=(28, 26, 24, 238), outline=(232, 200, 114, 255), width=3)
+    # tiny speaker
+    d.rectangle((cx-11, cy-6, cx-3, cy+6), fill=(244, 228, 193, 255))
+    d.polygon([(cx-3, cy-6), (cx+8, cy-13), (cx+8, cy+13), (cx-3, cy+6)], fill=(244, 228, 193, 255))
 
     DIST.mkdir(parents=True, exist_ok=True)
     out.convert("RGB").save(OUT, "PNG")

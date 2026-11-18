@@ -1,0 +1,26 @@
+Nova's on-device voice (optional download)
+=========================================
+
+Default once downloaded: Kokoro Heart (af_heart). This is Nova's voice only.
+
+Engine: sherpa-onnx with Kokoro-82M v1.0 (Apache-2.0).
+  Model: https://huggingface.co/hexgrad/Kokoro-82M
+  Package: https://huggingface.co/csukuangfj/kokoro-multi-lang-v1_0
+  Heart (af_heart, American English) is the default speaker.
+  Bella (af_bella, American English) and Emma (bf_emma, British English)
+  are optional extras that use the same downloaded model.
+
+Keep the Apache-2.0 notice and Kokoro training-source acknowledgements
+when redistributing the model. The overall training set included a small
+amount of CC BY audio (Koniwa, SIWIS) which is acknowledged upstream.
+
+The ONNX model is not bundled in the APK. Until a grown-up downloads
+"Nova's voice" in Settings, Nova uses the phone's system text-to-speech.
+
+Optional Piper extras (separate downloads, not the default):
+- en_US-kristin-medium, Public Domain (LibriVox)
+- en_GB-alba-medium, CC-BY-4.0 (attribution required)
+- en_GB-cori-high, Public Domain (optional only; not the default)
+
+Voices not used: hfc_female (CC-BY-NC-SA), lessac (research-only),
+jenny_dioco (unclear licence), southern_english_female (low-quality 16 kHz).

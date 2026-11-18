@@ -1237,6 +1237,24 @@ public class CatalogTest {
                 && KidsSearchLayout.lastRowHasHide(KidsSearchLayout.searchKeys(false, true)),
                 "custom keyboard has a Hide key on every layout");
         check(KidsSearchLayout.isHideKey("Hide") && !KidsSearchLayout.isHideKey("GO"), "Hide key is recognised");
+        check(!KidsSearchLayout.shouldKeepKeyboard(false, false), "a tap on tiles, tabs or the background closes the keyboard");
+        check(KidsSearchLayout.shouldKeepKeyboard(true, false), "a tap in the focused text field keeps the keyboard");
+        check(KidsSearchLayout.shouldKeepKeyboard(false, true), "a tap on the custom keyboard keeps it");
+
+
+        // 0.10.56: Heart is Nova's default on-device voice; kid-safe Gemma filter.
+        check("kokoro-af_heart".equals(NovaVoices.DEFAULT_VOICE_ID), "default on-device voice is Kokoro Heart");
+        check(NovaVoices.hasLockedDefault(), "a default voice id is set");
+        check(NovaVoices.HELLO_LINE.contains("Nova"), "hello line introduces Nova");
+        String prompt = NovaLlmFilter.prompt("Why is the sky blue?");
+        check(prompt.contains("Nova") && prompt.contains("sky blue") && prompt.contains("user"),
+                "Gemma prompt is in the instruct format and names Nova");
+        check(NovaLlmFilter.filter("  Nova: The sky looks blue because air scatters sunlight. <end_of_turn>")
+                .startsWith("The sky looks blue"), "filter strips labels and special tokens");
+        check(NovaLlmFilter.filter("Here is a PIN 1234 you can use.") == null, "filter rejects unsafe PIN talk");
+        check(NovaLlmFilter.filter("See https://example.com for more.") == null, "filter rejects links");
+        check(NovaLlmFilter.firstSentences("One. Two. Three.", 2).equals("One. Two."), "keeps at most two sentences");
+
     }
 
 }

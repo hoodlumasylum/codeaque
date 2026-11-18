@@ -735,16 +735,28 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         return had || imeVisible();
     }
 
+    /**
+     * 0.10.56: a press anywhere outside the focused text field and the custom
+     * CodeAque keyboard closes both the system IME and the custom keyboard.
+     * Runs at the Activity so tiles, tabs, the background, and Nova Chat all see it.
+     */
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
-        if (ev.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
             android.view.View focus = getCurrentFocus();
-            if (focus instanceof android.widget.EditText && !ImeHide.eventInside(focus, ev)) {
-                ImeHide.hide(this);
-                imeFallbackGen++;
-                if (view != null && view.searchKeyboardUp()) view.hideAnyKeyboard();
-            }
+            boolean onField = ImeHide.focusedEdit(focus) && ImeHide.eventInside(focus, ev);
+            boolean onCustom = view != null && view.touchOnSearchFieldOrKeyboard(ev);
+            if (!ImeHide.shouldKeepKeyboard(onField, onCustom)) dismissAllKeyboards();
         }
         return super.dispatchTouchEvent(ev);
+    }
+
+    /** Hide the system IME and the custom Search keyboard, and clear field focus. */
+    void dismissAllKeyboards() {
+        ImeHide.hide(this);
+        imeFallbackGen++;
+        if (nova != null) nova.hideSoftIme();
+        if (view != null) view.hideAnyKeyboard();
+        if (searchField != null && searchField.hasFocus() && view != null) view.requestFocus();
     }
     @Override protected void onDestroy() {
         if (nova != null) nova.release();
@@ -1850,7 +1862,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding(pad, pad / 2, pad, 0);
         android.widget.TextView msg = new android.widget.TextView(this);
-        msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Open her and, if Voice talk is on, she greets you and then listens; say another question after she answers, or tap Type instead / Back to type, or Close to leave. Double-tap tucks her into a corner (still her face, smaller). Hide in Chat, or Hide Nova here, leaves a gold tab; turn Show Nova off to hide her completely. Smarter Nova can look up a short fact when she isn't sure; licence details are in About. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
+        msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Open her and, if Voice talk is on, she greets you and then listens; say another question after she answers, or tap Type instead / Back to type, or Close to leave. Double-tap tucks her into a corner (still her face, smaller). Hide in Chat, or Hide Nova here, leaves a gold tab; turn Show Nova off to hide her completely. Smarter Nova can look up a short fact when she isn't sure, or use an optional on-device brain if a grown-up downloads it. Nova's voice can be downloaded too. Licence details are in About. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
         msg.setPadding(0, 0, 0, pad);
         box.addView(msg);
         android.widget.CheckBox show = new android.widget.CheckBox(this);
@@ -1874,12 +1886,15 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         smarter.setChecked(prefs.getBoolean(NovaView.PREF_SMARTER, true));
         box.addView(smarter);
         android.widget.TextView cred = new android.widget.TextView(this);
-        cred.setText("Smarter Nova may look up a short fact when she isn't sure. Licence details are in About.");
+        cred.setText("Smarter Nova may look up a short fact when she isn't sure, or use an optional on-device brain if you download it. Licence details are in About.");
         cred.setPadding(0, pad / 2, 0, pad / 2);
         box.addView(cred);
+        NovaSettingsUi.add(this, box, prefs, d);
+        android.widget.ScrollView sc = new android.widget.ScrollView(this);
+        sc.addView(box);
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Nova")
-                .setView(box)
+                .setView(sc)
                 .setPositiveButton("OK", (dlg, w) -> {
                     android.content.SharedPreferences.Editor ed = prefs.edit()
                             .putBoolean(NovaView.PREF_BUBBLE, show.isChecked())
@@ -3033,7 +3048,10 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
     void aboutDialog() {
         String ver = "CodeAque " + myVersion() + (Catalog.updateAvailable ? " — an update is available." : ".");
-        String licences = "Licences: Smarter Nova may use short extracts from Simple English Wikipedia (CC BY-SA).";
+        String licences = "Licences: Smarter Nova may use short extracts from Simple English Wikipedia (CC BY-SA). "
+                + "Nova's optional on-device voice uses the Kokoro-82M model (Apache-2.0). "
+                + "The optional on-device brain uses Google's Gemma 3 1B under the Gemma Terms of Use. "
+                + "Those models are downloaded in Settings, not bundled in this app.";
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("About CodeAque")
                 .setMessage(ver + "\n\n" + licences)

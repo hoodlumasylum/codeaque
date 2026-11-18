@@ -1,0 +1,82 @@
+{
+  "comment": "Nova's optional on-device voices. Default once downloaded is Kokoro Heart (af_heart). Present it only as Nova's voice. Models are downloaded in Settings, never bundled in the APK.",
+  "defaultVoiceId": "kokoro-af_heart",
+  "pendingUserChoice": false,
+  "helloLine": "Hi, I'm Nova. It's good to see you.",
+  "fallback": "system-tts",
+  "voices": [
+    {
+      "id": "kokoro-af_heart",
+      "engine": "sherpa-onnx-kokoro",
+      "name": "Heart",
+      "modelName": "af_heart",
+      "speakerId": 3,
+      "accent": "American English",
+      "licence": "Apache-2.0",
+      "licenceNote": "Kokoro-82M v1.0 model weights are Apache-2.0. Keep the Apache notice and Kokoro training-source acknowledgements (including CC BY Koniwa and SIWIS data used in the overall model) when redistributing the model.",
+      "sample": "dist/nova-voice-1.mp3",
+      "download": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2"
+    },
+    {
+      "id": "kokoro-af_bella",
+      "engine": "sherpa-onnx-kokoro",
+      "name": "Bella",
+      "modelName": "af_bella",
+      "speakerId": 2,
+      "accent": "American English",
+      "licence": "Apache-2.0",
+      "licenceNote": "Same Kokoro-82M v1.0 Apache-2.0 package as Heart (one model, many speakers).",
+      "sample": "dist/nova-voice-2.mp3",
+      "download": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2"
+    },
+    {
+      "id": "kokoro-bf_emma",
+      "engine": "sherpa-onnx-kokoro",
+      "name": "Emma",
+      "modelName": "bf_emma",
+      "speakerId": 21,
+      "accent": "British English",
+      "licence": "Apache-2.0",
+      "licenceNote": "Same Kokoro-82M v1.0 Apache-2.0 package as Heart (one model, many speakers).",
+      "sample": "dist/nova-voice-3.mp3",
+      "download": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2"
+    },
+    {
+      "id": "piper-en_US-kristin-medium",
+      "engine": "piper",
+      "name": "Kristin",
+      "modelName": "en_US-kristin-medium",
+      "accent": "American English",
+      "licence": "Public Domain",
+      "licenceNote": "Piper MODEL_CARD: trained from scratch on LibriVox recordings, public domain.",
+      "sample": "dist/nova-voice-4.mp3",
+      "downloadOnnx": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kristin/medium/en_US-kristin-medium.onnx",
+      "downloadJson": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kristin/medium/en_US-kristin-medium.onnx.json"
+    },
+    {
+      "id": "piper-en_GB-alba-medium",
+      "engine": "piper",
+      "name": "Alba",
+      "modelName": "en_GB-alba-medium",
+      "accent": "British English",
+      "licence": "CC-BY-4.0",
+      "licenceNote": "Requires attribution. Dataset: https://datashare.ed.ac.uk/handle/10283/3270 (CC BY 4.0). Show this notice in Settings if offered.",
+      "sample": "dist/nova-voice-5.mp3",
+      "downloadOnnx": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx",
+      "downloadJson": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json"
+    },
+    {
+      "id": "piper-en_GB-cori-high",
+      "engine": "piper",
+      "name": "Cori",
+      "modelName": "en_GB-cori-high",
+      "accent": "British English",
+      "licence": "Public Domain",
+      "licenceNote": "Offered only as an optional extra. Code rejected this as the default. LibriVox, public domain.",
+      "sample": "dist/nova-voice-hello.mp3",
+      "defaultCandidate": false,
+      "downloadOnnx": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx",
+      "downloadJson": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high/en_GB-cori-high.onnx.json"
+    }
+  ]
+}

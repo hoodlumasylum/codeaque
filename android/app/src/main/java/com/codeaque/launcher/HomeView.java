@@ -338,6 +338,23 @@ public class HomeView extends View {
         return searchKbFallback || (host != null && host.imeVisible());
     }
 
+    /**
+     * 0.10.56: true if a screen-space touch is on the Search text box or the
+     * custom on-screen keyboard, so the Activity should not dismiss it.
+     */
+    boolean touchOnSearchFieldOrKeyboard(android.view.MotionEvent ev) {
+        if (ev == null || !onSearch()) return false;
+        int[] loc = new int[2];
+        getLocationOnScreen(loc);
+        float x = ev.getRawX() - loc[0], y = ev.getRawY() - loc[1];
+        if (projector) {
+            x = (x - getWidth() * SAFE) / (1 - 2 * SAFE);
+            y = (y - getHeight() * SAFE) / (1 - 2 * SAFE);
+        }
+        if (searchQueryBox.contains(x, y)) return true;
+        return searchKbFallback && !searchKbBox.isEmpty() && searchKbBox.contains(x, y);
+    }
+
     private void goBack() {
         if (kids && host.timeUpScreen()) return;   // stays up until a parent PIN
         if (prompt != null) { prompt = null; host.sound("hhback"); invalidate(); return; }

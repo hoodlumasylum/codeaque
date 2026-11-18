@@ -31,7 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.56
+
+**Nova's own voice.** A grown-up can download Nova's voice in Grown-ups > Nova (about 360 MB, not bundled in the app). The default is a warm American English voice from the Apache-2.0 Kokoro model (Heart). Bella and Emma are optional extras that use the same download, with a Preview button. Until it is downloaded, or if it cannot load, she uses the phone's text-to-speech. Her mouth still moves with the speech (from the playback volume for the new voice). This is Nova's voice only.
+
+**On-device brain.** Smarter Nova can optionally download Google's Gemma 3 1B model (about 800 MB, accepted under the Gemma Terms of Use in Settings). She still only presents as Nova. Answers go through a kid-safe prompt and filter; if the model is missing, the phone is too weak, or an answer is not safe, she falls back to her local set and a short Simple English Wikipedia fact when that is turned on.
+
+**The black circle is gone.** The leftover dark studio fringe around Nova's cut-out is removed, and there is no gold ring, drop shadow, or rectangle behind her — only her face and hair, with the small speaker button kept. Tapping anywhere outside a text field and the keyboard (game tiles, background, tabs, Nova's chat except the field) closes both the system keyboard and the custom CodeAque keyboard.
+
+These changes have not been tried on a real phone, a K56, or a Win600. Layout, the kid-safe filter, and previews were checked here only. On-device voice, mouth sync from playback, model download, Gemma on a real phone, and IME hide on a device remain untested.
+
 ## What's new in 0.10.55
+
 
 **Search for a game fits.** The Kids Search bar is a comfortable height, with the placeholder and typed text sized to sit in the middle with padding, including on a short landscape phone. The category chips stay under the bar and do not overlap it. The same field is only on the Kids Search tab (grown-up home has no shared search bar).
 
@@ -41,7 +52,7 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 These changes have not been tried on a real phone, a K56, or a Win600. Search-bar layout, keyboard hide paths, and the listen loop were unit-tested or previewed here only. Hands-free listening, the mic permission, and IME hide on a real device remain untested.
 
-The on-device kid-safe model is still planned, now for 0.10.56.
+The on-device kid-safe model arrived in 0.10.56.
 
 ## What's new in 0.10.54
 

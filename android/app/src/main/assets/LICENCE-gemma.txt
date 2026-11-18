@@ -1,0 +1,17 @@
+Smarter Nova — optional on-device model (Gemma 3 1B)
+====================================================
+
+CodeAque can download Google's Gemma 3 1B Instruct model (Q4_K_M GGUF)
+for use only as Nova's on-device brain. The model is not bundled in the APK.
+
+Licence: Gemma is used under Google's Gemma Terms of Use:
+  https://ai.google.dev/gemma/terms
+
+A grown-up must read and accept those terms in Settings before the download
+starts. The model stays on this phone and is used only to answer kid-safe
+questions as Nova. If the model is not downloaded, the phone is too weak,
+or an answer is not safe, Nova falls back to her local answers and (when
+Smarter Nova is on) a short Simple English Wikipedia fact (CC BY-SA).
+
+Source (Q4_K_M GGUF):
+  https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF

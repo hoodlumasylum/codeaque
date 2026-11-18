@@ -112,6 +112,15 @@ public final class KidsSearchLayout {
         return HIDE_KEY.equals(lab) || (lab != null && "hide".equalsIgnoreCase(lab));
     }
 
+    /**
+     * 0.10.56: keep the pop-up keyboard only when the press is on the focused
+     * text field or on the custom CodeAque keyboard. Any other press (tiles,
+     * tabs, background, Nova Chat) should close it.
+     */
+    public static boolean shouldKeepKeyboard(boolean onFocusedField, boolean onCustomKeyboard) {
+        return onFocusedField || onCustomKeyboard;
+    }
+
     public static boolean lastRowHasHide(String[][] keys) {
         if (keys == null || keys.length == 0) return false;
         String[] last = keys[keys.length - 1];

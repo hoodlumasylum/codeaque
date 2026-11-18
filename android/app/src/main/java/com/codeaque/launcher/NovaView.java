@@ -64,7 +64,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     TextToSpeech tts;
     NovaSpeech speech;
     String pendingSpeak, lastAnswer = NovaHelp.GREETING;
-    boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady;
+    boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady, deviceVoice;
     final RectF tabHit = new RectF();
     boolean dragging, snapping, pinching, hidden, big, tucked, downOnMute, downOnBubble, downOnTab, placed;
     boolean voiceLoop, awaitingAnswer, micAsked;
@@ -385,7 +385,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             lastAnswer = "Let me think…";
             if (answerView != null) answerView.setText(lastAnswer);
             final String question = q;
-            new Thread(new NovaWikiJob(this, question), "nova-wiki").start();
+            if (NovaLlm.smarterUsesModel(getContext(), prefs)
+                    && NovaLlm.phoneStrongEnough(getContext())) {
+                new Thread(new NovaLlmJob(this, question), "nova-llm").start();
+            } else {
+                new Thread(new NovaWikiJob(this, question), "nova-wiki").start();
+            }
             invalidate();
             return;
         }
@@ -558,9 +563,53 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (s == null || s.isEmpty()) return;
         if (muted()) return;
         stopListen();   // 0.10.55: do not hear herself while speaking
+        if (NovaKokoro.usesOnDevice(getContext(), prefs)) {
+            pendingSpeak = null;
+            talking = true;
+            deviceVoice = true;
+            talkUntil = android.os.SystemClock.uptimeMillis() + NovaTtsVoice.estimateMs(s);
+            new Thread(new NovaVoiceSpeakJob(this, s, NovaKokoro.speakerId(prefs)), "nova-voice").start();
+            return;
+        }
+        speakSystem(s);
+    }
+
+    /** System TTS path (also the fallback if the on-device voice fails). */
+    void speakSystem(String s) {
+        if (s == null || s.isEmpty()) return;
+        if (muted()) return;
+        deviceVoice = false;
         pendingSpeak = s;
         ensureTts();
         if (ttsReady) flushSpeak();
+    }
+
+    public void onDeviceVoiceStart() {
+        stopListen();
+        talking = true;
+        deviceVoice = true;
+        st.talking = true;
+        long extra = android.os.SystemClock.uptimeMillis() + 8000;
+        if (extra > talkUntil) talkUntil = extra;
+        invalidate();
+    }
+
+    public void onDeviceVoiceAmp(float amp) {
+        st.mouth = amp;
+        st.talking = true;
+        talking = true;
+        deviceVoice = true;
+        invalidate();
+    }
+
+    public void onDeviceVoiceEnd() {
+        deviceVoice = false;
+        talking = false;
+        talkUntil = 0;
+        st.talking = false;
+        st.mouth = 0;
+        invalidate();
+        if (voiceLoop) postDelayed(new NovaListenSoon(this), 500);
     }
 
     void ensureTts() {
@@ -660,9 +709,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void stopSpeak() {
         pendingSpeak = null;
         talking = false;
+        deviceVoice = false;
         talkUntil = 0;
         st.talking = false;
         st.mouth = 0;
+        NovaVoicePlay.stop();
         if (tts != null) {
             try { tts.stop(); } catch (Exception ignored) { }
         }
@@ -745,7 +796,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (downOnBubble && !dragging && !pinching && !hidden && !ignoreUntilUp && now - downAt >= longPressMs) startDrag();
         if (snapping) tickSnap(now);
         NovaAnim.tick(st, now, dt, rng.nextInt());
-        NovaAnim.tickTalk(st, now, talking && !(kids && muted()));
+        if (deviceVoice) {
+            st.talking = talking && !(kids && muted());
+            // Mouth opening comes from playback amplitude (onDeviceVoiceAmp).
+        } else {
+            NovaAnim.tickTalk(st, now, talking && !(kids && muted()));
+        }
         invalidate();
         choreo.postFrameCallbackDelayed(this, 33);
     }

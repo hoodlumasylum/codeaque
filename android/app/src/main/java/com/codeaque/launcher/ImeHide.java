@@ -8,8 +8,9 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 
 /**
- * 0.10.55: hide the system IME from a field, an activity, or a tap outside the
- * focused text field. Named helper — no anonymous listeners.
+ * 0.10.55 / 0.10.56: hide the system IME from a field, an activity, or a tap
+ * outside the focused text field and any custom on-screen keyboard.
+ * Named helper — no anonymous listeners.
  */
 public final class ImeHide {
     private ImeHide() {}
@@ -29,7 +30,8 @@ public final class ImeHide {
         View focus = a.getCurrentFocus();
         View decor = a.getWindow() != null ? a.getWindow().getDecorView() : null;
         if (focus != null) hide(focus);
-        else if (decor != null) hide(decor);
+        if (decor != null) hide(decor);
+        else if (focus == null) { /* nothing */ }
     }
 
     /** True if the motion event's screen coordinates land inside the view. */
@@ -43,5 +45,13 @@ public final class ImeHide {
 
     public static boolean focusedEdit(View v) {
         return v instanceof EditText && v.hasFocus();
+    }
+
+    /**
+     * Keep the keyboard only when the down-event is on the focused field or
+     * on the custom CodeAque keyboard. Anywhere else should dismiss it.
+     */
+    public static boolean shouldKeepKeyboard(boolean onFocusedField, boolean onCustomKeyboard) {
+        return KidsSearchLayout.shouldKeepKeyboard(onFocusedField, onCustomKeyboard);
     }
 }

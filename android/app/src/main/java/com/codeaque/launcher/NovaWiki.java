@@ -20,7 +20,7 @@ public final class NovaWiki {
             "https://simple.wikipedia.org/api/rest_v1/page/summary/";
     public static final int TIMEOUT_MS = 4000;
     public static final String USER_AGENT =
-            "CodeAque/0.10.55 (Kids helper; https://github.com/hoodlumasylum/codeaque)";
+            "CodeAque/0.10.56 (Kids helper; https://github.com/hoodlumasylum/codeaque)";
 
     /** OpenSearch JSON: the first title in the second array, or null. */
     public static String firstOpenSearchTitle(String json) {

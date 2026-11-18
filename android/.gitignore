@@ -3,3 +3,4 @@ dist/
 local.properties
 .gradle/
 app/build/
+native/jniLibs/

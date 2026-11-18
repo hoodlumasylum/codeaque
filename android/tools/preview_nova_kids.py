@@ -92,13 +92,13 @@ def cutout_bubble(head, size, ring=0):
     head = head.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
     pad = 18
     canvas = Image.new("RGBA", (size + pad * 2, size + pad * 2), (0, 0, 0, 0))
-    # Shadow from the cut-out's own alpha, offset down-right and blurred.
+    # 0.10.56: faint silhouette only — no dark disc or ring.
     sh = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     shadow = head.copy()
-    a = shadow.split()[3].point(lambda v: int(v * 0.45) if v else 0)
+    a = shadow.split()[3].point(lambda v: 0)
     shadow = Image.merge("RGBA", (Image.new("L", head.size, 0), Image.new("L", head.size, 0), Image.new("L", head.size, 0), a))
-    sh.alpha_composite(shadow, (pad + 8, pad + 12))
-    sh = sh.filter(ImageFilter.GaussianBlur(6))
+    sh.alpha_composite(shadow, (pad + 3, pad + 4))
+    sh = sh.filter(ImageFilter.GaussianBlur(3))
     canvas.alpha_composite(sh)
     canvas.alpha_composite(head, (pad, pad))
     return canvas

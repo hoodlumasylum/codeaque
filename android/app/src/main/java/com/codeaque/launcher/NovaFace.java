@@ -98,7 +98,7 @@ public final class NovaFace {
 
     public boolean ready() { return portrait != null && !portrait.isRecycled(); }
 
-    /** dest is the box that shows the head crop. 0.10.54: no circular clip or gold ring; a soft drop shadow sits under the cut-out. ringDp/circle are ignored (kept so callers compile). */
+    /** dest is the box that shows the head crop. 0.10.56: no circular clip, gold ring, dark disc, drop shadow, or backdrop rectangle — only the cut-out (full hair). ringDp/circle are ignored (kept so callers compile). */
     public void draw(Canvas c, RectF dest, NovaAnim.State st, float ringDp, boolean circle) {
         if (dest == null || dest.width() <= 0) return;
         float bob = st == null ? 0 : st.bob * dest.height();
@@ -111,12 +111,7 @@ public final class NovaFace {
         }
         if (ready()) {
             focusSrc(src);
-            // Soft shadow: the cut-out itself, tinted dark and offset a little.
-            shadow.setColorFilter(new PorterDuffColorFilter(0x66000000, PorterDuff.Mode.SRC_IN));
-            tmp.set(dst);
-            tmp.offset(dst.width() * 0.03f, dst.height() * 0.04f);
-            c.drawBitmap(portrait, src, tmp, shadow);
-            shadow.setColorFilter((ColorFilter) null);
+            // 0.10.56: only the cut-out. No shadow, disc, ring, or rectangle behind her.
             c.drawBitmap(portrait, src, dst, bmp);
             float gx = st == null ? 0 : st.gazeX;
             float gy = st == null ? 0 : st.gazeY;
