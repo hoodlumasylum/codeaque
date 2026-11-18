@@ -9,7 +9,7 @@ DIST = ROOT / "dist"
 FACE = ROOT / "app/src/main/assets/nova-face.jpg"
 CUTOUT = ROOT / "app/src/main/assets/nova-face-cutout.png"
 BASE = DIST / "preview-0.10.51-covers.png"
-FX, FY, FW, FH = 0.18, 0.02, 0.66, 0.78
+FX, FY, FW, FH = 0.04, 0.00, 0.92, 0.90
 LEX, LEY, LEW, LEH = 0.352, 0.370, 0.108, 0.052
 REX, REY, REW, REH = 0.518, 0.344, 0.124, 0.054
 MX, MY, MW, MH = 0.418, 0.488, 0.195, 0.070
@@ -164,12 +164,16 @@ def kids_panel(w, h, title, body, talking=False):
     d.rounded_rectangle((w - 106, 206, w - 24, 248), radius=14, fill=(32, 40, 48, 110), outline=(232, 200, 114, 140), width=2)
     d.text((w - 92, 216), "Mic", font=font(16, True), fill=(232, 200, 114, 255))
     wrap(d, body, 24, 268, font(18), (236, 240, 244, 255), w - 48, 26)
-    # Foot then Ask / Close (48 dp-ish), matching the 0.10.54 panel order
+    # Foot then Ask / Type instead / Hide / Close, matching the 0.10.54 voice-mode panel
     d.text((24, h - 92), "I can help with games, learning, or a joke. For anything else, ask a grown-up.", font=font(13), fill=(138, 152, 164, 255))
-    d.rounded_rectangle((24, h - 72, w // 2 - 12, h - 20), radius=16, fill=(32, 40, 48, 110), outline=(232, 200, 114, 140), width=2)
-    d.rounded_rectangle((w // 2 + 4, h - 72, w - 24, h - 20), radius=16, fill=(32, 40, 48, 110), outline=(232, 200, 114, 140), width=2)
-    d.text((24 + 36, h - 58), "Ask", font=font(20, True), fill=(232, 200, 114, 255))
-    d.text((w // 2 + 40, h - 58), "Close", font=font(20, True), fill=(232, 200, 114, 255))
+    labels = ["Ask", "Type instead", "Hide", "Close"]
+    gap, left, right = 8, 24, w - 24
+    bw = (right - left - gap * 3) // 4
+    for i, lab in enumerate(labels):
+        x0 = left + i * (bw + gap)
+        d.rounded_rectangle((x0, h - 72, x0 + bw, h - 20), radius=16, fill=(32, 40, 48, 110), outline=(232, 200, 114, 140), width=2)
+        tw = d.textlength(lab, font=font(16, True))
+        d.text((x0 + (bw - tw) / 2, h - 56), lab, font=font(16, True), fill=(232, 200, 114, 255))
     return card
 
 def place_panel(bg, card, bubble_xy, bubble_w, gap=16):
@@ -318,6 +322,23 @@ def main():
     out7 = DIST / "preview-0.10.54-kids-update.png"
     upd.convert("RGB").save(out7, "PNG")
     print("wrote", out7)
+
+    # Double-tap tuck: small cut-out in a corner, still her face (not a gold tab)
+    tck = kids_home()
+    face_t = cutout_bubble(idle, 120)
+    paste_bubble(tck, face_t, margin=16, side="right", y_frac=1.0)
+    out8 = DIST / "preview-0.10.54-kids-tucked.png"
+    tck.convert("RGB").save(out8, "PNG")
+    print("wrote", out8)
+
+    # Full flowing hair close-up (wide crop, cut-out on a dark home colour)
+    hair_bg = Image.new("RGBA", (900, 900), (12, 28, 48, 255))
+    hair = cutout_bubble(apply_gaze(head_crop(load_face()), 0.08, -0.04), 820)
+    hx, hy = (hair_bg.width - hair.width) // 2, (hair_bg.height - hair.height) // 2
+    hair_bg.alpha_composite(hair, (hx, hy))
+    out9 = DIST / "preview-0.10.54-nova-hair-closeup.png"
+    hair_bg.convert("RGB").save(out9, "PNG")
+    print("wrote", out9, hair_bg.size)
 
 if __name__ == "__main__":
     main()

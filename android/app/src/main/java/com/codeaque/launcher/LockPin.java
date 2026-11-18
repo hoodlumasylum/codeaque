@@ -52,7 +52,7 @@ public final class LockPin {
     /** CodeAque actions that need the PIN while Lock mode is on (everything except Wi-Fi, Update, entering Kids, and game shortcuts). */
     public static boolean needsPin(String action) {
         if (action == null) return false;
-        return !(action.equals("wifi") || action.equals("update") || action.startsWith("goto:") || action.equals("gfn:rivals") || action.equals("calltext") || action.equals("changepin") || action.equals("kidson") || action.equals("kids") || action.equals("kthemes") || action.equals("about") || action.equals("nova"));
+        return !(action.equals("wifi") || action.equals("update") || action.startsWith("goto:") || action.equals("gfn:rivals") || action.equals("calltext") || action.equals("changepin") || action.equals("kidson") || action.equals("kids") || action.equals("kthemes") || action.equals("about") || action.equals("nova") || action.equals("novashow") || action.equals("novavoice") || action.equals("novasmarter") || action.equals("novahide"));
     }
 
     /**

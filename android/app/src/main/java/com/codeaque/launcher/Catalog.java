@@ -406,6 +406,14 @@ public final class Catalog {
 
     /** 0.10.30: a plain Settings tile next to Kids Mode on the grown-up home (jumps to the Settings row, like Y). */
     public static final Item SETTINGS_TILE = act("Settings", "gear", "goto:settings");
+
+    /** 0.10.54: grown-ups Nova section (no PIN, except overlay). */
+    public static final Item NOVA_PANEL = act("Nova", "sparkle", "nova");
+    public static final Item NOVA_SHOW = act("Show Nova", "sparkle", "novashow");
+    public static final Item NOVA_VOICE = act("Voice talk", "sparkle", "novavoice");
+    public static final Item NOVA_SMARTER = act("Smarter Nova", "sparkle", "novasmarter");
+    public static final Item NOVA_HIDE = act("Hide Nova", "sparkle", "novahide");
+    public static final Item NOVA_OVERLAY = act("Show Nova over other games", "sparkle", "novaoverlay");
     /** 0.10.30: Kids mode "Grown-ups" row. Both ask for the parent PIN, then Adult mode opens (Kids mode off)
      *  on the first row or on Settings. Also used by the CodeAque Adult / CodeAque Settings home-screen icons. */
     public static final Item ADULT_PIN = act("Adult mode", "pad", "adultpin");
@@ -823,6 +831,8 @@ public final class Catalog {
                 act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"), act("Nova", "sparkle", "nova"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
                 PHONE_SETTINGS, PHONE_ACCOUNTS, HOME_APP, act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), EXIT_CODEAQUE, act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), INSTALL_KIDS, KIDS_EMUS, CLASSIC_HOME, act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Ask PIN to install games", "gear", "installpin"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly")));
+        c.add(new Category("nova", "Nova", "sparkle",
+                NOVA_PANEL, NOVA_SHOW, NOVA_VOICE, NOVA_SMARTER, NOVA_HIDE, NOVA_OVERLAY));
         c.add(new Category("power", "Power", "gear", EXIT_CODEAQUE));
         return c;
     }

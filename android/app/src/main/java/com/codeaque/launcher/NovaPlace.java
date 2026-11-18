@@ -100,4 +100,25 @@ public final class NovaPlace {
     public static boolean showTab(boolean parentShow, boolean hidden) {
         return parentShow && hidden;
     }
+
+    /**
+     * 0.10.54: double-tap tucks her into the nearest corner (still her face, smaller).
+     * Full hide is a separate action and uses the gold edge tab.
+     */
+    public static float[] tuckSnap(float x, float y, float size, float viewW, float viewH,
+                                   float insetL, float insetT, float insetR, float insetB, float margin) {
+        float minX = insetL + margin;
+        float minY = insetT + margin;
+        float maxX = viewW - insetR - margin - size;
+        float maxY = viewH - insetB - margin - size;
+        if (maxX < minX) maxX = minX;
+        if (maxY < minY) maxY = minY;
+        float destX = (x - minX) <= (maxX - x) ? minX : maxX;
+        float destY = (y - minY) <= (maxY - y) ? minY : maxY;
+        return new float[] { destX, destY };
+    }
+
+    public static boolean tuckedTop(float y, float size, float viewH, float insetT, float insetB, float margin) {
+        return yFrac(y, size, viewH, insetT, insetB, margin) <= 0.5f;
+    }
 }

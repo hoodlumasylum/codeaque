@@ -12,16 +12,22 @@ public final class NovaAnim {
     public static final float GAZE_SMOOTH_MS = 180f;
     public static final float BOB_AMP = 0.008f;
     public static final float BOB_PERIOD_MS = 1400f;
+    public static final float SWAY_AMP = 1.0f;          // degrees
+    public static final float SWAY_PERIOD_MS = 2400f;
+    public static final float SMILE_MAX = 1f, BROW_MAX = 1f;
 
     public static final class State {
         public float blink;     // 0 open … 1 closed
         public float gazeX, gazeY;
         public float bob;       // fraction of the face height
         public float mouth;     // 0 closed … 1 open (lip-sync while talking)
+        public float smile;     // 0 rest … 1 a soft closed-mouth smile
+        public float brow;      // 0 rest … 1 slightly raised
+        public float sway;      // degrees, a slow lean (hair / shoulders)
         public boolean talking;
         public boolean doublePending;
-        long blinkAt, nextBlink, nextGaze, doubleAt;
-        float gazeTx, gazeTy;
+        long blinkAt, nextBlink, nextGaze, doubleAt, nextExpr, exprUntil;
+        float gazeTx, gazeTy, smileT, browT;
         boolean inited;
     }
 
@@ -32,12 +38,17 @@ public final class NovaAnim {
         s.gazeX = s.gazeY = s.gazeTx = s.gazeTy = 0;
         s.bob = 0;
         s.mouth = 0;
+        s.smile = s.smileT = 0;
+        s.brow = s.browT = 0;
+        s.sway = 0;
         s.talking = false;
         s.doublePending = false;
         s.blinkAt = 0;
         s.nextBlink = now + 1800;
         s.doubleAt = 0;
         s.nextGaze = now + 900;
+        s.nextExpr = now + 2200;
+        s.exprUntil = 0;
         s.inited = true;
     }
 
@@ -75,6 +86,41 @@ public final class NovaAnim {
         s.gazeX = clamp(s.gazeX, -GAZE_MAX_X, GAZE_MAX_X);
         s.gazeY = clamp(s.gazeY, -GAZE_MAX_Y, GAZE_MAX_Y);
         s.bob = (float) Math.sin(now / BOB_PERIOD_MS * 2.0 * Math.PI) * BOB_AMP;
+        s.sway = (float) Math.sin(now / SWAY_PERIOD_MS * 2.0 * Math.PI) * SWAY_AMP;
+        tickExpr(s, now, dt, rand);
+    }
+
+    /** Idle: occasional soft smile or a brow raise. While talking, a warmer smile and the odd emphasis. */
+    static void tickExpr(State s, long now, long dt, int rand) {
+        if (s.talking) {
+            s.smileT = 0.45f + 0.25f * (float) Math.sin(now / 900.0 * 2.0 * Math.PI);
+            if (now >= s.nextExpr) {
+                s.browT = ((rand & 3) == 0) ? 0.55f : 0.15f;
+                s.nextExpr = now + 900 + Math.abs(rand % 1200);
+                s.exprUntil = now + 400 + Math.abs(rand % 400);
+            } else if (s.exprUntil > 0 && now >= s.exprUntil) {
+                s.browT = 0.12f;
+                s.exprUntil = 0;
+            }
+        } else if (s.exprUntil > 0 && now >= s.exprUntil) {
+            s.smileT = 0;
+            s.browT = 0;
+            s.exprUntil = 0;
+            s.nextExpr = now + 2800 + Math.abs(rand % 4200);
+        } else if (now >= s.nextExpr) {
+            int kind = Math.abs(rand % 5);
+            if (kind == 0) { s.smileT = 0.7f; s.browT = 0.15f; }
+            else if (kind == 1) { s.smileT = 0.35f; s.browT = 0.55f; }
+            else if (kind == 2) { s.smileT = 0; s.browT = 0.4f; }
+            else { s.smileT = 0.2f; s.browT = 0; }
+            s.exprUntil = now + 900 + Math.abs(rand % 1400);
+            s.nextExpr = s.exprUntil + 2000;
+        }
+        float k = 1f - expMs(dt, 220f);
+        s.smile += (s.smileT - s.smile) * k;
+        s.brow += (s.browT - s.brow) * k;
+        s.smile = clamp(s.smile, 0, SMILE_MAX);
+        s.brow = clamp(s.brow, 0, BROW_MAX);
     }
 
     /** Blink amount 0..1 for a time into the current blink (ms). 0 if not blinking. */

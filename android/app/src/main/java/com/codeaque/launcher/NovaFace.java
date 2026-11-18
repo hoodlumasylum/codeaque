@@ -34,7 +34,12 @@ public final class NovaFace {
     // Visible eyeball, inside the lashes, used to shift the real iris.
     public static final float LEX = 0.352f, LEY = 0.370f, LEW = 0.108f, LEH = 0.052f;
     public static final float REX = 0.518f, REY = 0.344f, REW = 0.124f, REH = 0.054f;
-    public static final float FX = 0.18f, FY = 0.02f, FW = 0.66f, FH = 0.78f;
+    // 0.10.54: a wide crop so the braids, feather and flowing hair stay in frame (was 0.18,0.02,0.66,0.78).
+    public static final float FX = 0.04f, FY = 0.00f, FW = 0.92f, FH = 0.90f;
+    // Brow strips, full-portrait space, just above the lids.
+    public static final float LBX = 0.330f, LBY = 0.305f, LBW = 0.135f, LBH = 0.055f;
+    public static final float RBX = 0.500f, RBY = 0.285f, RBW = 0.150f, RBH = 0.055f;
+    public static final String SMILE_ASSET = "nova-smile.png";
     // Closed-lips box on the 1024 portrait (face_layout.MOUTH), used to lip-sync.
     public static final float MX = 0.418f, MY = 0.488f, MW = 0.195f, MH = 0.070f;
     static final int FALLBACK_LID = 0xFFB08978;
@@ -51,6 +56,7 @@ public final class NovaFace {
     final Matrix gazeM = new Matrix();
     Bitmap portrait;
     Bitmap[] mouthFrames;
+    Bitmap smileFrame;
     int lidColor = FALLBACK_LID;
     int srcW, srcH;
 
@@ -65,6 +71,7 @@ public final class NovaFace {
         srcW = portrait.getWidth();
         srcH = portrait.getHeight();
         loadMouth(am);
+        loadSmile(am);
         lidColor = sampleLid();
         lid.setColor(lidColor);
         lid.setStyle(Paint.Style.FILL);
@@ -85,6 +92,8 @@ public final class NovaFace {
             }
             mouthFrames = null;
         }
+        if (smileFrame != null && !smileFrame.isRecycled()) smileFrame.recycle();
+        smileFrame = null;
     }
 
     public boolean ready() { return portrait != null && !portrait.isRecycled(); }
@@ -96,6 +105,10 @@ public final class NovaFace {
         dst.set(dest);
         dst.offset(0, bob);
         int save = c.save();
+        if (st != null && Math.abs(st.sway) > 0.01f) {
+            // Subtle lean around the neck so the hair and shoulders sway.
+            c.rotate(st.sway, dst.centerX(), dst.top + dst.height() * 0.72f);
+        }
         if (ready()) {
             focusSrc(src);
             // Soft shadow: the cut-out itself, tinted dark and offset a little.
@@ -108,14 +121,26 @@ public final class NovaFace {
             float gx = st == null ? 0 : st.gazeX;
             float gy = st == null ? 0 : st.gazeY;
             float blink = st == null ? 0 : st.blink;
+            float brow = st == null ? 0 : st.brow;
+            float smile = st == null ? 0 : st.smile;
+            if (brow > 0.04f) {
+                shiftBrow(c, LBX, LBY, LBW, LBH, brow);
+                shiftBrow(c, RBX, RBY, RBW, RBH, brow);
+            }
             shiftEye(c, LEX, LEY, LEW, LEH, gx, gy);
             shiftEye(c, REX, REY, REW, REH, gx, gy);
             if (blink > 0.01f) {
                 drawLids(c, LEX, LEY, LEW, LEH, blink);
                 drawLids(c, REX, REY, REW, REH, blink);
+            } else if (smile > 0.25f) {
+                // A soft squint with a smile, so the eyes go with the mouth.
+                float squint = (smile - 0.25f) * 0.22f;
+                drawLids(c, LEX, LEY, LEW, LEH, squint);
+                drawLids(c, REX, REY, REW, REH, squint);
             }
             float mouth = st == null ? 0 : st.mouth;
             if (mouth > 0.04f) drawMouth(c, mouth);
+            else if (smile > 0.06f) drawSmile(c, smile);
         } else {
             Paint p = clip;
             p.setColor(0xFF3A2A28);
@@ -235,6 +260,36 @@ public final class NovaFace {
         if (bm == null || bm.isRecycled() || alpha <= 0) return;
         mouthPaint.setAlpha(alpha);
         c.drawBitmap(bm, null, eye, mouthPaint);
+    }
+
+    void loadSmile(AssetManager am) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        smileFrame = openBitmap(am, SMILE_ASSET, o);
+    }
+
+    void shiftBrow(Canvas c, float nx, float ny, float nw, float nh, float raise) {
+        if (!ready() || raise <= 0.02f) return;
+        mapEye(nx, ny, nw, nh, eye);
+        if (eye.width() < 2) return;
+        int s = c.save();
+        almond.reset();
+        almond.addRect(eye.left - 1, eye.top - 4, eye.right + 1, eye.bottom + 2, Path.Direction.CW);
+        c.clipPath(almond);
+        float oy = -raise * eye.height() * 0.35f;
+        tmp.set(dst);
+        tmp.offset(0, oy);
+        c.drawBitmap(portrait, src, tmp, bmp);
+        c.restoreToCount(s);
+    }
+
+    void drawSmile(Canvas c, float amount) {
+        if (smileFrame == null || smileFrame.isRecycled() || amount <= 0.04f) return;
+        mapEye(OX, OY, OW, OH, eye);
+        if (eye.width() < 4) return;
+        int a = Math.round(255 * (amount < 0 ? 0 : (amount > 1 ? 1 : amount)));
+        mouthPaint.setAlpha(a);
+        c.drawBitmap(smileFrame, null, eye, mouthPaint);
     }
 
     int sampleLid() {

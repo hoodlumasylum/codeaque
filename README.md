@@ -45,9 +45,21 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 **Smarter Nova.** When a learning question is not already in her local set and Smarter Nova is on (default on, Grown-ups > Nova), she can look up a short fact and keep only one or two kid-safe sentences. If it is unsafe or the lookup fails, she says she is not sure and suggests asking a grown-up. No account, no API key, no model picker. She always introduces herself as Nova. Licence credit for Simple English Wikipedia (CC BY-SA) is in About, not in Kids Chat. An on-device model is not in this build; that is planned for 0.10.55.
 
-**No round circle around her.** The bubble is a cut-out of her portrait with a soft edge and a light shadow, at the corner, after a drag, and in the large pinched-out view. The hidden gold edge tab is unchanged.
+**No round circle around her.** The bubble is a cut-out of her portrait with a soft edge and a light shadow, at the corner, after a drag, and in the large pinched-out view.
 
-These changes have not been tried on a real phone, a K56, or a Win600. Drag, Ask, the mic, Smarter Nova lookups, and the mic permission were unit-tested or previewed here only.
+**Mouth and face.** While she speaks, the talking-mouth is driven by TTS start/end callbacks (unique utterance ids, posted to the UI thread) with a duration fallback if a phone never fires those callbacks. She also blinks, idles with a soft smile or a slight brow raise, and her hair and shoulders sway a little.
+
+**A more natural voice.** She picks the best on-device English voice she can find (UK if the phone has one, preferably a female voice), with a slightly warmer pitch and an unhurried rate, and short pauses between sentences.
+
+**Double-tap tucks her into a corner.** She stays visible, just smaller, in the nearest corner. Tap the tucked bubble to bring her back. Hide in Chat, or Hide Nova in the grown-ups Nova section, leaves the gold edge tab. Turn Show Nova off to hide her completely (no tab).
+
+**Opens in voice mode.** If Voice talk is on, opening her greets you and then listens. After she answers she listens again, so you can have a back-and-forth. Tap Type instead or Back to type in Chat, or Close to leave. The Mic button also starts or stops the loop.
+
+**Full flowing hair.** The portrait crop is wide enough to keep her braids and feather in frame, with a subtle sway.
+
+**Nova section.** Grown-ups Settings has a Nova row: Nova (the full panel), Show Nova, Voice talk, Smarter Nova, Hide Nova, and Show Nova over other games (that last one still needs the parent PIN).
+
+These changes have not been tried on a real phone, a K56, or a Win600. Drag, Ask, the mic, Smarter Nova lookups, the mic permission, TTS mouth-sync, the chosen voice, the conversation loop, tuck, and Hide were unit-tested or previewed here only.
 
 ## What's new in 0.10.53
 

@@ -16,7 +16,7 @@ public class CatalogTest {
         check(pj.get(0).id.equals("cloud") && pj.get(1).id.equals("media") && pj.size() == c.size(), "projector order");
         check(Catalog.indexOf(c, "store") > 0 && Catalog.indexOf(c, "accounts") > 0, "Games Store and Accounts");
         for (Catalog.Item i : c.get(Catalog.indexOf(c, "store")).items) check(i.webUrl.startsWith("https://play.google.com/"), "store opens Google Play");
-        check(Catalog.indexOf(c, "allapps") == c.size() - 3 && c.get(c.size() - 2).id.equals("settings") && c.get(c.size() - 1).id.equals("power"), "All Apps, Settings, then Power");
+        check(Catalog.indexOf(c, "allapps") == c.size() - 4 && c.get(c.size() - 3).id.equals("settings") && c.get(c.size() - 2).id.equals("nova") && c.get(c.size() - 1).id.equals("power"), "All Apps, Settings, Nova, then Power");
         // 0.9.4: installed games / apps / emulators / the user's own files
         Catalog.Item g = Catalog.deviceApp("Some Game", "com.example.game", "com.example.game.Main");
         Catalog.Item rom = Catalog.rom("My Game.sfc", "content://x/1");
@@ -1165,6 +1165,48 @@ public class CatalogTest {
         check("Short fact. Extra sentence three is long for a child.".equals(NovaWiki.kidTrim("Short fact. Extra sentence three is long for a child. More.")), "kidTrim keeps two sentences");
         check(NovaWiki.kidTrim("See www.example.com for more.") == null || !NovaWiki.kidTrim("See www.example.com for more.").toLowerCase().contains("www."),
                 "kidTrim does not keep a web address");
+
+        // 0.10.54 follow-up: tuck, voice scoring, expressions, Nova section.
+        float[] tc = NovaPlace.tuckSnap(100, 100, 58, 800, 1280, 0, 0, 0, 0, 6);
+        check(tc[0] == 6 && tc[1] == 6, "tuck to the nearest top-left corner");
+        tc = NovaPlace.tuckSnap(700, 1000, 58, 800, 1280, 0, 0, 0, 0, 6);
+        check(tc[0] == 800 - 6 - 58 && tc[1] == 1280 - 6 - 58, "tuck to the nearest bottom-right corner");
+        check(NovaPlace.tuckedTop(20, 58, 1280, 0, 0, 6) && !NovaPlace.tuckedTop(1200, 58, 1280, 0, 0, 6), "tuck side is top or bottom");
+
+        check(NovaTtsVoice.score("en", "GB", "en-gb-x-rjs-female", 400, false)
+                > NovaTtsVoice.score("en", "US", "en-us-x-sfg-male", 400, false), "prefer a UK female voice over a US male");
+        check(NovaTtsVoice.score("en", "GB", "offline", 300, false)
+                > NovaTtsVoice.score("en", "GB", "network", 400, true), "prefer an offline voice");
+        check(NovaTtsVoice.score("fr", "FR", "female", 500, false) < 0, "skip a non-English voice");
+        String[] parts = NovaTtsVoice.sentences("Hello there. How are you? I'm Nova!");
+        check(parts.length == 3 && parts[0].startsWith("Hello") && parts[2].contains("Nova"), "sentence split keeps the marks");
+        check(NovaTtsVoice.sentences("CodeAque 0.10.54 is ready.").length == 1, "a version number is not a sentence break");
+        check(NovaTtsVoice.estimateMs("Hi") > 500 && NovaTtsVoice.estimateMs("one two three four") > NovaTtsVoice.estimateMs("one"), "longer answers last longer");
+        check(!LockPin.needsPin("novashow") && !LockPin.needsPin("novavoice") && !LockPin.needsPin("novasmarter") && !LockPin.needsPin("novahide") && LockPin.needsPin("novaoverlay"),
+                "Nova show/voice/smarter/hide are not lock-gated; overlay still is");
+        List<Catalog.Category> cats54 = Catalog.categories();
+        int ni = Catalog.indexOf(cats54, "nova");
+        check(ni > 0 && "Nova".equals(cats54.get(ni).label) && cats54.get(ni).items.size() >= 5, "grown-ups Settings has a Nova section");
+        java.util.List<String> na = new java.util.ArrayList<>();
+        for (Catalog.Item i : cats54.get(ni).items) na.add(i.action);
+        check(na.contains("nova") && na.contains("novashow") && na.contains("novavoice") && na.contains("novasmarter") && na.contains("novahide") && na.contains("novaoverlay"),
+                "Nova section has the panel, toggles, hide and overlay");
+
+        NovaAnim.State ex = new NovaAnim.State();
+        NovaAnim.reset(ex, 1000);
+        check(ex.smile == 0 && ex.brow == 0, "expressions start at rest");
+        boolean sawSmile = false, sawBrow = false;
+        for (int i = 0; i < 400; i++) {
+            NovaAnim.tick(ex, 1000 + i * 40, 40, 3 + i * 17);
+            if (ex.smile > 0.05f) sawSmile = true;
+            if (ex.brow > 0.05f) sawBrow = true;
+            check(ex.smile >= 0 && ex.smile <= NovaAnim.SMILE_MAX && ex.brow >= 0 && ex.brow <= NovaAnim.BROW_MAX, "expression range");
+            check(Math.abs(ex.sway) <= NovaAnim.SWAY_AMP + 1e-4, "sway amplitude");
+        }
+        check(sawSmile && sawBrow, "idle expressions include a smile and a brow raise");
+        NovaAnim.tickTalk(ex, 20000, true);
+        NovaAnim.tick(ex, 20000, 16, 1);
+        check(ex.talking && ex.smileT >= 0, "she smiles a little while talking");
     }
 
 }

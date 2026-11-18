@@ -43,6 +43,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     public static final String PREF_Y = "novaBubbleY";
     public static final String PREF_HIDDEN = "novaHidden";
     public static final String PREF_BIG = "novaBig";
+    /** 0.10.54: double-tap tucks her into a corner (still visible). Full hide is separate. */
+    public static final String PREF_TUCKED = "novaTucked";
     /** 0.10.54: grown-ups can turn Voice talk off. Default on. */
     public static final String PREF_VOICE_TALK = NovaSpeech.PREF_VOICE_TALK;
     /** 0.10.54: optional short online fact. Default on. Branded "Smarter Nova". */
@@ -58,18 +60,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     LinearLayout panel;
     TextView answerView, muteLabel;
     EditText askField;
-    Button micBtn;
+    Button micBtn, typeBtn, hideBtn;
     TextToSpeech tts;
     NovaSpeech speech;
     String pendingSpeak, lastAnswer = NovaHelp.GREETING;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady;
     final RectF tabHit = new RectF();
-    boolean dragging, snapping, pinching, hidden, big, downOnMute, downOnBubble, downOnTab, placed;
+    boolean dragging, snapping, pinching, hidden, big, tucked, downOnMute, downOnBubble, downOnTab, placed;
+    boolean voiceLoop, awaitingAnswer;
+    String talkId;
+    int speakSeq;
     boolean ignoreUntilUp, tapArmedMute;
     float downX, downY, startLeft, startTop, slop, snapX0, snapY0, snapX1, snapY1;
     float pinchStartSpan, pinchScale;
     long lastFrameNs, talkUntil, downAt, snapStart, tapArmedAt;
-    int bubbleSize, margin, longPressMs;
+    int bubbleSize, tuckSize, tuckMargin, margin, longPressMs;
     Host host;
 
     public interface Host {
@@ -89,6 +94,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         setClipChildren(false);
         float d = getResources().getDisplayMetrics().density;
         bubbleSize = Math.round((overlayMode ? 72 : 96) * d);
+        tuckSize = Math.round((overlayMode ? 48 : 58) * d);
+        tuckMargin = Math.round(6 * d);
         margin = Math.round(14 * d);
         slop = ViewConfiguration.get(ctx).getScaledTouchSlop();
         longPressMs = ViewConfiguration.getLongPressTimeout();
@@ -117,6 +124,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         boolean parent = prefs == null || prefs.getBoolean(PREF_BUBBLE, true);
         hidden = prefs != null && prefs.getBoolean(PREF_HIDDEN, false);
         big = prefs != null && prefs.getBoolean(PREF_BIG, false);
+        tucked = prefs != null && prefs.getBoolean(PREF_TUCKED, false);
+        if (hidden) tucked = false;
         if (!parent) {
             setVisibility(GONE);
             hidden = false;
@@ -162,6 +171,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (on) {
             if (askField != null) askField.clearFocus();
         } else {
+            exitVoiceMode();
             stopSpeak();
             stopListen();
         }
@@ -192,6 +202,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         answerView = null;
         muteLabel = null;
         micBtn = null;
+        typeBtn = null;
+        hideBtn = null;
         stopListen();
         buildPanel(getResources().getDisplayMetrics().density);
         setPanelShown(expanded);
@@ -304,6 +316,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         actions.setPadding(0, pad / 2, 0, 0);
         actions.addView(btn("Ask", v -> ask(askField.getText().toString())), lpBtn());
         if (!kids) actions.addView(btn("Hear it", v -> speak(lastAnswer)), lpBtn());
+        typeBtn = btn("Type instead", v -> exitVoiceMode());
+        typeBtn.setVisibility(voiceLoop ? VISIBLE : GONE);
+        actions.addView(typeBtn, lpBtn());
+        hideBtn = btn("Hide", v -> hideAway());
+        actions.addView(hideBtn, lpBtn());
         actions.addView(btn("Close", v -> collapse()), lpBtn());
         panel.addView(actions);
 
@@ -336,6 +353,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         stopListen();
         if (kids && NovaHelp.looksLikeJoke(q)) { tellJoke(); return; }
         if (kids && smarterOn() && NovaHelp.kidsMayAskOnline(q)) {
+            awaitingAnswer = true;
             if (askField != null && q != null) askField.setText(q);
             lastAnswer = "Let me think…";
             if (answerView != null) answerView.setText(lastAnswer);
@@ -359,6 +377,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         String a = local;
         if (wiki != null && !wiki.isEmpty() && !NovaHelp.kidsUnsafe(wiki)) a = wiki;
         else if (a == null || NovaHelp.kidsUnsafe(a) || a.equals(NovaHelp.KIDS_FOOT)) a = NovaHelp.KIDS_UNSURE;
+        awaitingAnswer = false;
         final String ans = a;
         post(new NovaWikiDone(this, ans));
     }
@@ -369,15 +388,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void onMicTap() {
         if (!voiceTalkOn()) return;
-        if (speech != null && speech.isListening()) { stopListen(); return; }
+        if (speech != null && speech.isListening()) { exitVoiceMode(); return; }
         if (host != null && !host.novaMicAllowed()) { host.novaRequestMic(); return; }
+        voiceLoop = true;
+        refreshVoiceButtons();
         startListen();
     }
 
     /** Grown-ups granted or denied RECORD_AUDIO. */
     public void onMicPermission(boolean ok) {
-        if (ok) startListen();
-        else {
+        if (ok) {
+            voiceLoop = true;
+            refreshVoiceButtons();
+            startListen();
+        } else {
+            exitVoiceMode();
             lastAnswer = "The mic wasn't allowed, so you can type your question instead.";
             if (answerView != null) answerView.setText(lastAnswer);
             refreshMicLabel();
@@ -422,17 +447,50 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void toggleMute() { setMuted(!muted()); }
 
-    /** Bubble single-tap: voice on opens Chat and greets; voice off closes Chat (stays open if she is big). */
+    /** Bubble single-tap: open Chat in voice mode (if Voice talk is on), or close it. A tucked bubble first untucks. */
     void onSingleTap(boolean muteBadge) {
         if (muteBadge) { toggleMute(); return; }
+        if (tucked) { setTucked(false); return; }
         if (muted() || !expanded) {
             setMuted(false);
             setExpanded(true);
-            greet();
+            if (voiceTalkOn()) enterVoiceMode();
+            else greet();
         } else {
+            exitVoiceMode();
             setMuted(true);
             if (!big) setExpanded(false);
         }
+    }
+
+    void enterVoiceMode() {
+        voiceLoop = true;
+        refreshVoiceButtons();
+        greet();
+    }
+
+    void exitVoiceMode() {
+        boolean was = voiceLoop;
+        voiceLoop = false;
+        awaitingAnswer = false;
+        stopListen();
+        refreshVoiceButtons();
+        if (was && answerView != null && lastAnswer != null) {
+            // Leave Chat open so they can type. No extra toast on the overlay thread.
+        }
+    }
+
+    void refreshVoiceButtons() {
+        if (typeBtn != null) typeBtn.setVisibility(voiceLoop ? VISIBLE : GONE);
+        refreshMicLabel();
+    }
+
+    /** After she finishes speaking, listen again if the conversation loop is still on. */
+    public void maybeResumeListen() {
+        if (!voiceLoop || !expanded || muted() || !voiceTalkOn() || awaitingAnswer) return;
+        if (speech != null && speech.isListening()) return;
+        if (host != null && !host.novaMicAllowed()) { host.novaRequestMic(); return; }
+        startListen();
     }
 
     void speakAuto(String s) {
@@ -450,41 +508,94 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void ensureTts() {
         if (tts != null) return;
-        tts = new TextToSpeech(getContext(), status -> {
-            if (status == TextToSpeech.SUCCESS && tts != null) {
-                try {
-                    if (tts.isLanguageAvailable(Locale.UK) >= TextToSpeech.LANG_AVAILABLE) tts.setLanguage(Locale.UK);
-                    else tts.setLanguage(Locale.getDefault());
-                } catch (Exception ignored) { }
-                ttsReady = true;
-                flushSpeak();
-            } else {
-                ttsReady = false;
-                pendingSpeak = null;
+        tts = new TextToSpeech(getContext(), new NovaTtsInit(this));
+    }
+
+    public void onTtsInit(int status) {
+        if (status == TextToSpeech.SUCCESS && tts != null) {
+            pickVoice();
+            try {
+                tts.setPitch(NovaTtsVoice.PITCH);
+                tts.setSpeechRate(NovaTtsVoice.RATE);
+                tts.setOnUtteranceProgressListener(new NovaTtsListen(this));
+            } catch (Exception ignored) { }
+            ttsReady = true;
+            flushSpeak();
+        } else {
+            ttsReady = false;
+            pendingSpeak = null;
+            if (voiceLoop) postDelayed(new NovaListenSoon(this), 400);
+        }
+    }
+
+    void pickVoice() {
+        if (tts == null) return;
+        try {
+            java.util.Set<android.speech.tts.Voice> set = tts.getVoices();
+            android.speech.tts.Voice best = null;
+            int bestScore = -1;
+            if (set != null) {
+                for (android.speech.tts.Voice v : set) {
+                    if (v == null) continue;
+                    java.util.Locale loc = v.getLocale();
+                    String lang = loc == null ? null : loc.getLanguage();
+                    String country = loc == null ? null : loc.getCountry();
+                    int sc = NovaTtsVoice.score(lang, country, v.getName(), v.getQuality(), v.isNetworkConnectionRequired());
+                    if (sc > bestScore) { bestScore = sc; best = v; }
+                }
             }
-        });
+            if (best != null && bestScore >= 0) {
+                tts.setVoice(best);
+                return;
+            }
+        } catch (Exception ignored) { }
+        try {
+            if (tts.isLanguageAvailable(Locale.UK) >= TextToSpeech.LANG_AVAILABLE) tts.setLanguage(Locale.UK);
+            else tts.setLanguage(Locale.getDefault());
+        } catch (Exception ignored) { }
     }
 
     void flushSpeak() {
         if (tts == null || pendingSpeak == null) return;
         String s = pendingSpeak;
         pendingSpeak = null;
+        speakSeq++;
+        String[] parts = NovaTtsVoice.sentences(s);
+        if (parts.length == 0) return;
         talking = true;
-        talkUntil = android.os.SystemClock.uptimeMillis() + estimateMs(s);
-        if (Build.VERSION.SDK_INT >= 21) tts.speak(s, TextToSpeech.QUEUE_FLUSH, null, "nova");
-        else tts.speak(s, TextToSpeech.QUEUE_FLUSH, null);
+        talkUntil = android.os.SystemClock.uptimeMillis() + NovaTtsVoice.estimateMs(s);
+        talkId = null;
+        for (int i = 0; i < parts.length; i++) {
+            String id = "nova-" + speakSeq + "-" + i;
+            int mode = (i == 0) ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD;
+            if (i > 0) {
+                try { tts.playSilentUtterance(NovaTtsVoice.PAUSE_MS, TextToSpeech.QUEUE_ADD, "nova-" + speakSeq + "-s" + i); }
+                catch (Exception ignored) { }
+            }
+            tts.speak(parts[i], mode, null, id);
+            talkId = id;   // last sentence; onDone of this one ends the mouth + may resume listen
+        }
     }
 
-    static int estimateMs(String s) {
-        int words = 1;
-        if (s != null) {
-            String t = s.trim();
-            if (!t.isEmpty()) {
-                words = 1;
-                for (int i = 0; i < t.length(); i++) if (t.charAt(i) == ' ') words++;
-            }
-        }
-        return 400 + words * 380;
+    public void onTtsStart(String id) {
+        if (id == null || talkId == null) return;
+        if (!id.startsWith("nova-" + speakSeq + "-")) return;
+        talking = true;
+        // Callbacks can be late: keep the duration fallback as a safety net.
+        long extra = android.os.SystemClock.uptimeMillis() + 8000;
+        if (extra > talkUntil) talkUntil = extra;
+        invalidate();
+    }
+
+    public void onTtsEnd(String id) {
+        if (id == null || talkId == null) return;
+        if (!id.equals(talkId)) return;   // ignore pauses and earlier sentences
+        talkId = null;
+        talking = false;
+        talkUntil = 0;
+        st.talking = false;
+        invalidate();
+        if (voiceLoop) postDelayed(new NovaListenSoon(this), 500);
     }
 
     void stopSpeak() {
@@ -561,7 +672,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (talkUntil > 0 && now >= talkUntil) {
             boolean still = false;
             try { still = tts != null && tts.isSpeaking(); } catch (Exception ignored) { }
-            if (!still) { talking = false; talkUntil = 0; }
+            if (still) talkUntil = now + 800;
+            else if (talkId != null) onTtsEnd(talkId);
+            else { talking = false; talkUntil = 0; }
         }
         // Cap at ~30 fps: blink and breath don't need 60, and we stay off the scroll thread.
         if (tapArmedAt != 0 && !downOnBubble && !pinching && now - tapArmedAt >= NovaPlace.DOUBLE_MS) {
@@ -652,10 +765,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         } else {
             boolean left = prefs != null && prefs.getBoolean(PREF_LEFT, false);
             float yFrac = prefs != null && prefs.contains(PREF_Y) ? prefs.getFloat(PREF_Y, 1f) : 1f;
-            float size = bubbleSize;
+            float size = tucked ? tuckSize : bubbleSize;
+            float m = tucked ? tuckMargin : margin;
             if (pinching) size = livePinchSize();
-            float x = NovaPlace.xForSide(left, size, w, insetL(), insetR(), margin);
-            float y = NovaPlace.yFromFrac(yFrac, size, h, insetT(), insetB(), margin);
+            float x = NovaPlace.xForSide(left, size, w, insetL(), insetR(), m);
+            float y = NovaPlace.yFromFrac(tucked ? (yFrac <= 0.5f ? 0f : 1f) : yFrac, size, h, insetT(), insetB(), m);
             bubble.set(x, y, x + size, y + size);
             placed = true;
         }
@@ -687,8 +801,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         else tabHit.set(w - insetR() - tw, y, w - insetR(), y + th);
     }
 
+    float liveSize() { return tucked ? tuckSize : bubbleSize; }
+    float liveMargin() { return tucked ? tuckMargin : margin; }
+
     float livePinchSize() {
-        float small = bubbleSize;
+        float small = liveSize();
         float large = bigFaceSize(Math.max(1, getWidth()), Math.max(1, getHeight()));
         float from = big ? large : small;
         float to = from * pinchScale;
@@ -871,7 +988,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             // Clean tap: if a first tap is still waiting, this is a double-tap (hide).
             if (tapArmedAt != 0 && NovaPlace.isDoubleTap(tapArmedAt, downAt, NovaPlace.DOUBLE_MS)) {
                 tapArmedAt = 0;
-                hideAway();
+                setTucked(!tucked);
                 return true;
             }
             tapArmedAt = upAt;
@@ -970,11 +1087,27 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         invalidate();
     }
 
+    void setTucked(boolean on) {
+        if (prefs != null) prefs.edit().putBoolean(PREF_TUCKED, on).putBoolean(PREF_HIDDEN, false).putBoolean(PREF_BIG, false).apply();
+        tucked = on;
+        hidden = false;
+        big = false;
+        if (on) {
+            exitVoiceMode();
+            if (expanded) setExpanded(false);
+        }
+        startAnim();
+        requestLayout();
+        invalidate();
+    }
+
     void hideAway() {
         cancelArmedTap();
-        if (prefs != null) prefs.edit().putBoolean(PREF_HIDDEN, true).putBoolean(PREF_BIG, false).apply();
+        if (prefs != null) prefs.edit().putBoolean(PREF_HIDDEN, true).putBoolean(PREF_BIG, false).putBoolean(PREF_TUCKED, false).apply();
         hidden = true;
         big = false;
+        tucked = false;
+        exitVoiceMode();
         collapse();
         stopSpeak();
         stopAnim();
@@ -994,11 +1127,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void moveBubble(float left, float top) {
         int w = getWidth(), h = getHeight();
-        float minX = insetL() + margin, minY = insetT() + margin;
-        float maxX = w - insetR() - margin - bubbleSize, maxY = h - insetB() - margin - bubbleSize;
+        float size = liveSize(), m = liveMargin();
+        float minX = insetL() + m, minY = insetT() + m;
+        float maxX = w - insetR() - m - size, maxY = h - insetB() - m - size;
         left = NovaPlace.clamp(left, minX, Math.max(minX, maxX));
         top = NovaPlace.clamp(top, minY, Math.max(minY, maxY));
-        bubble.set(left, top, left + bubbleSize, top + bubbleSize);
+        bubble.set(left, top, left + size, top + size);
         layoutParts(w, h);
         requestLayout();
         invalidate();
@@ -1006,7 +1140,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void snapGently() {
         int w = getWidth(), h = getHeight();
-        float[] to = NovaPlace.snap(bubble.left, bubble.top, bubbleSize, w, h, insetL(), insetT(), insetR(), insetB(), margin);
+        float size = liveSize(), m = liveMargin();
+        float[] to = tucked
+                ? NovaPlace.tuckSnap(bubble.left, bubble.top, size, w, h, insetL(), insetT(), insetR(), insetB(), m)
+                : NovaPlace.snap(bubble.left, bubble.top, size, w, h, insetL(), insetT(), insetR(), insetB(), m);
         snapX0 = bubble.left;
         snapY0 = bubble.top;
         snapX1 = to[0];
@@ -1029,8 +1166,11 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void placeClamped() {
         int w = getWidth(), h = getHeight();
-        float[] to = NovaPlace.snap(bubble.left, bubble.top, bubbleSize, w, h, insetL(), insetT(), insetR(), insetB(), margin);
-        bubble.set(to[0], to[1], to[0] + bubbleSize, to[1] + bubbleSize);
+        float size = liveSize(), m = liveMargin();
+        float[] to = tucked
+                ? NovaPlace.tuckSnap(bubble.left, bubble.top, size, w, h, insetL(), insetT(), insetR(), insetB(), m)
+                : NovaPlace.snap(bubble.left, bubble.top, size, w, h, insetL(), insetT(), insetR(), insetB(), m);
+        bubble.set(to[0], to[1], to[0] + size, to[1] + size);
         savePlace(to[0], to[1]);
         layoutParts(w, h);
         requestLayout();
@@ -1040,8 +1180,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void savePlace(float x, float y) {
         if (prefs == null) return;
         int w = getWidth(), h = getHeight();
-        boolean left = NovaPlace.leftSide(x, bubbleSize, w, insetL(), insetR(), margin);
-        float frac = NovaPlace.yFrac(y, bubbleSize, h, insetT(), insetB(), margin);
+        float size = liveSize(), m = liveMargin();
+        boolean left = NovaPlace.leftSide(x, size, w, insetL(), insetR(), m);
+        float frac = NovaPlace.yFrac(y, size, h, insetT(), insetB(), m);
         prefs.edit().putBoolean(PREF_LEFT, left).putFloat(PREF_Y, frac).apply();
     }
 
@@ -1057,6 +1198,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (expanded && event.getAction() == KeyEvent.ACTION_UP
                 && (event.getKeyCode() == KeyEvent.KEYCODE_BACK || event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_B
                 || event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE)) {
+            if (voiceLoop) { exitVoiceMode(); return true; }
             collapse();
             return true;
         }

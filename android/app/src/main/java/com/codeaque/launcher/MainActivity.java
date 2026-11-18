@@ -1748,6 +1748,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             case "bootanim": bootAnim(); break;
             case "rotation": rotationToggle(); break;
             case "nova": novaSettings(); break;          // 0.10.52
+            case "novashow": novaToggleShow(); break;
+            case "novavoice": novaToggleVoice(); break;
+            case "novasmarter": novaToggleSmarter(); break;
+            case "novahide": novaHide(); break;
+            case "novaoverlay": novaSettings(); break;   // 0.10.54: same dialog, overlay still PIN in mustPin
             case "installpin": installPinToggle(); break;  // 0.10.52
             case "kids": enterKids(); break;          // 0.10.54: no PIN, no extra question
             case "kidsprofile": kidsProfilePicker(); break;   // 0.10.37: always PIN (mustPin)
@@ -1786,6 +1791,34 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     /** 0.10.52: show / hide the in-app bubble, or (PIN) Nova over other games. */
+    private void novaToggleShow() {
+        boolean on = !prefs.getBoolean(NovaView.PREF_BUBBLE, true);
+        android.content.SharedPreferences.Editor ed = prefs.edit().putBoolean(NovaView.PREF_BUBBLE, on);
+        if (on) ed.putBoolean(NovaView.PREF_HIDDEN, false);
+        ed.apply();
+        if (nova != null) nova.applyPref();
+        toast(on ? "Nova is on." : "Nova is hidden completely.");
+    }
+
+    private void novaToggleVoice() {
+        boolean on = !prefs.getBoolean(NovaView.PREF_VOICE_TALK, true);
+        prefs.edit().putBoolean(NovaView.PREF_VOICE_TALK, on).apply();
+        if (nova != null) nova.rebuildPanel();
+        toast(on ? "Voice talk is on. Opening Nova starts a conversation." : "Voice talk is off. You can type in Chat.");
+    }
+
+    private void novaToggleSmarter() {
+        boolean on = !prefs.getBoolean(NovaView.PREF_SMARTER, true);
+        prefs.edit().putBoolean(NovaView.PREF_SMARTER, on).apply();
+        toast(on ? "Smarter Nova is on." : "Smarter Nova is off. She will only use what is stored on this phone.");
+    }
+
+    private void novaHide() {
+        if (nova != null) nova.hideAway();
+        else prefs.edit().putBoolean(NovaView.PREF_HIDDEN, true).putBoolean(NovaView.PREF_TUCKED, false).apply();
+        toast("Nova is tucked away. A gold tab on the edge brings her back, or use Show Nova.");
+    }
+
     private void novaSettings() {
         float d = getResources().getDisplayMetrics().density;
         int pad = Math.round(12 * d);
@@ -1793,7 +1826,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding(pad, pad / 2, pad, 0);
         android.widget.TextView msg = new android.widget.TextView(this);
-        msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Double-tap her to hide her; a small tab on the edge brings her back. Turn Show Nova off to hide her completely, including the tab. Voice talk lets her listen in Chat while the mic is on (the phone's own recognizer, no account). Smarter Nova can look up a short fact when she isn't sure; licence details are in About. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
+        msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Open her and, if Voice talk is on, she greets you and then listens; say another question after she answers, or tap Type instead / Back to type, or Close to leave. Double-tap tucks her into a corner (still her face, smaller). Hide in Chat, or Hide Nova here, leaves a gold tab; turn Show Nova off to hide her completely. Smarter Nova can look up a short fact when she isn't sure; licence details are in About. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
         msg.setPadding(0, 0, 0, pad);
         box.addView(msg);
         android.widget.CheckBox show = new android.widget.CheckBox(this);
