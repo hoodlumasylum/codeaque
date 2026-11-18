@@ -46,9 +46,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private final java.util.ArrayList<Catalog.Item> installedLaunchers = new java.util.ArrayList<>();
     private final java.util.ArrayList<Catalog.Item> lastSearchItems = new java.util.ArrayList<>();
     private final java.util.LinkedHashMap<String, java.util.List<PlaySearch.Hit>> searchCache = new java.util.LinkedHashMap<>();
-    private String searchStatus = "", searchQuery = "";
-    private int searchGen;
-    private boolean searchPlayFailed;
+    private String searchStatus = "", searchQuery = "", searchChip = "";
+    private int searchGen, searchMoreOffset, imeFallbackGen;
+    private boolean searchPlayFailed, searchWatchLock;
+    private android.widget.FrameLayout root;
+    private android.widget.EditText searchField;
     private String pendingAnimPath;
     private String robloxSession = "", robloxToken = "";
     private boolean robloxOn, robloxLoading, robloxRatingsOk, timeUpScreen;
@@ -64,7 +66,16 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         applyAlwaysKids();                            // 0.10.37: default on — cold start / Home after reboot opens in Kids mode
         edgeToEdge();
         view = new HomeView(this, this);
-        setContentView(view);
+        root = new android.widget.FrameLayout(this);
+        root.addView(view, new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        searchField = buildKidsSearchField();
+        root.addView(searchField);
+        setContentView(root);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (view != null && view.onKidsSearch() && imeVisible()) view.setSearchImeFallback(false);
+            return v.onApplyWindowInsets(insets);
+        });
         if (artLoader == null) {
             artLoader = new ArtLoader();
             artLoader.setListener(this);
@@ -312,6 +323,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         else if (kidsOn) view.setBoxSet(false, java.util.Collections.emptyList());
         if (kidsOn) {
             if (!lastSearchItems.isEmpty()) view.replaceRow("ksearch", lastSearchItems);
+            else if (searchChip != null && !searchChip.isEmpty()) runKidsSearchChip(searchChip);
             else runKidsSearch(searchQuery == null ? "" : searchQuery);
         }
         if (!romsScanned) { romsScanned = true; scanRoms(); }
@@ -1234,6 +1246,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             allow.add("com.google.android.packageinstaller");
             allow.add("com.android.packageinstaller");
         }
+        String ime = currentImePackage();   // 0.10.50: Kids lock-task must not block the system keyboard
+        if (ime != null && !ime.isEmpty()) allow.add(ime);
         return allow;
     }
 
@@ -2665,11 +2679,13 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         if (parentUpdateActive()) return;   // 0.10.49: leaving for a PIN-approved CodeAque APK update
         if (prefs.getString("kidsFgPkg", null) != null) return;   // leaving for an approved game
         if (pinDialogOpen) return;
+        if (imeVisible()) return;   // 0.10.50: do not bounce the system keyboard
         final int gen = ++kidsBounceGen;
         view.postDelayed(() -> {
             if (gen != kidsBounceGen) return;
             if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
             if (prefs.getString("kidsFgPkg", null) != null) return;
+            if (imeVisible()) return;
             if (hasWindowFocus() || inLockTask()) return;
             ScreenTimeService.bringKidsHome(this, false);
         }, 400);
@@ -3487,11 +3503,20 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
     @Override public String kidsSearchStatus() { return searchStatus == null ? "" : searchStatus; }
 
-    @Override public void kidsSearchRetry() { searchPlayFailed = false; runKidsSearch(searchQuery); }
+    @Override public void kidsSearchRetry() {
+        searchPlayFailed = false;
+        if (searchChip != null && !searchChip.isEmpty() && (searchQuery == null || searchQuery.trim().isEmpty()))
+            runKidsSearchChip(searchChip);
+        else runKidsSearch(searchQuery);
+    }
+
+    @Override public String kidsSearchChip() { return searchChip == null ? "" : searchChip; }
 
     /** 0.10.49: search Play (and the bundled catalogue) inside CodeAque; never opens Play search. */
     @Override public void runKidsSearch(String query) {
         if (!prefs.getBoolean("kidsMode", false)) return;
+        searchChip = "";
+        searchMoreOffset = 0;
         searchQuery = query == null ? "" : query;
         final String q = searchQuery;
         final int max = KidsPlay.maxPegi(kids12());
@@ -3564,6 +3589,236 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         }
         return out;
     }
+
+    private java.util.List<Catalog.Item> kidsInstalledChipMatches(String label) {
+        String cat = KidsPlay.chipCat(label);
+        String q = KidsPlay.chipQuery(label);
+        java.util.List<Catalog.Item> all = kidsInstalledMatches("");
+        java.util.ArrayList<Catalog.Item> out = new java.util.ArrayList<>();
+        for (Catalog.Item a : all) {
+            if (a == null) continue;
+            String pkg = a.storePackage() != null ? a.storePackage() : a.pkg;
+            KidsPlay.Game g = pkg == null ? null : KidsPlay.byPkg(pkg);
+            boolean ok = cat != null && g != null && cat.equals(g.cat);
+            if (!ok) ok = PlaySearch.matches(q, a.label, pkg);
+            if (ok) out.add(a);
+        }
+        return out;
+    }
+
+    @Override public void runKidsSearchChip(String chip) {
+        if (!prefs.getBoolean("kidsMode", false)) return;
+        searchChip = chip == null ? "" : chip;
+        searchQuery = "";
+        searchWatchLock = true;
+        if (searchField != null) searchField.setText("");
+        searchWatchLock = false;
+        if (searchChip.isEmpty()) { runKidsSearch(""); return; }
+        final String label = searchChip;
+        final String q = KidsPlay.chipQuery(label);
+        final int max = KidsPlay.maxPegi(kids12());
+        final int gen = ++searchGen;
+        final java.util.List<Catalog.Item> installed = kidsInstalledChipMatches(label);
+        java.util.List<Catalog.Item> catalog = KidsPlay.chipItems(label, max, 0, KidsPlay.PAGE);
+        searchMoreOffset = catalog.size();
+        searchStatus = "Searching…";
+        java.util.List<Catalog.Item> quick = PlaySearch.merge(installed, searchCache.get(PlaySearch.norm(q)), catalog);
+        lastSearchItems.clear();
+        lastSearchItems.addAll(quick);
+        if (view != null) { view.replaceRow("ksearch", lastSearchItems); view.invalidate(); }
+        new Thread(() -> {
+            java.util.List<PlaySearch.Hit> play = null;
+            boolean failed = false;
+            try { play = PlaySearch.fetch(PlayArt.PLAY, q, max); }
+            catch (Exception e) { failed = true; }
+            if (play != null) {
+                String key = PlaySearch.norm(q);
+                searchCache.put(key, play);
+                while (searchCache.size() > 20) searchCache.remove(searchCache.keySet().iterator().next());
+            } else if (searchCache.containsKey(PlaySearch.norm(q))) {
+                play = searchCache.get(PlaySearch.norm(q));
+            }
+            final java.util.List<PlaySearch.Hit> hits = play;
+            final boolean playFail = failed;
+            runOnUiThread(() -> {
+                if (gen != searchGen) return;
+                java.util.List<Catalog.Item> merged = PlaySearch.merge(kidsInstalledChipMatches(label), hits,
+                        KidsPlay.chipItems(label, max, 0, KidsPlay.PAGE));
+                if (merged.isEmpty() && !lastSearchItems.isEmpty()) merged = new java.util.ArrayList<>(lastSearchItems);
+                lastSearchItems.clear();
+                lastSearchItems.addAll(merged);
+                searchPlayFailed = playFail;
+                if (playFail) searchStatus = "Couldn't load more games, tap to retry";
+                else if (merged.isEmpty()) searchStatus = "Couldn't load more games, tap to retry";
+                else searchStatus = "";
+                if (view != null) { view.replaceRow("ksearch", lastSearchItems); view.invalidate(); }
+            });
+        }, "kids-search-chip").start();
+    }
+
+    @Override public void kidsSearchMore() {
+        if (!prefs.getBoolean("kidsMode", false)) return;
+        if (searchChip == null || searchChip.isEmpty()) return;
+        final int max = KidsPlay.maxPegi(kids12());
+        java.util.List<Catalog.Item> more = KidsPlay.chipItems(searchChip, max, searchMoreOffset, KidsPlay.PAGE);
+        if (more.isEmpty()) {
+            if (searchPlayFailed) searchStatus = "Couldn't load more games, tap to retry";
+            if (view != null) view.invalidate();
+            return;
+        }
+        searchMoreOffset += more.size();
+        java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+        for (Catalog.Item it : lastSearchItems) if (it != null && it.storePackage() != null) seen.add(it.storePackage());
+        for (Catalog.Item it : more) {
+            String pkg = it == null ? null : it.storePackage();
+            if (pkg == null || !seen.add(pkg)) continue;
+            lastSearchItems.add(it);
+        }
+        if (view != null) { view.replaceRow("ksearch", lastSearchItems); view.invalidate(); }
+    }
+
+    private android.widget.EditText buildKidsSearchField() {
+        android.widget.EditText e = new android.widget.EditText(this);
+        e.setVisibility(android.view.View.GONE);
+        e.setBackgroundColor(0x00000000);
+        e.setTextColor(0xFFFFFFFF);
+        e.setHintTextColor(0x88FFFFFF);
+        e.setSingleLine(true);
+        e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                | android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN);
+        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_FILTER);
+        e.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        e.setLayoutParams(new android.widget.FrameLayout.LayoutParams(1, 1));
+        e.addTextChangedListener(new KidsSearchWatch(this));
+        e.setOnEditorActionListener((v, actionId, ev) -> {
+            boolean go = actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                    || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO
+                    || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                    || (ev != null && ev.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER
+                        && ev.getAction() == android.view.KeyEvent.ACTION_DOWN);
+            if (!go) return false;
+            if (view != null) view.fireSearch();
+            hideKidsIme();
+            return true;
+        });
+        e.setOnKeyListener((v, keyCode, ev) -> {
+            if (ev.getAction() != android.view.KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A || keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER) {
+                if (!imeVisible()) { requestKidsIme(); return true; }
+                return false;
+            }
+            if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP || keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                    || keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT || keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+                    || keyCode == android.view.KeyEvent.KEYCODE_BUTTON_B || keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                return view != null && view.onKeyDown(keyCode, ev);
+            }
+            return false;
+        });
+        return e;
+    }
+
+    @Override public void placeKidsSearchField(float left, float top, float right, float bottom, String text, String hint, boolean focused, boolean showField) {
+        if (searchField == null) return;
+        if (!showField) {
+            if (searchField.getVisibility() != android.view.View.GONE) {
+                final android.widget.EditText field = searchField;
+                searchField.post(() -> {
+                    field.setVisibility(android.view.View.GONE);
+                    if (field.hasFocus() && view != null) view.requestFocus();
+                });
+            }
+            return;
+        }
+        int l = Math.round(left), t = Math.round(top), r = Math.round(right), b = Math.round(bottom);
+        int w = Math.max(1, r - l), h = Math.max(1, b - t);
+        android.widget.FrameLayout.LayoutParams lp = (android.widget.FrameLayout.LayoutParams) searchField.getLayoutParams();
+        if (lp == null) lp = new android.widget.FrameLayout.LayoutParams(w, h);
+        final android.widget.EditText field = searchField;
+        final android.widget.FrameLayout.LayoutParams flp = lp;
+        final int fw = w, fh = h, fl = l, ft = t;
+        final boolean needMove = lp.width != w || lp.height != h || lp.leftMargin != l || lp.topMargin != t;
+        final boolean needShow = searchField.getVisibility() != android.view.View.VISIBLE;
+        if (needMove || needShow) {
+            searchField.post(() -> {
+                if (field.getParent() == null) return;
+                if (needMove) { flp.width = fw; flp.height = fh; flp.leftMargin = fl; flp.topMargin = ft; field.setLayoutParams(flp); }
+                if (field.getVisibility() != android.view.View.VISIBLE) field.setVisibility(android.view.View.VISIBLE);
+            });
+        }
+        if (hint != null && !hint.equals(String.valueOf(searchField.getHint()))) searchField.setHint(hint);
+        String cur = searchField.getText() == null ? "" : searchField.getText().toString();
+        if (text == null) text = "";
+        if (!text.equals(cur) && !searchField.hasFocus()) {
+            searchWatchLock = true;
+            searchField.setText(text);
+            searchField.setSelection(text.length());
+            searchWatchLock = false;
+        }
+        float d = getResources().getDisplayMetrics().density;
+        searchField.setPadding(Math.round(16 * d), 0, Math.round(16 * d), 0);
+        searchField.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Math.max(18 * d, h * 0.42f));
+    }
+
+    @Override public void requestKidsIme() {
+        if (view == null || !view.onKidsSearch() || searchField == null) return;
+        allowImeInLockTask();
+        if (searchField.getVisibility() != android.view.View.VISIBLE) searchField.setVisibility(android.view.View.VISIBLE);
+        searchField.requestFocus();
+        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(searchField, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        final int gen = ++imeFallbackGen;
+        if (view != null) view.postDelayed(new KidsImeFallback(this, gen), 400);
+    }
+
+    @Override public void hideKidsIme() {
+        imeFallbackGen++;
+        if (searchField != null) {
+            android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null) imm.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
+            if (searchField.hasFocus() && view != null) view.requestFocus();
+        }
+    }
+
+    String currentImePackage() {
+        return ScreenTime.imePackage(Settings.Secure.getString(getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD));
+    }
+
+    private void allowImeInLockTask() {
+        if (!deviceOwner() || !prefs.getBoolean("kidsMode", false)) return;
+        try {
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            java.util.Set<String> allow = kidsLockTaskPackages();
+            dpm.setLockTaskPackages(adminComponent(), allow.toArray(new String[0]));
+        } catch (Exception ignored) { }
+    }
+
+    boolean imeVisible() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsets insets = getWindow() != null && getWindow().getDecorView() != null
+                    ? getWindow().getDecorView().getRootWindowInsets() : null;
+            return insets != null && insets.isVisible(android.view.WindowInsets.Type.ime());
+        }
+        android.graphics.Rect r = new android.graphics.Rect();
+        android.view.View decor = getWindow() != null ? getWindow().getDecorView() : null;
+        if (decor == null) return false;
+        decor.getWindowVisibleDisplayFrame(r);
+        float th = 120 * getResources().getDisplayMetrics().density;
+        return (decor.getHeight() - r.bottom) > th;
+    }
+
+    void onKidsImeFallback(int gen) {
+        if (gen != imeFallbackGen) return;
+        if (view == null || !view.onKidsSearch()) return;
+        if (imeVisible()) view.setSearchImeFallback(false);
+        else view.setSearchImeFallback(true);
+    }
+
+    void onKidsSearchField(String text) {
+        if (searchWatchLock || view == null) return;
+        view.setSearchQueryText(text, false);
+    }
+
     private java.util.Set<String> allowedEmus() {
         String key = kids12() ? "kidsEmu12" : "kidsEmu";
         return new java.util.HashSet<>(prefs.getStringSet(key, java.util.Collections.<String>emptySet()));
@@ -4007,3 +4262,21 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 /** Package-level so the older D8 dexer can compile the Screen Time clock picker. */
 interface MinutePick { void ok(int minutes); }
 
+
+/** Package-level so the older D8 dexer can compile the IME fallback timer. */
+final class KidsImeFallback implements Runnable {
+    final MainActivity activity;
+    final int gen;
+    KidsImeFallback(MainActivity activity, int gen) { this.activity = activity; this.gen = gen; }
+    @Override public void run() { activity.onKidsImeFallback(gen); }
+}
+
+final class KidsSearchWatch implements android.text.TextWatcher {
+    final MainActivity activity;
+    KidsSearchWatch(MainActivity activity) { this.activity = activity; }
+    @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+    @Override public void onTextChanged(CharSequence s, int start, int before, int count) { }
+    @Override public void afterTextChanged(android.text.Editable s) {
+        activity.onKidsSearchField(s == null ? "" : s.toString());
+    }
+}

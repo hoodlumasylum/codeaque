@@ -56,10 +56,16 @@ public class HomeView extends View {
         void kidsBrowseMore(String catId);
         /** 0.10.45: parent-PIN, then open Play Store pages for the ticked games (skip installed). */
         void installPicked(java.util.List<String> pkgs);
-        /** 0.10.49: Kids search stays inside CodeAque. Never opens the raw Play Store search. */
+        /** 0.10.49 / 0.10.50: Kids search stays inside CodeAque. Never opens the raw Play Store search. */
         void runKidsSearch(String query);
         String kidsSearchStatus();
         void kidsSearchRetry();
+        void kidsSearchMore();
+        void runKidsSearchChip(String chip);
+        String kidsSearchChip();
+        void requestKidsIme();
+        void hideKidsIme();
+        void placeKidsSearchField(float left, float top, float right, float bottom, String text, String hint, boolean focused, boolean showField);
     }
 
     private Palette T = Palette.NEON;
@@ -117,10 +123,13 @@ public class HomeView extends View {
     private int logoTaps; private long logoTapAt;
     private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
     private final RectF installBtn = new RectF();
-    private final RectF searchQueryBox = new RectF(), searchRetryBox = new RectF(), searchKbBox = new RectF();
+    private final RectF searchQueryBox = new RectF(), searchRetryBox = new RectF(), searchKbBox = new RectF(), searchChipBox = new RectF();
+    private final RectF[] searchChipRects = new RectF[KidsPlay.SEARCH_CHIPS.length];
     private String searchQ = "";
-    private boolean searchKb = true, searchShift, searchSym;
-    private int kbRow, kbCol;
+    private boolean searchShift, searchSym, searchKbFallback;
+    private int kbRow, kbCol, searchChipSel = -1, searchChipNav;
+    private static final int SF_BOX = 0, SF_CHIPS = 1, SF_KEYS = 2, SF_TILES = 3;
+    private int searchFocus = SF_BOX;
     private final java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
     private long holdAt; private int holdTile = -1; private boolean longPressFired, activateHeld;
     private final RectF promptOpen = new RectF(), promptBack = new RectF(), pill = new RectF();
@@ -138,6 +147,7 @@ public class HomeView extends View {
         java.util.Random rnd = new java.util.Random(7);
         for (int i = 0; i < motes.length; i++) motes[i] = rnd.nextFloat();
         stroke.setStyle(Paint.Style.STROKE); stroke.setStrokeCap(Paint.Cap.ROUND); stroke.setStrokeJoin(Paint.Join.ROUND);
+        for (int i = 0; i < searchChipRects.length; i++) searchChipRects[i] = new RectF();
     }
 
     // ---------- input ----------
@@ -155,7 +165,8 @@ public class HomeView extends View {
     private void setCat(int c) {
         c = (c + cats.size()) % cats.size();
         if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; host.sound("hhcat");
-            if (onSearch()) { searchKb = true; kbRow = 0; kbCol = 0; }
+            if (onSearch()) { searchFocus = SF_BOX; kbRow = 0; kbCol = 0; host.requestKidsIme(); }
+            else host.hideKidsIme();
         }
         tabFollow = true;
         invalidate();
@@ -277,8 +288,18 @@ public class HomeView extends View {
         if (kids && host.timeUpScreen()) return;   // stays up until a parent PIN
         if (prompt != null) { prompt = null; host.sound("hhback"); invalidate(); return; }
         if (boxset) { host.leaveBoxSet(); return; }
-        if (onSearch() && !inCats && !searchKb) { searchKb = true; host.sound("hhback"); invalidate(); return; }
-        if (onSearch() && !inCats && searchKb) { inCats = true; host.sound("hhback"); invalidate(); return; }
+        if (onSearch() && !inCats && searchFocus == SF_TILES) {
+            searchFocus = searchKbFallback ? SF_KEYS : SF_CHIPS; host.sound("hhback"); invalidate(); return;
+        }
+        if (onSearch() && !inCats && searchFocus == SF_KEYS) {
+            searchFocus = SF_CHIPS; host.sound("hhback"); invalidate(); return;
+        }
+        if (onSearch() && !inCats && searchFocus == SF_CHIPS) {
+            searchFocus = SF_BOX; host.requestKidsIme(); host.sound("hhback"); invalidate(); return;
+        }
+        if (onSearch() && !inCats && searchFocus == SF_BOX) {
+            host.hideKidsIme(); inCats = true; host.sound("hhback"); invalidate(); return;
+        }
         if (!inCats) inCats = true; else setCat(0);
         host.sound("hhback"); invalidate();
     }
@@ -367,6 +388,7 @@ public class HomeView extends View {
         if (considerEnd && browseList() && nearBrowseEnd()) {
             String id = cats.get(Math.max(0, Math.min(cat, cats.size() - 1))).id;
             if (KidsPlay.catFromId(id) != null) host.kidsBrowseMore(id);
+            if ("ksearch".equals(id)) host.kidsSearchMore();
         }
     }
     private boolean nearBrowseEnd() {
@@ -398,8 +420,11 @@ public class HomeView extends View {
         if (onInstallBtn(x, y)) { confirmInstall(); return; }
         if (backBtn.contains(x, y)) { goBack(); return; }
         if (onSearch() && !searchRetryBox.isEmpty() && searchRetryBox.contains(x, y)) { host.kidsSearchRetry(); return; }
-        if (onSearch() && tapSearchKey(x, y)) return;
-        if (onSearch() && searchQueryBox.contains(x, y)) { searchKb = true; inCats = false; invalidate(); return; }
+        if (onSearch() && searchKbFallback && tapSearchKey(x, y)) return;
+        if (onSearch() && tapSearchChip(x, y)) return;
+        if (onSearch() && searchQueryBox.contains(x, y)) {
+            inCats = false; searchFocus = SF_BOX; host.requestKidsIme(); invalidate(); return;
+        }
         if (logoTop.contains(x, y) || logoCenter.contains(x, y)) { logoHit(); return; }
         if (!boxset && y <= catsBottom() && y >= tabStripTop()) {
             int i = hitTab(x, y);
@@ -646,6 +671,8 @@ public class HomeView extends View {
         notifyRoblox(true);
         if (!boxset) categories(c, W, H);
         if (onSearch()) drawSearchUi(c, W, H);
+        else host.placeKidsSearchField(0, 0, 0, 0, "", "", false, false);
+
         if (!boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
         if (browseList()) browseList(c, W, H); else tiles(c, W, H);
         hints(c, W, H);
@@ -1006,12 +1033,7 @@ public class HomeView extends View {
         c.drawLine(cx - 1.5f * s, cy + 4.5f * s, cx + 6 * s, cy - 4 * s, stroke);
     }
 
-    /** 0.10.49: Wi-Fi-sized tiles. Art is fitted (not cropped) above a solid caption strip for the big title. */
-    private float browseCaptionH() {
-        float cap = (kids ? 78 : 50) * s;
-        float max = Math.max(36 * s, browseTileH() - 56 * s);
-        return cap > max ? max : cap;
-    }
+    /** 0.10.50: covers match 0.10.48 (centre-crop fill, big bold title over the lower cover). */
     private void browseList(Canvas c, int W, int H) {
         List<Catalog.Item> its = items();
         float top = browseTop(), bot = browseBottom();
@@ -1033,7 +1055,7 @@ public class HomeView extends View {
             getBadge(c, it);
             tickBadge(c, it);
             updBadge(c);
-            tileName(c, it.label.toUpperCase(Locale.ROOT), r.centerX(), r.bottom - 10 * s, tw - 12 * s, (kids ? 34 : 20) * s, 11 * s);
+            tileName(c, it.label.toUpperCase(Locale.ROOT), r.centerX(), r.top + th * 0.86f, tw - 12 * s, (kids ? 34 : 20) * s, 11 * s);
         }
         c.restore();
         if (its.isEmpty()) {
@@ -1144,63 +1166,29 @@ public class HomeView extends View {
 
     private final Path clip = new Path();
     private final RectF src = new RectF();
-    /** 0.10.49: prefer a square Play / package icon so wide feature banners (name baked into the art) are not used
-     *  as the tile picture. Unique wide art (Roblox thumbs, Steam) is kept and fitted, not cropped. */
-    private Bitmap browseArt(Catalog.Item it) {
-        Bitmap icon = host.appIcon(it), cov = host.cover(it);
-        if (Catalog.robloxPlaceId(it) != null && cov != null) return cov;
-        if (icon != null && (cov == null || cov.getWidth() > cov.getHeight() * 1.35f)) return icon;
-        return cov != null ? cov : icon;
-    }
-    /** Whole image fitted in dest (contain). A dimmed, cover-cropped copy of the same bitmap fills the letterbox. */
-    private void drawFittedArt(Canvas c, Bitmap cov, RectF dest) {
-        int iw = Math.max(1, cov.getWidth()), ih = Math.max(1, cov.getHeight());
-        p.setFilterBitmap(true); p.setAlpha(255);
-        p.setColor(0xFF0A0C10); c.drawRect(dest, p);
-        float scFill = Math.max(dest.width() / iw, dest.height() / ih);
-        float bw = iw * scFill, bh = ih * scFill;
-        src.set(dest.centerX() - bw / 2, dest.centerY() - bh / 2, dest.centerX() + bw / 2, dest.centerY() + bh / 2);
-        c.save(); c.clipRect(dest); c.drawBitmap(cov, null, src, p); c.restore();
-        p.setColor(0xB3000000); c.drawRect(dest, p);
-        float sc = Math.min(dest.width() / iw, dest.height() / ih);
-        bw = iw * sc; bh = ih * sc;
-        src.set(dest.centerX() - bw / 2, dest.centerY() - bh / 2, dest.centerX() + bw / 2, dest.centerY() + bh / 2);
-        p.setColor(0xFFFFFFFF); c.drawBitmap(cov, null, src, p);
-    }
     /** A portrait My Games tile in r: the game's picture (centre-cropped), else CodeAque's own generic art with the app icon. */
     private void coverTile(Canvas c, Catalog.Item it, boolean sel) { coverTile(c, it, sel, true); }
     private void coverTile(Canvas c, Catalog.Item it, boolean sel, boolean nameInside) {
         float rad = 12 * s;
+        // 0.10.50: browse tiles use the 0.10.48 look — ordinary cover, centre-cropped to fill the (Wi-Fi-sized) tile.
         boolean kg = nameInside && kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
-        Bitmap cov = nameInside ? (kg ? host.wideCover(it) : host.cover(it)) : browseArt(it);
-        Bitmap ai = cov == null ? host.appIcon(it) : null;
+        Bitmap cov = kg ? host.wideCover(it) : host.cover(it), ai = cov == null ? host.appIcon(it) : null;
         c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
-        if (cov != null && !nameInside) {
-            // 0.10.49: fit the whole picture in the art area (no crop, no stretch); dimmed fill of the same art behind it;
-            // solid caption strip at the bottom so the big title never sits on the picture.
-            float cap = browseCaptionH();
-            iconRect.set(r.left, r.top, r.right, r.bottom - cap);
-            drawFittedArt(c, cov, iconRect);
-            p.setShader(null); p.setColor(0xF2141518);
-            c.drawRect(r.left, r.bottom - cap, r.right, r.bottom, p);
-        } else if (cov != null) {
-            // Classic / cover-row tiles keep a centre-crop fill and in-tile name.
+        if (cov != null) {
+            // Centre-crop: scale to fill the tile, keep aspect, no stretch, clip to the rounded rect.
             float sc = Math.max(r.width() / Math.max(1, cov.getWidth()), r.height() / Math.max(1, cov.getHeight()));
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
             src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
             p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(cov, null, src, p);
         } else if (!nameInside) {
-            // Same face as the Wi-Fi / Update tiles; title still goes in the caption strip.
-            float cap = browseCaptionH();
-            p.setShader(new LinearGradient(0, r.top, 0, r.bottom - cap, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
-            c.drawRect(r.left, r.top, r.right, r.bottom - cap, p); p.setShader(null);
-            float midY = r.top + (r.height() - cap) * 0.42f;
+            // Same face as the Wi-Fi / Update tiles, so a missing cover still matches that style.
+            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
+            c.drawRect(r, p); p.setShader(null);
             if (ai != null) {
-                float is = 40 * s * big(); iconRect.set(r.centerX() - is / 2, midY - is / 2, r.centerX() + is / 2, midY + is / 2);
+                float is = 40 * s * big(); iconRect.set(r.centerX() - is / 2, r.top + r.height() * 0.30f - is / 2 - 4 * s, r.centerX() + is / 2, r.top + r.height() * 0.30f + is / 2 - 4 * s);
                 p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(ai, null, iconRect, p);
-            } else icon(c, it.icon, r.centerX(), midY, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
-            spaced(c, "CODEAQUE", r.centerX(), r.bottom - cap - 8 * s, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
-            p.setColor(0xF2141518); c.drawRect(r.left, r.bottom - cap, r.right, r.bottom, p);
+            } else icon(c, it.icon, r.centerX(), r.top + r.height() * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
+            spaced(c, "CODEAQUE", r.centerX(), r.top + r.height() * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
             c.restore();
             stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
             stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
@@ -1227,10 +1215,8 @@ public class HomeView extends View {
                 p.setFilterBitmap(true); p.setColor(0xFFFFFFFF); c.drawBitmap(ai, null, iconRect, p); }
             else icon(c, it.icon, r.centerX(), r.top + r.height() * 0.36f, 40 * s, sel ? T.accentLight : 0xFFDDF4FF, 2.2f);
         }
-        if (nameInside) {
-            p.setShader(new LinearGradient(0, r.bottom - r.height() * 0.48f, 0, r.bottom, 0x00000000, 0xF2000000, Shader.TileMode.CLAMP));   // 0.10.19 taller, darker fade
-            c.drawRect(r.left, r.bottom - r.height() * 0.48f, r.right, r.bottom, p); p.setShader(null);
-        }
+        p.setShader(new LinearGradient(0, r.bottom - r.height() * 0.48f, 0, r.bottom, 0x00000000, 0xF2000000, Shader.TileMode.CLAMP));   // 0.10.19 taller, darker fade
+        c.drawRect(r.left, r.bottom - r.height() * 0.48f, r.right, r.bottom, p); p.setShader(null);
         c.restore();
         stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
         stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
@@ -1434,12 +1420,31 @@ public class HomeView extends View {
         }
     }
 
-    // ---------- 0.10.49 Kids search (in-launcher keyboard + Play-backed results) ----------
+    // ---------- 0.10.50 Kids search (system IME, category chips, embed keyboard as fallback) ----------
     private boolean onSearch() {
         return !boxset && kids && !cats.isEmpty()
                 && "ksearch".equals(cats.get(Math.max(0, Math.min(cat, cats.size() - 1))).id);
     }
-    private boolean searchKeysFocused() { return onSearch() && searchKb && !inCats; }
+    public boolean onKidsSearch() { return onSearch(); }
+    public String searchQueryText() { return searchQ == null ? "" : searchQ; }
+    public void setSearchQueryText(String q, boolean immediate) {
+        searchQ = q == null ? "" : q;
+        searchChipSel = -1;
+        if (immediate) fireSearch();
+        else scheduleSearch();
+        invalidate();
+    }
+    public void setSearchImeFallback(boolean on) {
+        if (searchKbFallback == on) return;
+        searchKbFallback = on;
+        if (on && onSearch() && !inCats && searchFocus == SF_BOX) searchFocus = SF_KEYS;
+        if (!on && searchFocus == SF_KEYS) searchFocus = SF_BOX;
+        invalidate();
+    }
+    public boolean searchImeFallback() { return searchKbFallback; }
+    private boolean searchKeysFocused() { return onSearch() && searchFocus == SF_KEYS && !inCats; }
+    private boolean searchBoxFocused() { return onSearch() && searchFocus == SF_BOX && !inCats; }
+    private boolean searchChipsFocused() { return onSearch() && searchFocus == SF_CHIPS && !inCats; }
 
     private String[][] searchKeys() {
         if (searchSym) {
@@ -1466,55 +1471,111 @@ public class HomeView extends View {
         };
     }
 
+    private void mapContentToView(RectF src, RectF dst) {
+        if (!projector) { dst.set(src); return; }
+        float W = getWidth(), H = getHeight(), S = 1 - 2 * SAFE;
+        dst.set(W * SAFE + src.left * S, H * SAFE + src.top * S,
+                W * SAFE + src.right * S, H * SAFE + src.bottom * S);
+    }
+
     private void layoutSearch(int W, int H) {
         float top = catsBottom() + 8 * s;
         float bot = browseTop() - 8 * s;
-        float qh = Math.min(44 * s, Math.max(28 * s, (bot - top) * 0.16f));
+        float qh = Math.min(46 * s, Math.max(32 * s, 36 * s));
         searchQueryBox.set(24 * s, top, W - 24 * s, top + qh);
+        float chipTop = searchQueryBox.bottom + 8 * s;
+        float chipH = Math.min(40 * s, Math.max(30 * s, 36 * s));
+        searchChipBox.set(16 * s, chipTop, W - 16 * s, chipTop + chipH);
+        String[] chips = KidsPlay.SEARCH_CHIPS;
+        float gap = 8 * s;
+        float cw = (searchChipBox.width() - gap * (chips.length + 1)) / Math.max(1, chips.length);
+        if (cw < 64 * s) cw = 64 * s;
+        float x = searchChipBox.left + gap;
+        for (int i = 0; i < chips.length; i++) {
+            if (searchChipRects[i] == null) searchChipRects[i] = new RectF();
+            searchChipRects[i].set(x, searchChipBox.top + 2 * s, x + cw, searchChipBox.bottom - 2 * s);
+            x += cw + gap;
+        }
         String st = host.kidsSearchStatus();
         boolean retry = st != null && st.toLowerCase(Locale.ROOT).contains("retry");
         float retryH = retry ? Math.min(32 * s, 28 * s) : 0;
-        float kbTop = searchQueryBox.bottom + 8 * s;
-        float kbBot = bot - (retry ? retryH + 6 * s : 0);
-        if (kbBot < kbTop + 40 * s) kbBot = kbTop + 40 * s;
-        searchKbBox.set(16 * s, kbTop, W - 16 * s, kbBot);
-        if (retry) searchRetryBox.set(W * 0.12f, kbBot + 4 * s, W * 0.88f, kbBot + 4 * s + retryH);
-        else searchRetryBox.setEmpty();
+        if (searchKbFallback) {
+            float kbTop = searchChipBox.bottom + 6 * s;
+            float kbBot = bot - (retry ? retryH + 6 * s : 0);
+            if (kbBot < kbTop + 40 * s) kbBot = kbTop + 40 * s;
+            searchKbBox.set(16 * s, kbTop, W - 16 * s, kbBot);
+            if (retry) searchRetryBox.set(W * 0.12f, kbBot + 4 * s, W * 0.88f, kbBot + 4 * s + retryH);
+            else searchRetryBox.setEmpty();
+        } else {
+            searchKbBox.setEmpty();
+            if (retry) searchRetryBox.set(W * 0.12f, searchChipBox.bottom + 6 * s, W * 0.88f, searchChipBox.bottom + 6 * s + retryH);
+            else searchRetryBox.setEmpty();
+        }
+        mapContentToView(searchQueryBox, r2);
+        boolean showField = onSearch() && !searchKbFallback;
+        host.placeKidsSearchField(r2.left, r2.top, r2.right, r2.bottom, searchQ,
+                "Search for a game", searchBoxFocused(), showField);
     }
 
     private void drawSearchUi(Canvas c, int W, int H) {
         layoutSearch(W, H);
-        // Query field
         p.setShader(null); p.setColor(0xCC141518);
         c.drawRoundRect(searchQueryBox, 12 * s, 12 * s, p);
-        stroke.setShader(null); stroke.setColor(searchKeysFocused() ? GOLD : 0x66FFFFFF); stroke.setStrokeWidth(2 * s);
+        stroke.setShader(null); stroke.setColor(searchBoxFocused() ? GOLD : 0x66FFFFFF); stroke.setStrokeWidth(2 * s);
         c.drawRoundRect(searchQueryBox, 12 * s, 12 * s, stroke);
-        String shown = searchQ.isEmpty() ? "Search for a game" : searchQ + (searchKeysFocused() ? "▌" : "");
-        int col = searchQ.isEmpty() ? DIM : TXT;
-        text(c, shown, searchQueryBox.left + 16 * s, searchQueryBox.centerY() + 6 * s, 18 * s, col, Paint.Align.LEFT, false);
+        if (searchKbFallback) {
+            String shown = searchQ.isEmpty() ? "Search for a game" : searchQ + (searchKeysFocused() || searchBoxFocused() ? "▌" : "");
+            int col = searchQ.isEmpty() ? DIM : TXT;
+            text(c, shown, searchQueryBox.left + 16 * s, searchQueryBox.centerY() + 6 * s, 18 * s, col, Paint.Align.LEFT, false);
+        }
 
-        String[][] keys = searchKeys();
-        float pad = 4 * s;
-        float kbH = searchKbBox.height(), kbW = searchKbBox.width();
-        int rows = keys.length;
-        float rowH = kbH / Math.max(1, rows);
-        for (int r = 0; r < rows; r++) {
-            int cols = keys[r].length;
-            float kw = kbW / cols;
-            for (int colI = 0; colI < cols; colI++) {
-                String lab = keys[r][colI];
-                RectF kr = new RectF(searchKbBox.left + colI * kw + pad, searchKbBox.top + r * rowH + pad,
-                        searchKbBox.left + (colI + 1) * kw - pad, searchKbBox.top + (r + 1) * rowH - pad);
-                boolean sel = searchKeysFocused() && r == kbRow && colI == Math.min(kbCol, cols - 1);
-                p.setColor(sel ? (0xE0000000 | (GOLD & 0x00FFFFFF)) : 0xD01C1D22);
-                if (" ".equals(lab)) p.setColor(sel ? 0xE02E7D32 : 0xD0222830);
-                if ("GO".equals(lab)) p.setColor(sel ? 0xF2E53935 : 0xE0C62828);
-                c.drawRoundRect(kr, 8 * s, 8 * s, p);
-                if (sel) { stroke.setColor(0xFFFFFFFF); stroke.setStrokeWidth(2 * s); c.drawRoundRect(kr, 8 * s, 8 * s, stroke); }
-                String draw = " ".equals(lab) ? "space" : lab;
-                float ts = Math.min(22 * s, kr.height() * 0.55f);
-                if (draw.length() > 1 && !"GO".equals(draw)) ts *= 0.85f;
-                text(c, draw, kr.centerX(), kr.centerY() + ts * 0.35f, ts, 0xFFFFFFFF, Paint.Align.CENTER, "GO".equals(draw) || sel);
+        String[] chips = KidsPlay.SEARCH_CHIPS;
+        String active = host.kidsSearchChip();
+        if (active != null) {
+            for (int i = 0; i < chips.length; i++) if (chips[i].equalsIgnoreCase(active)) searchChipSel = i;
+        } else if (searchChipSel >= 0 && (searchQ != null && !searchQ.trim().isEmpty())) {
+            searchChipSel = -1;
+        }
+        for (int i = 0; i < chips.length; i++) {
+            RectF cr = searchChipRects[i];
+            boolean on = i == searchChipSel;
+            boolean nav = searchChipsFocused() && i == searchChipNav;
+            p.setShader(null);
+            p.setColor(on ? (0xE0000000 | (GOLD & 0x00FFFFFF)) : 0xD01C1D22);
+            c.drawRoundRect(cr, cr.height() / 2, cr.height() / 2, p);
+            if (nav || on) {
+                stroke.setColor(nav ? 0xFFFFFFFF : GOLD);
+                stroke.setStrokeWidth((nav ? 2.4f : 1.6f) * s);
+                c.drawRoundRect(cr, cr.height() / 2, cr.height() / 2, stroke);
+            }
+            float ts = Math.min(16 * s, cr.height() * 0.48f);
+            text(c, chips[i], cr.centerX(), cr.centerY() + ts * 0.35f, ts, 0xFFFFFFFF, Paint.Align.CENTER, on || nav);
+        }
+
+        if (searchKbFallback && !searchKbBox.isEmpty()) {
+            String[][] keys = searchKeys();
+            float pad = 4 * s;
+            float kbH = searchKbBox.height(), kbW = searchKbBox.width();
+            int rows = keys.length;
+            float rowH = kbH / Math.max(1, rows);
+            for (int r = 0; r < rows; r++) {
+                int cols = keys[r].length;
+                float kw = kbW / cols;
+                for (int colI = 0; colI < cols; colI++) {
+                    String lab = keys[r][colI];
+                    RectF kr = new RectF(searchKbBox.left + colI * kw + pad, searchKbBox.top + r * rowH + pad,
+                            searchKbBox.left + (colI + 1) * kw - pad, searchKbBox.top + (r + 1) * rowH - pad);
+                    boolean sel = searchKeysFocused() && r == kbRow && colI == Math.min(kbCol, cols - 1);
+                    p.setColor(sel ? (0xE0000000 | (GOLD & 0x00FFFFFF)) : 0xD01C1D22);
+                    if (" ".equals(lab)) p.setColor(sel ? 0xE02E7D32 : 0xD0222830);
+                    if ("GO".equals(lab)) p.setColor(sel ? 0xF2E53935 : 0xE0C62828);
+                    c.drawRoundRect(kr, 8 * s, 8 * s, p);
+                    if (sel) { stroke.setColor(0xFFFFFFFF); stroke.setStrokeWidth(2 * s); c.drawRoundRect(kr, 8 * s, 8 * s, stroke); }
+                    String draw = " ".equals(lab) ? "space" : lab;
+                    float ts = Math.min(22 * s, kr.height() * 0.55f);
+                    if (draw.length() > 1 && !"GO".equals(draw)) ts *= 0.85f;
+                    text(c, draw, kr.centerX(), kr.centerY() + ts * 0.35f, ts, 0xFFFFFFFF, Paint.Align.CENTER, "GO".equals(draw) || sel);
+                }
             }
         }
         if (!searchRetryBox.isEmpty()) {
@@ -1525,28 +1586,58 @@ public class HomeView extends View {
             text(c, st, searchRetryBox.centerX(), searchRetryBox.centerY() + 5 * s, 13 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
         } else {
             String st = host.kidsSearchStatus();
-            if (st != null && !st.isEmpty() && !st.toLowerCase(Locale.ROOT).contains("retry"))
-                text(c, st, W / 2f, searchKbBox.bottom + 16 * s, 13 * s, DIM, Paint.Align.CENTER, false);
+            if (st != null && !st.isEmpty() && !st.toLowerCase(Locale.ROOT).contains("retry")) {
+                float sy = searchKbFallback && !searchKbBox.isEmpty() ? searchKbBox.bottom + 16 * s : searchChipBox.bottom + 18 * s;
+                text(c, st, W / 2f, sy, 13 * s, DIM, Paint.Align.CENTER, false);
+            }
         }
     }
 
     private boolean inSearchUi(float x, float y) {
-        return searchQueryBox.contains(x, y) || searchKbBox.contains(x, y) || (!searchRetryBox.isEmpty() && searchRetryBox.contains(x, y));
+        if (searchQueryBox.contains(x, y) || searchChipBox.contains(x, y)
+                || (!searchRetryBox.isEmpty() && searchRetryBox.contains(x, y))) return true;
+        return searchKbFallback && searchKbBox.contains(x, y);
+    }
+
+    private boolean tapSearchChip(float x, float y) {
+        if (!searchChipBox.contains(x, y)) return false;
+        String[] chips = KidsPlay.SEARCH_CHIPS;
+        for (int i = 0; i < chips.length; i++) {
+            if (searchChipRects[i] != null && searchChipRects[i].contains(x, y)) {
+                activateSearchChip(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void activateSearchChip(int i) {
+        String[] chips = KidsPlay.SEARCH_CHIPS;
+        if (i < 0 || i >= chips.length) return;
+        searchChipSel = i;
+        searchChipNav = i;
+        searchQ = "";
+        inCats = false;
+        searchFocus = SF_TILES;
+        host.hideKidsIme();
+        host.sound("hhselect");
+        host.runKidsSearchChip(chips[i]);
+        invalidate();
     }
 
     private boolean tapSearchKey(float x, float y) {
-        if (!searchKbBox.contains(x, y)) return false;
+        if (!searchKbFallback || !searchKbBox.contains(x, y)) return false;
         String[][] keys = searchKeys();
         int rows = keys.length;
         float kbH = searchKbBox.height(), kbW = searchKbBox.width();
-        float rowH = kbH / Math.max(1, rows);
+        float rowH = kbH / Math.max(1f, rows);
         int r = (int) Math.floor((y - searchKbBox.top) / Math.max(1f, rowH));
         if (r < 0 || r >= rows) return false;
         int cols = keys[r].length;
         float kw = kbW / cols;
         int colI = (int) Math.floor((x - searchKbBox.left) / Math.max(1f, kw));
         if (colI < 0 || colI >= cols) return false;
-        kbRow = r; kbCol = colI; searchKb = true; inCats = false;
+        kbRow = r; kbCol = colI; searchFocus = SF_KEYS; inCats = false;
         pressSearchKey(keys[r][colI]);
         return true;
     }
@@ -1557,8 +1648,9 @@ public class HomeView extends View {
         if ("⇧".equals(lab)) { searchShift = !searchShift; invalidate(); return; }
         if ("123".equals(lab)) { searchSym = true; searchShift = false; kbRow = 0; kbCol = 0; invalidate(); return; }
         if ("ABC".equals(lab)) { searchSym = false; kbRow = 0; kbCol = 0; invalidate(); return; }
-        if ("⌫".equals(lab)) { if (searchQ.length() > 0) searchQ = searchQ.substring(0, searchQ.length() - 1); scheduleSearch(); invalidate(); return; }
-        if ("GO".equals(lab) || "go".equals(lab)) { searchKb = false; host.runKidsSearch(searchQ); invalidate(); return; }
+        if ("⌫".equals(lab)) { if (searchQ.length() > 0) searchQ = searchQ.substring(0, searchQ.length() - 1); searchChipSel = -1; scheduleSearch(); invalidate(); return; }
+        if ("GO".equals(lab) || "go".equals(lab)) { searchFocus = SF_TILES; host.runKidsSearch(searchQ); invalidate(); return; }
+        searchChipSel = -1;
         if (" ".equals(lab)) searchQ += " ";
         else searchQ += lab;
         if (!searchSym) searchShift = false;
@@ -1575,7 +1667,6 @@ public class HomeView extends View {
 
     private boolean handleSearchKey(int code, KeyEvent e) {
         if (!onSearch()) return false;
-        // Hardware typing when the keyboard is up (Q/E are otherwise L1/R1 tab aliases).
         if (searchKeysFocused()) {
             if (code == KeyEvent.KEYCODE_DEL || code == KeyEvent.KEYCODE_BUTTON_L1) { pressSearchKey("⌫"); return true; }
             if (code == KeyEvent.KEYCODE_BUTTON_R1) { pressSearchKey(searchSym ? "ABC" : "⇧"); return true; }
@@ -1584,13 +1675,13 @@ public class HomeView extends View {
             if (code == KeyEvent.KEYCODE_DPAD_LEFT) { moveKb(0, -1); return true; }
             if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { moveKb(0, 1); return true; }
             if (code == KeyEvent.KEYCODE_DPAD_UP) {
-                if (kbRow == 0) { inCats = true; searchKb = true; host.sound("hhmove"); invalidate(); }
+                if (kbRow == 0) { searchFocus = SF_CHIPS; host.sound("hhmove"); invalidate(); }
                 else moveKb(-1, 0);
                 return true;
             }
             if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
                 String[][] keys = searchKeys();
-                if (kbRow >= keys.length - 1) { searchKb = false; inCats = false; host.sound("hhmove"); invalidate(); }
+                if (kbRow >= keys.length - 1) { searchFocus = SF_TILES; inCats = false; host.sound("hhmove"); invalidate(); }
                 else moveKb(1, 0);
                 return true;
             }
@@ -1606,13 +1697,46 @@ public class HomeView extends View {
             int u = e.getUnicodeChar();
             if (u >= 32 && u < 127 && code != KeyEvent.KEYCODE_ENTER) { pressSearchKey(String.valueOf((char) u)); return true; }
         }
-        // From the result row, Up returns to the keyboard.
-        if (!inCats && !searchKb && code == KeyEvent.KEYCODE_DPAD_UP) {
-            searchKb = true; host.sound("hhmove"); invalidate(); return true;
+        if (searchBoxFocused()) {
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                searchFocus = SF_CHIPS; host.hideKidsIme(); host.sound("hhmove"); invalidate(); return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                inCats = true; host.hideKidsIme(); host.sound("hhmove"); invalidate(); return true;
+            }
+            if ((code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_DPAD_CENTER) && e.getRepeatCount() == 0) {
+                host.requestKidsIme(); return true;
+            }
+            if (code == KeyEvent.KEYCODE_ENTER && e.getRepeatCount() == 0) { fireSearch(); return true; }
+            return false;   // IME / hardware typing goes to the EditText
         }
-        // From the tab strip, Down opens the keyboard (not the tiles first).
+        if (searchChipsFocused()) {
+            String[] chips = KidsPlay.SEARCH_CHIPS;
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT) {
+                searchChipNav = (searchChipNav - 1 + chips.length) % chips.length; host.sound("hhmove"); invalidate(); return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                searchChipNav = (searchChipNav + 1) % chips.length; host.sound("hhmove"); invalidate(); return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                searchFocus = SF_BOX; host.requestKidsIme(); host.sound("hhmove"); invalidate(); return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (searchKbFallback) searchFocus = SF_KEYS;
+                else { searchFocus = SF_TILES; inCats = false; }
+                host.sound("hhmove"); invalidate(); return true;
+            }
+            if ((code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_DPAD_CENTER) && e.getRepeatCount() == 0) {
+                activateSearchChip(searchChipNav); return true;
+            }
+        }
+        // From the result row, Up returns to chips (or the fallback keyboard).
+        if (!inCats && searchFocus == SF_TILES && code == KeyEvent.KEYCODE_DPAD_UP) {
+            searchFocus = searchKbFallback ? SF_KEYS : SF_CHIPS; host.sound("hhmove"); invalidate(); return true;
+        }
+        // From the tab strip, Down opens the search field (not the tiles first).
         if (inCats && code == KeyEvent.KEYCODE_DPAD_DOWN) {
-            inCats = false; searchKb = true; host.sound("hhmove"); invalidate(); return true;
+            inCats = false; searchFocus = SF_BOX; host.requestKidsIme(); host.sound("hhmove"); invalidate(); return true;
         }
         return false;
     }
@@ -1628,7 +1752,8 @@ public class HomeView extends View {
     private String searchEmptyMessage() {
         String st = host.kidsSearchStatus();
         if (st != null && !st.isEmpty()) return st;
-        if (searchQ.trim().isEmpty()) return "Games on this device show here. Type a name to find more on the Play Store.";
+        if (searchChipSel >= 0) return "Couldn't load more games, tap to retry.";
+        if (searchQ.trim().isEmpty()) return "Games on this device show here. Type a name, or pick a category, to find more on the Play Store.";
         return "No games found.";
     }
     private String rowRetryMessage() {

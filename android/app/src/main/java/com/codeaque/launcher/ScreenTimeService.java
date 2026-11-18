@@ -263,9 +263,12 @@ final class ScreenTimeTick implements Runnable {
             boolean blocked = ScreenTime.blockedKidPackage(fg) || Catalog.emulatorPkg(fg);
             boolean storeOk = ScreenTime.parentStoreAllowed(fg, p.getLong(ScreenTime.PARENT_STORE_UNTIL, 0), now)
                     || ScreenTime.parentUpdateAllowed(fg, p.getLong(ScreenTime.PARENT_UPDATE_UNTIL, 0), now);
+            String imePkg = ScreenTime.imePackage(android.provider.Settings.Secure.getString(svc.getContentResolver(),
+                    android.provider.Settings.Secure.DEFAULT_INPUT_METHOD));
             // 0.10.40: never bounce the parent out of system Settings after a PIN in adult mode
             if (p.getBoolean("parentSettings", false) && Catalog.settingsPkg(fg)) { /* leave Settings alone */ }
             else if (storeOk) { /* 0.10.49: parent PIN approved a Play Store install; leave it open */ }
+            else if (ScreenTime.isImePackage(fg, imePkg)) { /* 0.10.50: leave the system keyboard alone */ }
             else if (kidsLock && (allow == null || !allow.equals(fg)))
                 ScreenTimeService.bringKidsHome(svc, false);
             else if (s.strict && blocked)

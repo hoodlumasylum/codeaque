@@ -31,9 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
-## What's new in 0.10.49 (unreleased)
+## What's new in 0.10.50 (unreleased)
 
-**Kids mode can install from the Play Store after the parent PIN.** On 0.10.48 the Kids lock (and, if CodeAque is the device owner, the kiosk allow-list and the "no installing apps" rule) bounced or blocked the Play Store even after the PIN was entered, so ticked or tapped games never installed. After a correct parent PIN, 0.10.49 opens the game's Play Store page and lets Play Store stay open for 10 minutes, or until you return to CodeAque, then locks again. Kids still cannot open the Play Store without the PIN. Nothing is sideloaded.
+**Kids search uses the phone keyboard.** The Search tab now has a real text field. Tapping it (or pressing A on a controller while the field is focused) opens the device's own keyboard, not a keyboard drawn in the middle of the screen. Search or Go on that keyboard runs the same in-launcher Play search as before — installed games first marked PLAY, then GET after a parent PIN, never a raw Play Store search. The Kids lock and lock-task allow-list let the current keyboard app stay up; they do not bounce it away. If no system keyboard appears (for example on some handhelds), the old on-screen keyboard is shown as a fallback.
+
+**Category chips on Search.** Under the search field, kids can tap Puzzle, Racing, Adventure, Learning, Action or Creative. Each chip loads age-filtered Play results plus the bundled catalogue for that category, as the usual big PLAY/GET tiles, with infinite paging, a retry message if Play cannot be reached, and a catalogue fallback so the row is never left empty.
+
+**Covers back to the 0.10.48 look.** Game tiles on the tabbed home again fill the tile with a centre-cropped cover and put the big bold title over the lower part of the picture. The 0.10.49 fitted-art caption strip is gone. Tile size is still the same as Wi-Fi / Update. Smoother scrolling, focus scale, and swipe-anywhere row scrolling from 0.10.49 stay.
+
+## What's new in 0.10.49
+
+**Kids mode can install from the Play Store after the parent PIN.**
+ On 0.10.48 the Kids lock (and, if CodeAque is the device owner, the kiosk allow-list and the "no installing apps" rule) bounced or blocked the Play Store even after the PIN was entered, so ticked or tapped games never installed. After a correct parent PIN, 0.10.49 opens the game's Play Store page and lets Play Store stay open for 10 minutes, or until you return to CodeAque, then locks again. Kids still cannot open the Play Store without the PIN. Nothing is sideloaded.
 
 **Update works in Kids mode after the parent PIN.** On 0.10.48, Update behind the PIN still failed: the Kids lock bounced Android's package installer, and (when CodeAque is the device owner) the kiosk allow-list and the "no installing apps" / "no unknown sources" rules blocked our own signed APK. After the PIN, 0.10.49 temporarily allows only the system installer to confirm this CodeAque update, then locks again. It does not open Play Store or allow other sideloads. Devices already on 0.10.48 cannot get this fix through Kids-mode Update: use the parent PIN to leave Kids mode, then Update, then turn Kids back on.
 

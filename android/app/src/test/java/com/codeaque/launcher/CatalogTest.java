@@ -687,6 +687,14 @@ public class CatalogTest {
                 && !ScreenTime.parentUpdateAllowed("com.android.vending", uUntil, uUntil - 1)
                 && !ScreenTime.parentUpdateAllowed("com.android.packageinstaller", 0, 1), "parent-update window is time-limited and installer-only");
         check(ScreenTime.PARENT_UPDATE_MS == 10 * 60_000L, "parent-update window is 10 minutes");
+        check("com.google.android.inputmethod.latin".equals(ScreenTime.imePackage("com.google.android.inputmethod.latin/.LatinIME"))
+                && "com.sec.android.inputmethod".equals(ScreenTime.imePackage("com.sec.android.inputmethod/.SamsungKeypad")), "ime id with slash");
+        check("com.example.ime".equals(ScreenTime.imePackage("com.example.ime"))
+                && ScreenTime.imePackage("") == null && ScreenTime.imePackage(null) == null, "ime id without slash / empty");
+        check(ScreenTime.isImePackage("com.google.android.inputmethod.latin", "com.google.android.inputmethod.latin")
+                && !ScreenTime.isImePackage("com.android.vending", "com.google.android.inputmethod.latin")
+                && !ScreenTime.isImePackage(null, "com.google.android.inputmethod.latin")
+                && !ScreenTime.isImePackage("com.android.vending", null), "ime package match");
         ScreenTime.Hours win = new ScreenTime.Hours(true, 16 * 60, 19 * 60, false, 10 * 60, 18 * 60, 0);
         java.util.Calendar hc = java.util.Calendar.getInstance(tz);
         hc.set(2026, java.util.Calendar.NOVEMBER, 16, 15, 0, 0); hc.set(java.util.Calendar.MILLISECOND, 0);
@@ -865,6 +873,25 @@ public class CatalogTest {
         check(Catalog.indexOf(adult, "kpuzzle") == 0 && Catalog.indexOf(adult, "kroblox") >= 0 && Catalog.indexOf(adult, "kcloud") >= 0, "adult browse tabs");
         check(adult.get(Catalog.indexOf(adult, "kcloud")).items.contains(Catalog.MARVEL_RIVALS), "adult cloud includes rivals");
         check(Catalog.kidsBrowseId("ksearch") && Catalog.kidsBrowseId("kpuzzle") && Catalog.kidsBrowseId("kroblox") && !Catalog.kidsBrowseId("kthemes"), "browse ids");
+        check(KidsPlay.SEARCH_CHIPS.length >= 6 && "Puzzle".equals(KidsPlay.SEARCH_CHIPS[0])
+                && "Action".equals(KidsPlay.SEARCH_CHIPS[4]) && "Creative".equals(KidsPlay.SEARCH_CHIPS[5]), "search chips");
+        check(KidsPlay.PUZZLE.equals(KidsPlay.chipCat("Puzzle")) && KidsPlay.STYLE.equals(KidsPlay.chipCat("Creative"))
+                && KidsPlay.chipCat("Action") == null, "chip categories");
+        int kidsMax = KidsPlay.maxPegi(false);
+        java.util.List<Catalog.Item> puzzle = KidsPlay.chipItems("Puzzle", kidsMax, 0, KidsPlay.PAGE);
+        java.util.List<Catalog.Item> action = KidsPlay.chipItems("Action", kidsMax, 0, KidsPlay.PAGE);
+        java.util.List<Catalog.Item> creative = KidsPlay.chipItems("Creative", kidsMax, 0, KidsPlay.PAGE);
+        check(!puzzle.isEmpty() && !action.isEmpty() && !creative.isEmpty(), "chip catalogue is never empty");
+        check(KidsPlay.chipItems("Action", kidsMax, KidsPlay.PAGE * 50, KidsPlay.PAGE).isEmpty(), "free-text chip is not paged");
+        check(!KidsPlay.chipItems("Puzzle", kidsMax, KidsPlay.PAGE, KidsPlay.PAGE).isEmpty(), "puzzle chip pages");
+        for (Catalog.Item it : puzzle) {
+            KidsPlay.Game g = KidsPlay.byPkg(it.storePackage());
+            check(g != null && KidsPlay.PUZZLE.equals(g.cat) && g.pegi <= kidsMax, "puzzle chip age + category");
+        }
+        for (Catalog.Item it : creative) {
+            KidsPlay.Game g = KidsPlay.byPkg(it.storePackage());
+            check(g != null && KidsPlay.STYLE.equals(g.cat) && g.pegi <= kidsMax, "creative chip is style catalogue");
+        }
         // BootAnim: backup names, short errors, extract original animation from a tiny module-shaped zip
         check("system-media-bootanimation.zip".equals(BootAnim.backupName("/system/media/bootanimation.zip"))
                 && "/system/media/bootanimation.zip".equals(BootAnim.targetFromBackupName("system-media-bootanimation.zip")), "backup name");

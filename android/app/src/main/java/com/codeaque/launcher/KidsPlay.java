@@ -22,6 +22,8 @@ public final class KidsPlay {
     public static final String[] CATS = {PUZZLE, RACING, ADVENTURE, LEARNING, STYLE};
     public static final String[] CAT_LABELS = {"Puzzle", "Racing", "Adventure", "Learning", "Roblox-style"};
     public static final String[] CAT_IDS = {"kpuzzle", "kracing", "kadventure", "klearning", "kstyle"};
+    /** 0.10.50: Kids Search category chips. Creative maps to the Roblox-style / sandbox catalogue. */
+    public static final String[] SEARCH_CHIPS = {"Puzzle", "Racing", "Adventure", "Learning", "Action", "Creative"};
 
     public static final class Game {
         public final String pkg, title, blurb, cat;
@@ -2329,6 +2331,32 @@ public final class KidsPlay {
     public static String catFromId(String id) {
         for (int i = 0; i < CAT_IDS.length; i++) if (CAT_IDS[i].equals(id)) return CATS[i];
         return null;
+    }
+
+    /** KidsPlay category for a Search chip, or null if the chip is a free-text Play query (e.g. Action). */
+    public static String chipCat(String label) {
+        if (label == null || label.isEmpty()) return null;
+        for (int i = 0; i < CAT_LABELS.length; i++) if (CAT_LABELS[i].equalsIgnoreCase(label)) return CATS[i];
+        if ("Creative".equalsIgnoreCase(label)) return STYLE;
+        return null;
+    }
+    public static String chipQuery(String label) {
+        if (label == null) return "";
+        if ("Creative".equalsIgnoreCase(label)) return "creative";
+        return label.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+    /** First page of a chip: catalogue (age-filtered), with a safe fallback so the row is never empty. */
+    public static List<Catalog.Item> chipItems(String label, int maxPegi, int offset, int limit) {
+        String cat = chipCat(label);
+        if (cat != null) return items(cat, maxPegi, offset, limit);
+        // Action / other free-text chips: catalogue search is not paged.
+        if (offset > 0) return new ArrayList<>();
+        List<Catalog.Item> out = searchItems(chipQuery(label), maxPegi);
+        if (out.isEmpty() && "Action".equalsIgnoreCase(label))
+            out = items(ADVENTURE, maxPegi, 0, limit < 1 ? PAGE : limit);
+        if (out.isEmpty())
+            out = items(PUZZLE, maxPegi, 0, limit < 1 ? PAGE : limit);
+        return out;
     }
 
     /** Deduped, age-filtered games in a category, stable order. */

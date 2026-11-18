@@ -170,6 +170,17 @@ public final class ScreenTime {
         return nowMs < untilMs && parentUpdatePackage(pkg);
     }
 
+    /** Package of the device IME from Settings.Secure.DEFAULT_INPUT_METHOD ("pkg/.Class"). */
+    public static String imePackage(String defaultIme) {
+        if (defaultIme == null || defaultIme.isEmpty()) return null;
+        int slash = defaultIme.indexOf('/');
+        String pkg = slash > 0 ? defaultIme.substring(0, slash) : defaultIme;
+        return pkg.isEmpty() ? null : pkg;
+    }
+    public static boolean isImePackage(String pkg, String imePkg) {
+        return pkg != null && imePkg != null && !imePkg.isEmpty() && pkg.equals(imePkg);
+    }
+
     /** 0.10.49: allowed play hours in the device's local time. Minutes are 0–1439 from midnight.
      *  If weekendSeparate is false, the weekday window applies every day. A window with start == end
      *  is treated as all day. A window with start > end wraps midnight. overrideUntil is a wall-clock
