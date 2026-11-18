@@ -32,6 +32,8 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
 
     /** Set by MainActivity. Starting the service is only allowed while this is true. */
     public static volatile boolean appInForeground;
+    /** Chat is open: this service must not hold the mic. */
+    public static volatile boolean chatOpen;
     static volatile NovaListenService instance;
 
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -53,6 +55,7 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
     }
 
     public static boolean shouldRun(Context c) {
+        if (chatOpen) return false;
         SharedPreferences p = prefs(c);
         boolean hidden = NovaListenHidden.isHidden(
                 p.getBoolean(NovaView.PREF_BUBBLE, true),
@@ -164,7 +167,7 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
     }
 
     void maybeListen() {
-        if (!running || !shouldRun(this)) return;
+        if (!running || chatOpen || !shouldRun(this)) return;
         if (!NovaListenHidden.canListenNow(true, speaking || pendingSpeak != null)) return;
         if (speech != null && speech.isListening()) return;
         if (speech == null) speech = new NovaSpeech();

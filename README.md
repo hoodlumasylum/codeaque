@@ -31,6 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.75
+
+**The Listening / Mic button no longer flickers in a loop.** On 0.10.74 the right-hand button flipped between "Listening" and "Mic" several times a second, the meter flashed, and nothing was ever transcribed — even with no screen recorder. The cause was in the app: after a recognizer error (often an instant CLIENT or BUSY from cancelling and starting in the same moment, or the offline recognizer failing at once), the hands-free loop restarted immediately and never gave up. Starting also cancelled an idle recognizer and started it again, which races and fails instantly.
+
+**Restarts now back off, then stop.** A quiet immediate restart is only used for no-match or speech-timeout after a real listen of about a second. Instant errors wait 300 ms, then 1 s, 2 s, 4 s, and after five quick failures the loop stops on "Tap Mic to talk" (or "Mic busy, another app may be using it" for busy/audio). The Listening / Mic display is held for 300 ms so it cannot flash. Error codes are written to the log; long-press the version line in Chat to show them on screen.
+
+**One recognizer, no start/cancel race.** The SpeechRecognizer is kept and reused. It is destroyed only when it must be replaced. A start is delayed a short moment after a cancel, and a second start is ignored while one is already in flight. If the offline-preferred recognizer fails instantly, Chat switches to online once and stays there. The hidden-listen service is not allowed to run while Chat is open.
+
+0.10.71–0.10.74 fixes (no listening during TTS, phone-voice fallback in 400 ms, first-word handling, longer endpoint, adult-safe small talk, tolerant maths) are unchanged.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. Please try this install and see that the Mic button stays steady, words are transcribed, and a failure shows "Tap Mic to talk" instead of flickering.
+
 ## What's new in 0.10.74
 
 **She no longer listens to herself.** 0.10.73 opened the mic about half a second before Heart was *estimated* to finish. That estimate used how much audio had been written so far, so it fired on the first AudioTrack chunk — often four to eight seconds before any sound played. The status went back to Listening, and she transcribed her own reply ("s is", then "s sure about that you can ask me…") on top of his words. The mic now opens only after real playback-completion (AudioTrack / system TTS onDone). Transcripts that fuzzy-match her last reply are discarded.

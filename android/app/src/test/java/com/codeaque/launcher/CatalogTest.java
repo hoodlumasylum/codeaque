@@ -1405,19 +1405,20 @@ public class CatalogTest {
         check(!HomeDrawGate.drawHeavyFx(true) && HomeDrawGate.drawHeavyFx(false), "glows and embers pause during a fling");
         check(HomeDrawGate.tileKey("a", 144, 200, 400, 400).equals("a@144x200#400x400"), "tile cache keys are stable sizes");
 
-        // 0.10.62: Listening chip stays on between restarts; empty cycles back off and then give up.
-        check(NovaListenGate.retryDelayMs(0) == 200 && NovaListenGate.retryDelayMs(1) == 400
-                && NovaListenGate.retryDelayMs(2) == 400 && NovaListenGate.retryDelayMs(9) == 400,
-                "restart delay starts at 200 ms and caps at 400 ms");
+        // 0.10.75: instant errors back off and then stop; a real no-match may restart at once.
+        check(NovaListenGate.retryDelayMs(0) == 300 && NovaListenGate.retryDelayMs(1) == 1000
+                && NovaListenGate.retryDelayMs(2) == 2000 && NovaListenGate.retryDelayMs(3) == 4000
+                && NovaListenGate.retryDelayMs(4) == 4000,
+                "instant-error delay is 300 ms, then 1 s, 2 s, 4 s");
         check(NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_NO_MATCH)
                 && NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_SPEECH_TIMEOUT)
                 && NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_CLIENT)
-                && !NovaListenGate.isEmptyCycle(NovaConvo.ERR_BUSY), "no-match, timeout and client count as empty cycles");
+                && NovaListenGate.isEmptyCycle(NovaConvo.ERR_BUSY), "no-match, timeout, client and busy count as empty cycles");
         check(NovaListenGate.nextEmptyCycles(0, true) == 1 && NovaListenGate.nextEmptyCycles(4, true) == 5
                 && NovaListenGate.nextEmptyCycles(3, false) == 0, "empty cycles increment, a real result resets them");
         check(NovaListenGate.shouldRetryEmpty(0) && NovaListenGate.shouldRetryEmpty(4)
-                && NovaListenGate.shouldRetryEmpty(5) && NovaListenGate.shouldRetryEmpty(50),
-                "hands-free loop keeps restarting after no-match or timeout");
+                && !NovaListenGate.shouldRetryEmpty(5) && !NovaListenGate.shouldRetryEmpty(50),
+                "instant empty cycles stop after five quick failures");
         check(NovaListenGate.showListeningChip(true, true, false, false, false, true), "chip stays on between restarts");
         check(!NovaListenGate.showListeningChip(true, true, false, true, false, true), "chip hides while she is speaking or thinking");
         check(!NovaListenGate.showListeningChip(true, true, true, false, false, true), "chip hides after the loop gives up");
@@ -1494,15 +1495,38 @@ public class CatalogTest {
                 && !NovaStartup.loadHoldsLockDuringNative()
                 && NovaStartup.WARMUP_TIMEOUT_MS >= 15_000L,
                 "startup paints home first and never waits on Heart or the brain");
-        int cycles = 0;
-        boolean gaveUp = false;
-        for (int i = 0; i < 8; i++) {
-            long d = NovaListenGate.retryDelayMs(cycles);
-            cycles = NovaListenGate.nextEmptyCycles(cycles, true);
-            if (!NovaListenGate.shouldRetryEmpty(cycles)) { gaveUp = true; break; }
-            check(d >= 200 && d <= 400, "each restart stays short");
-        }
-        check(!gaveUp, "silent no-match restarts stay hands-free");
+        // 0.10.75 backoff / stop logic (instant CLIENT vs a real no-match).
+        check(NovaListenGate.restartDelayMs(NovaVoiceGate.ERR_NO_MATCH, 1500, 0) == 0
+                && NovaListenGate.shouldRetryEmpty(NovaVoiceGate.ERR_NO_MATCH, 1500, 0)
+                && NovaListenGate.restartDelayMs(NovaVoiceGate.ERR_SPEECH_TIMEOUT, 1200, 3) == 0,
+                "no-match or timeout after a real listen of 1s+ restarts at once");
+        check(NovaListenGate.restartDelayMs(NovaVoiceGate.ERR_CLIENT, 50, 0) == 300
+                && NovaListenGate.restartDelayMs(NovaVoiceGate.ERR_CLIENT, 50, 1) == 1000
+                && NovaListenGate.restartDelayMs(NovaVoiceGate.ERR_CLIENT, 50, 2) == 2000
+                && NovaListenGate.restartDelayMs(NovaVoiceGate.ERR_CLIENT, 50, 3) == 4000
+                && NovaListenGate.restartDelayMs(NovaConvo.ERR_BUSY, 20, 0) == 300
+                && NovaListenGate.restartDelayMs(NovaListenGate.ERR_AUDIO, 10, 1) == 1000,
+                "instant errors back off 300 ms, then 1 s, 2 s, 4 s");
+        check(NovaListenGate.shouldStop(NovaVoiceGate.ERR_CLIENT, 40, 4)
+                && !NovaListenGate.shouldRetryEmpty(NovaVoiceGate.ERR_CLIENT, 40, 4)
+                && NovaListenGate.stopMessage(NovaVoiceGate.ERR_CLIENT).equals(NovaListenGate.TAP_MIC)
+                && NovaListenGate.stopMessage(NovaConvo.ERR_BUSY).equals(NovaListenGate.MIC_BUSY_HINT)
+                && NovaListenGate.stopMessage(NovaListenGate.ERR_AUDIO).contains("another app"),
+                "five instant failures stop the loop; busy/audio says the mic may be in use");
+        check(NovaListenGate.nextQuickFails(0, 40) == 1
+                && NovaListenGate.nextQuickFails(4, 40) == 5
+                && NovaListenGate.nextQuickFails(4, 1200) == 0,
+                "a real listen resets the instant-failure count");
+        check(NovaListenGate.errorName(5).equals("CLIENT")
+                && NovaListenGate.errorName(8).equals("RECOGNIZER_BUSY")
+                && NovaListenGate.errorName(7).equals("NO_MATCH"),
+                "error codes have names for the debug line and log");
+        check(NovaListenGate.displayListening(false, true, 200, 50)
+                && !NovaListenGate.displayListening(false, true, 400, 50)
+                && NovaListenGate.displayListening(true, true, 100, 0)
+                && NovaListenGate.displayListening(true, false, 400, 80)
+                && NovaListenGate.DISPLAY_DEBOUNCE_MS == 300L,
+                "Listening / Mic display is held for 300 ms so it cannot flicker");
 
         // 0.10.63: built-in ASR path, diagnostics, no vibrate-from-duck, language fallback.
         check(NovaSpeechAvail.path(false, false, false, false, false) == NovaSpeechAvail.NEED_PERMISSION, "no mic permission is its own path");
@@ -1589,11 +1613,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.74") && NovaAppVer.CODE == 174, "shipping version is 0.10.74");
-        check(NovaAppVer.label().equals("CodeAque 0.10.74")
-                && NovaAppVer.label("0.10.74").equals("CodeAque 0.10.74")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.74")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.74"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.75") && NovaAppVer.CODE == 175, "shipping version is 0.10.75");
+        check(NovaAppVer.label().equals("CodeAque 0.10.75")
+                && NovaAppVer.label("0.10.75").equals("CodeAque 0.10.75")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.75")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.75"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1624,7 +1648,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "a slow Heart synth does not get an extra wait");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.74") && NovaAppVer.CODE == 174, "shipping version is 0.10.74");
+        check(NovaAppVer.NAME.equals("0.10.75") && NovaAppVer.CODE == 175, "shipping version is 0.10.75");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1822,7 +1846,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.74") && NovaAppVer.CODE == 174, "shipping version is 0.10.74");
+        check(NovaAppVer.NAME.equals("0.10.75") && NovaAppVer.CODE == 175, "shipping version is 0.10.75");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

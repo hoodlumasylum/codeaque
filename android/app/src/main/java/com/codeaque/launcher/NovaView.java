@@ -74,8 +74,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     String lastHeard;
     NovaReplyTimeout replyWait;
     NovaListenSoon listenSoon;
-    int emptyListenCycles;
-    boolean listenGiveUp, preferBuiltin, asrDlBusy, busyRetried, heartWaitExtended, heartFallbackRetried;
+    int emptyListenCycles, listenQuickFails;
+    long listenBeganAt, displayListenAt;
+    boolean displayListening;
+    boolean listenDebug, listenGiveUp, preferBuiltin, asrDlBusy, busyRetried, heartWaitExtended, heartFallbackRetried;
+    TextView listenDebugView, versionFoot;
+    NovaListenDisplayTick displayTick;
     boolean listenStarted, pendingRude;
     boolean heardThisListen;
     boolean listenPreroll, acceptHeard = true;
@@ -199,6 +203,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         expanded = on;
         setPanelShown(on);
         if (host != null) host.onNovaExpandChanged(on);
+        NovaListenService.chatOpen = on;
         if (on) {
             if (askField != null) askField.clearFocus();
             if (getContext() != null) NovaListenService.pauseForChat(getContext());
@@ -499,16 +504,26 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         micMeter = new NovaMicMeter(getContext());
         LinearLayout.LayoutParams meterLp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
         meterRow.addView(micMeter, meterLp);
-        TextView verFoot = new TextView(getContext());
-        verFoot.setText(NovaAppVer.label(installedVersionName()));
-        verFoot.setTextColor(0xFF8A98A4);
-        verFoot.setTextSize(11);
-        verFoot.setPadding(pad / 2, 0, 0, 0);
-        verFoot.setSingleLine(true);
-        meterRow.addView(verFoot, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        versionFoot = new TextView(getContext());
+        versionFoot.setText(NovaAppVer.label(installedVersionName()));
+        versionFoot.setTextColor(0xFF8A98A4);
+        versionFoot.setTextSize(11);
+        versionFoot.setPadding(pad / 2, 0, 0, 0);
+        versionFoot.setSingleLine(true);
+        versionFoot.setOnLongClickListener(new NovaListenDebugClick(this));
+        meterRow.addView(versionFoot, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams meterRowLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         meterRowLp.topMargin = pad / 2;
         panel.addView(meterRow, meterRowLp);
+        listenDebugView = new TextView(getContext());
+        listenDebugView.setTextColor(0xFF8A98A4);
+        listenDebugView.setTextSize(10);
+        listenDebugView.setVisibility(GONE);
+        LinearLayout.LayoutParams dbgLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        dbgLp.topMargin = pad / 4;
+        panel.addView(listenDebugView, dbgLp);
+        listenDebug = prefs != null && prefs.getBoolean(NovaListenDiag.PREF_DEBUG, false);
+        refreshListenDebug();
         refreshAsrOffer();
 
         LinearLayout actions = new LinearLayout(getContext());
@@ -762,7 +777,13 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (!fromUser && (talking || speakJobInFlight || pendingSpeak != null || deviceVoice))
             return false;
         preroll = false;
-        if (speech != null && speech.isListening()) {
+        if (fromUser) {
+            listenGiveUp = false;
+            listenQuickFails = 0;
+            emptyListenCycles = 0;
+            busyRetried = false;
+        }
+        if (speech != null && (speech.isListening() || speech.isStarting())) {
             acceptHeard = !thinking();
             listenPreroll = false;
             if (acceptHeard) {
@@ -778,12 +799,12 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         preferBuiltin = NovaListenPick.preferBuiltinWhenReady(NovaAsr.isLoaded()) || preferBuiltin;
         heardThisListen = false;
         lastRmsAt = 0;
-        if (micMeter != null) micMeter.setLevel(0f);
         clearHeardUi();
         if (speech == null) speech = new NovaSpeech();
         boolean ok = speech.start(getContext(), new NovaTalkCb(this), preferBuiltin);
-        if (ok || (speech != null && speech.isListening())) {
+        if (ok || (speech != null && (speech.isListening() || speech.isStarting()))) {
             listenStarted = true;
+            listenBeganAt = android.os.SystemClock.uptimeMillis();
             listenPreroll = false;
             if (!thinking()) {
                 acceptHeard = true;
@@ -806,20 +827,28 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     void refreshMicLabel() {
+        boolean speakingOrThinking = talking || speakJobInFlight || thinking();
+        boolean rawOn = (isListening() || (speech != null && speech.isStarting()))
+                && !speakingOrThinking && acceptHeard && !listenPreroll;
+        long now = android.os.SystemClock.uptimeMillis();
+        boolean on = NovaListenGate.displayListening(rawOn, displayListening, now, displayListenAt);
+        if (on != displayListening) {
+            displayListening = on;
+            displayListenAt = now;
+        } else if (rawOn != on) {
+            scheduleDisplayTick(NovaListenGate.DISPLAY_DEBOUNCE_MS - (now - displayListenAt));
+        }
         if (micBtn != null) {
-            boolean on = isListening();
             micBtn.setText(NovaMicTap.buttonLabel(on));
             styleGlass(micBtn, on ? 0xCCE8C872 : 0x33202830, 0xFFE8C872, dp(14), on ? 2f : 1f);
             micBtn.setTextColor(on ? 0xFF1A1408 : 0xFFE8C872);
         }
-        boolean speakingOrThinking = talking || speakJobInFlight || thinking();
-        boolean actually = isListening() && !speakingOrThinking && acceptHeard && !listenPreroll;
-        // The chip and the status line follow the real state. A stale
-        // SPEAKING convoState must not keep "Listening..." up, or hide a
-        // live listen behind "Speaking...". The "Your turn" cue is only
-        // shown when we are truly accepting his words.
+        boolean actually = on;
+        // The chip and the status line follow the debounced state so a restart
+        // loop cannot flash Listening / Mic several times a second.
         boolean want = NovaListenGate.showListeningChip(voiceLoop, expanded, listenGiveUp,
-                speakingOrThinking || listenPreroll || !acceptHeard, actually, false);
+                speakingOrThinking || listenPreroll || !acceptHeard, actually, !listenGiveUp && voiceLoop && expanded && !speakingOrThinking);
+        if (listenGiveUp) want = false;
         if (listenLabel != null) {
             listenLabel.setVisibility(want ? VISIBLE : INVISIBLE);
             if (want && actually) listenLabel.setText(NovaConvo.YOUR_TURN_TEXT);
@@ -913,43 +942,62 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     /** A silent / no-match / timeout cycle. Keep the chip on, back off, then give up. */
     public void onEmptyListen(int code) {
-        if (NovaConvo.isMicBusy(code)) {
-            onMicBusy(NovaConvo.MIC_BUSY_TEXT);
-            return;
-        }
-        long delay = NovaListenGate.retryDelayMs(emptyListenCycles);
-        emptyListenCycles = NovaListenGate.nextEmptyCycles(emptyListenCycles, true);
+        long elapsed = speech != null ? speech.listenElapsedMs() : (listenBeganAt == 0L ? 0L
+                : android.os.SystemClock.uptimeMillis() - listenBeganAt);
+        NovaListenDiag.setError(code, elapsed);
+        refreshListenDebug();
         setLiveCaption("");
-        boolean ready = NovaAsr.filesReady(getContext());
-        if (NovaListenPick.shouldFallToBuiltin(ready, preferBuiltin, emptyListenCycles, false, false)) {
-            preferBuiltin = true;
-            listenGiveUp = false;
-            emptyListenCycles = 0;
-            cancelListenSoon();
-            showListenStatus(NovaSpeechAvail.SYSTEM_ERROR_BUILTIN);
-            NovaListenDiag.setReason(NovaSpeechAvail.SYSTEM_ERROR_BUILTIN);
-            refreshMicLabel();
-            startListen();
-            return;
-        }
-        boolean can = NovaListenGate.canRestart(voiceLoop, expanded, listenGiveUp,
-                talking, thinking(), speakJobInFlight, pendingSpeak != null);
-        if (!can || !NovaListenGate.shouldRetryEmpty(emptyListenCycles)) {
+        long delay = NovaListenGate.restartDelayMs(code, elapsed, listenQuickFails);
+        listenQuickFails = NovaListenGate.nextQuickFails(listenQuickFails, elapsed);
+        emptyListenCycles = NovaListenGate.nextEmptyCycles(emptyListenCycles, true);
+        if (delay < 0L) {
             listenGiveUp = true;
             cancelListenSoon();
-            if (NovaListenPick.shouldOfferBuiltin(ready, false, false, emptyListenCycles)) {
-                showNeedBuiltin(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN);
-            } else {
-                showListenStatus(NovaListenGate.TAP_MIC);
-                NovaListenDiag.setReason(NovaListenGate.TAP_MIC);
-            }
+            String msg = NovaListenGate.stopMessage(code);
+            convoState = NovaListenGate.isBusyOrAudio(code) ? NovaConvo.MIC_BUSY : convoState;
+            showListenStatus(msg);
+            NovaListenDiag.setReason(msg);
+            refreshMicLabel();
+            return;
+        }
+        // Do not bounce to the built-in engine on instant failures — that
+        // toggling was part of the flicker. Offer it only after we stop.
+        boolean can = NovaListenGate.canRestart(voiceLoop, expanded, listenGiveUp,
+                talking, thinking(), speakJobInFlight, pendingSpeak != null);
+        if (!can) {
+            cancelListenSoon();
             refreshMicLabel();
             return;
         }
         convoState = NovaConvo.LISTENING;
         showListenStatus(NovaConvo.LISTENING_TEXT);
         refreshMicLabel();
-        scheduleListen(delay);
+        if (delay == 0L) startListen();
+        else scheduleListen(delay);
+    }
+
+    void scheduleDisplayTick(long delayMs) {
+        if (displayTick != null) return;
+        displayTick = new NovaListenDisplayTick(this);
+        postDelayed(displayTick, delayMs < 1L ? 1L : delayMs);
+    }
+
+    void toggleListenDebug() {
+        listenDebug = !listenDebug;
+        if (prefs != null) prefs.edit().putBoolean(NovaListenDiag.PREF_DEBUG, listenDebug).apply();
+        refreshListenDebug();
+    }
+
+    void refreshListenDebug() {
+        if (listenDebugView == null) return;
+        if (!listenDebug) {
+            listenDebugView.setVisibility(GONE);
+            return;
+        }
+        String line = NovaListenDiag.lastErrorLine();
+        if (line == null || line.isEmpty()) line = "listen debug on — waiting for an error code";
+        listenDebugView.setText(line);
+        listenDebugView.setVisibility(VISIBLE);
     }
 
     String installedVersionName() {
@@ -1022,37 +1070,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onMicBusy(String message) {
-
-        boolean ready = NovaAsr.filesReady(getContext());
-        boolean alreadyBuiltin = preferBuiltin || (speech != null && speech.usingBuiltin());
-        // The hidden listen service may have been holding the mic. Pause it once, then retry.
-        if (NovaListenPick.retryBusyAfterPause(busyRetried)) {
-            busyRetried = true;
-            NovaListenService.pauseForChat(getContext());
-            listenGiveUp = false;
-            showListenStatus("Mic was busy. Trying again…");
-            scheduleListen(400);
-            return;
-        }
-        if (NovaListenPick.switchBusyToBuiltin(ready, alreadyBuiltin, busyRetried)) {
-            preferBuiltin = true;
-            listenGiveUp = false;
-            cancelListenSoon();
-            showListenStatus("Mic was busy, using built-in");
-            NovaListenDiag.setReason("Mic was busy, using built-in");
-            startListen();
-            return;
-        }
-        listenGiveUp = true;
-        cancelListenSoon();
-        convoState = NovaConvo.MIC_BUSY;
-        setLiveCaption("");
-        String msg = message == null || message.isEmpty() ? NovaConvo.MIC_BUSY_TEXT : message;
-        showListenStatus(msg);
-        NovaListenDiag.setReason(msg);
-        refreshAsrOffer();
-        refreshMicLabel();
-        // Do not keep retrying the same engine — another app may still hold the mic.
+        if (getContext() != null) NovaListenService.pauseForChat(getContext());
+        onEmptyListen(NovaConvo.ERR_BUSY);
     }
 
     /** 0.10.59/0.10.63: no system recognizer — offer built-in listening, then Play Store. */
@@ -1663,6 +1682,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         }
         lastHeard = text;
         emptyListenCycles = 0;
+        listenQuickFails = 0;
         listenGiveUp = false;
         pendingEarlyHeard = null;
         convoState = NovaConvo.HEARD;

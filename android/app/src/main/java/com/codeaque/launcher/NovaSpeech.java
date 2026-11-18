@@ -48,7 +48,9 @@ public final class NovaSpeech {
     SpeechRecognizer rec;
     Callbacks cb;
     boolean listening, offlineTried, offlineUnavailable, destroyed, usedOnDevice, usedUsLang, usingBuiltin;
-    boolean pausedHidden, pendingBuiltinLoad;
+    boolean pausedHidden, pendingBuiltinLoad, isStarting;
+    long listenStartedAt, lastStopAt;
+    NovaSpeechListenGo startSoon;
     String pendingBuiltinReason;
     Context app;
     /** 0.10.61: bumped on each start/stop so a late result cannot replay an old question. */
@@ -68,6 +70,8 @@ public final class NovaSpeech {
 
     public boolean isListening() { return listening; }
 
+    public boolean isStarting() { return isStarting; }
+
     public boolean usingBuiltin() { return usingBuiltin; }
 
     public boolean start(Context ctx, Callbacks callbacks) {
@@ -81,11 +85,16 @@ public final class NovaSpeech {
         }
         destroyed = false;
         if (callbacks != null) cb = callbacks;
-        // Already holding the mic: do not cancel and restart, which races and
-        // can raise the system "Another app is using the microphone" toast.
+        // Already holding the mic, or a startListening is in flight: do not
+        // cancel and restart. That race was the 0.10.74 Listening/Mic loop.
         if (listening && !forceBuiltin && rec != null && !usingBuiltin) return true;
         if (listening && usingBuiltin && asrMic != null) return true;
-        pauseListening();
+        if (isStarting && !forceBuiltin) return true;
+        cancelStartSoon();
+        // Only cancel when something actually holds the mic. Cancelling an
+        // idle recognizer and starting it in the same call is a busy/client loop.
+        if (listening || isStarting || (forceBuiltin && rec != null) || (usingBuiltin && !forceBuiltin && asrMic != null))
+            pauseListening();
         cb = callbacks;
         usedUsLang = false;
         language = NovaListenPick.firstLanguage();
@@ -284,8 +293,11 @@ public final class NovaSpeech {
 
     /** Stop this listen session but keep the SpeechRecognizer for the next turn. */
     public void pauseListening() {
+        cancelStartSoon();
+        isStarting = false;
         listening = false;
         pendingBuiltinLoad = false;
+        lastStopAt = android.os.SystemClock.uptimeMillis();
         listenGen = NovaConvo.nextGen(listenGen);
         cancelEndpointWatches();
         beep.restoreNow();
@@ -299,6 +311,25 @@ public final class NovaSpeech {
         }
         releaseMic();
         notifyState(false);
+    }
+
+    public long listenElapsedMs() {
+        if (listenStartedAt == 0L) return 0L;
+        long n = android.os.SystemClock.uptimeMillis() - listenStartedAt;
+        return n < 0L ? 0L : n;
+    }
+
+    void cancelStartSoon() {
+        if (startSoon != null) {
+            ui.removeCallbacks(startSoon);
+            startSoon = null;
+        }
+    }
+
+    void scheduleListenGo(boolean preferOffline, String lang, long delayMs) {
+        cancelStartSoon();
+        startSoon = new NovaSpeechListenGo(this, preferOffline, lang, listenGen);
+        ui.postDelayed(startSoon, delayMs < 1L ? 1L : delayMs);
     }
 
     void claimMic() {
@@ -344,6 +375,22 @@ public final class NovaSpeech {
 
     void listen(boolean preferOffline, String lang) {
         if (destroyed || rec == null) return;
+        if (isStarting || listening) return;
+        if (lang == null || lang.isEmpty()) lang = NovaSpeechAvail.LANGUAGE;
+        language = lang;
+        if (offlineUnavailable) preferOffline = false;
+        long now = android.os.SystemClock.uptimeMillis();
+        long gap = lastStopAt == 0L ? NovaListenGate.START_GAP_MS : now - lastStopAt;
+        if (gap < NovaListenGate.START_GAP_MS) {
+            scheduleListenGo(preferOffline, lang, NovaListenGate.START_GAP_MS - gap);
+            return;
+        }
+        listenNow(preferOffline, lang);
+    }
+
+    void listenNow(boolean preferOffline, String lang) {
+        if (destroyed || rec == null) return;
+        if (isStarting || listening) return;
         if (lang == null || lang.isEmpty()) lang = NovaSpeechAvail.LANGUAGE;
         language = lang;
         if (offlineUnavailable) preferOffline = false;
@@ -351,23 +398,36 @@ public final class NovaSpeech {
         offlineTried = preferOffline;
         listenGen = NovaConvo.nextGen(listenGen);
         claimMic();
+        isStarting = true;
         listening = true;
-        endpoint.start(android.os.SystemClock.uptimeMillis());
+        listenStartedAt = android.os.SystemClock.uptimeMillis();
+        endpoint.start(listenStartedAt);
         scheduleEndpointWatch();
         notifyState(true);
         if (app != null) beep.duck(app);
         try { rec.startListening(i); }
         catch (Exception e) {
-            beep.restoreNow();
-            if (preferOffline) { listen(false, lang); return; }
-            if (tryLanguageOrBuiltin(NovaVoiceGate.ERR_CLIENT)) return;
+            isStarting = false;
             listening = false;
+            lastStopAt = android.os.SystemClock.uptimeMillis();
+            beep.restoreNow();
             notifyState(false);
-            fail("I couldn't start the mic. You can type your question instead.");
+            long elapsed = listenElapsedMs();
+            NovaListenDiag.setError(NovaVoiceGate.ERR_CLIENT, elapsed, preferOffline ? "offline-start" : "start");
+            android.util.Log.i("NovaListen", NovaListenDiag.lastErrorLine());
+            if (preferOffline && !offlineUnavailable) {
+                offlineUnavailable = true;
+                scheduleListenGo(false, lang, NovaListenGate.START_GAP_MS);
+                return;
+            }
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, listenGen, NovaVoiceGate.ERR_CLIENT));
         }
     }
 
-    void onReady() { beep.restoreNow(); }
+    void onReady() {
+        isStarting = false;
+        beep.restoreNow();
+    }
 
     void onRms(float rmsdB) {
         if (destroyed || !listening) return;
@@ -384,7 +444,9 @@ public final class NovaSpeech {
         int gen = listenGen;
         if (destroyed || !listening) return;
         cancelEndpointWatches();
+        isStarting = false;
         listening = false;
+        lastStopAt = android.os.SystemClock.uptimeMillis();
         beep.restoreNow();
         notifyState(false);
         String text = firstResult(b);
@@ -485,25 +547,25 @@ public final class NovaSpeech {
     }
 
     void onError(int code) {
-        if (destroyed || !listening) return;
+        long elapsed = listenElapsedMs();
+        isStarting = false;
+        lastStopAt = android.os.SystemClock.uptimeMillis();
+        String src = usingBuiltin ? "builtin" : (offlineTried ? "offline" : "system");
+        NovaListenDiag.setError(code, elapsed, src);
+        android.util.Log.i("NovaListen", NovaListenDiag.lastErrorLine());
+        if (destroyed) return;
         int gen = listenGen;
-        if (offlineTried && (code == SpeechRecognizer.ERROR_CLIENT
-                || code == SpeechRecognizer.ERROR_SERVER
-                || code == SpeechRecognizer.ERROR_NETWORK
-                || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
-                || code == SpeechRecognizer.ERROR_NO_MATCH
-                || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
-            // Offline pack missing or unhappy: do not keep failing the first
-            // syllables of each turn. Use the default recognizer from now on.
-            if (code == SpeechRecognizer.ERROR_CLIENT || code == SpeechRecognizer.ERROR_SERVER
-                    || code == SpeechRecognizer.ERROR_NETWORK
-                    || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
-                offlineUnavailable = true;
-            }
-            listen(false, language);
+        // Instant offline failure: switch to the default recognizer once and
+        // stick with it for this session. Do it after a short gap, never in
+        // the same call as the error (that was a tight start/cancel loop).
+        if (offlineTried && !offlineUnavailable && NovaListenGate.isInstantFailure(elapsed)) {
+            offlineUnavailable = true;
+            listening = false;
+            beep.restoreNow();
+            notifyState(false);
+            scheduleListenGo(false, language, NovaListenGate.START_GAP_MS);
             return;
         }
-        if (tryLanguageOrBuiltin(code)) return;
         listening = false;
         beep.restoreNow();
         notifyState(false);
@@ -513,19 +575,15 @@ public final class NovaSpeech {
                 if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, partial, false, gen));
                 return;
             }
-            // A screen recorder may trip BUSY/AUDIO even when the mic still has level.
-            // Only warn when the capture was truly silent.
-            if (!endpoint.reallySilent(android.os.SystemClock.uptimeMillis())) {
-                if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, code));
-                return;
-            }
-            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.MIC_BUSY, NovaConvo.MIC_BUSY_TEXT, false, gen));
-            return;
         }
-        if (softListenError(code)) {
+        // Instant errors and busy/audio go to the view so it can back off and
+        // stop. Do not recreate the recognizer or switch engines here.
+        if (NovaListenGate.isInstantFailure(elapsed) || NovaListenGate.isEmptyCycle(code)
+                || NovaConvo.isMicBusy(code) || softListenError(code)) {
             if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, code));
             return;
         }
+        if (tryLanguageOrBuiltin(code)) return;
         fail(friendlyError(code));
     }
 

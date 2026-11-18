@@ -12,6 +12,9 @@ public final class NovaListenDiag {
     static volatile float level;
     static volatile boolean usingBuiltin;
     static volatile boolean permissionDenied;
+    static volatile String lastErrorLine = "";
+    static volatile int lastErrorCode;
+    public static final String PREF_DEBUG = "novaListenDebug";
 
     public static void setReason(String r) {
         reason = r == null ? "" : r;
@@ -66,4 +69,21 @@ public final class NovaListenDiag {
     public static String line() {
         return line(reason, false, usingBuiltin, permissionDenied);
     }
+
+    /** Record a recognizer error for logcat and the hidden Chat debug line. */
+    public static void setError(int code, long elapsedMs, String extra) {
+        lastErrorCode = code;
+        String name = NovaListenGate.errorName(code);
+        String line = name + " (" + code + ") in " + elapsedMs + " ms";
+        if (extra != null && !extra.isEmpty()) line = line + " " + extra;
+        lastErrorLine = line;
+    }
+
+    public static void setError(int code, long elapsedMs) {
+        setError(code, elapsedMs, null);
+    }
+
+    public static String lastErrorLine() { return lastErrorLine == null ? "" : lastErrorLine; }
+
+    public static int lastErrorCode() { return lastErrorCode; }
 }
