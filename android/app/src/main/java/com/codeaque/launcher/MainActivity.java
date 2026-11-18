@@ -105,23 +105,15 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         if (launch != null) pool.setOnLoadCompleteListener((sp, id, st) -> { Integer want = sounds.get(launch); if (want != null && id == want) sp.play(id, 0.6f, 0.6f, 1, 0, 1f); });
         Intent i = getIntent();     // for screenshots/tests: am start -e cat cloud -e tile 1
         if (i != null && i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
-        if (b == null) parentEntry(i);   // 0.10.30: CodeAque Adult / CodeAque Settings icon or long-press shortcut
+        if (b == null) {
+            if (handleInstallerResult(i)) return;
+            parentEntry(i);   // 0.10.30: CodeAque Adult / CodeAque Settings icon or long-press shortcut
+        }
     }
 
     @Override protected void onNewIntent(Intent i) {      // pressing Home again, the screenshot extras, or the installer's answer
         super.onNewIntent(i);
-        if ("com.codeaque.launcher.INSTALLED".equals(i.getAction())) {
-            int st = i.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, -999);
-            if (st == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
-                if (prefs.getBoolean("kidsMode", false) && !pinFresh()) {
-                    toast("A parent PIN is needed to install updates."); return;
-                }
-                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);     // Android's own "Install this update?" prompt
-                if (confirm != null) startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } else if (st != android.content.pm.PackageInstaller.STATUS_SUCCESS)
-                Toast.makeText(this, "Update not installed: " + i.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE), Toast.LENGTH_LONG).show();
-            return;
-        }
+        if (handleInstallerResult(i)) return;
         handleKidsGuardIntent(i);
         if (parentEntry(i)) return;      // 0.10.30
         if (i.hasExtra("theme")) { prefs.edit().putString("theme", Palette.byId(i.getStringExtra("theme")).id).apply(); view.setTheme(theme()); }
@@ -143,11 +135,17 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         rescan();
         ScreenTimeService.sync(this);
         int storeGen = parentStoreGen;
+        int updateGen = parentUpdateGen;
         resumeStoreQueue();   // may open the next PIN-approved Play Store page (bumps parentStoreGen)
         if (prefs.getBoolean("kidsMode", false)) {
+            if (pendingUpdateConfirm) {
+                pendingUpdateConfirm = false;   // installer confirm just launched; keep the update window
+            } else if (parentUpdateGen == updateGen) {
+                endParentUpdate();
+            }
             if (parentStoreGen == storeGen) {
                 endParentStore();   // 0.10.49: back on the Kids home with no further store page — re-lock
-                prefs.edit().remove("kidsFgPkg").apply();
+                if (!parentUpdateActive()) prefs.edit().remove("kidsFgPkg").apply();
             }
             syncDeviceOwnerKiosk();
             syncKidsPinning();
@@ -1008,7 +1006,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void parentGo(boolean toSettings, boolean alwaysAsk) {
         Runnable go = () -> {
             boolean wasKids = prefs.getBoolean("kidsMode", false);
-            prefs.edit().putBoolean("kidsMode", false).remove(ScreenTime.PARENT_STORE_UNTIL).apply();
+            prefs.edit().putBoolean("kidsMode", false).remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply();
             parentStoreGen++;
             timeUpScreen = false;
             if (wasKids) stopKidsPinning();   // 0.10.37: PIN exit drops screen pinning
@@ -1175,9 +1173,13 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             }
             for (String r : KIOSK_RULES) dpm.addUserRestriction(admin, r);
             if (prefs.getBoolean("kidsMode", false))
-                for (String r : KIDS_KIOSK_RULES)
-                    if (!(android.os.UserManager.DISALLOW_INSTALL_APPS.equals(r) && parentStoreActive()))
-                        dpm.addUserRestriction(admin, r);
+                for (String r : KIDS_KIOSK_RULES) {
+                    if (android.os.UserManager.DISALLOW_INSTALL_APPS.equals(r) && (parentStoreActive() || parentUpdateActive()))
+                        continue;
+                    if (android.os.UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES.equals(r) && parentUpdateActive())
+                        continue;   // 0.10.49: our own signed APK update is not from Play
+                    dpm.addUserRestriction(admin, r);
+                }
             IntentFilter home = new IntentFilter(Intent.ACTION_MAIN); home.addCategory(Intent.CATEGORY_HOME); home.addCategory(Intent.CATEGORY_DEFAULT);
             dpm.addPersistentPreferredActivity(admin, home, new android.content.ComponentName(this, MainActivity.class));
             startLockTask();
@@ -1225,6 +1227,10 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         if (parentStoreActive()) {   // 0.10.49: lock-task must allow Play Store after a parent PIN
             allow.add("com.android.vending");
             allow.add("com.google.android.finsky");
+            allow.add("com.google.android.packageinstaller");
+            allow.add("com.android.packageinstaller");
+        }
+        if (parentUpdateActive()) {   // 0.10.49: lock-task must allow the installer for our own APK update
             allow.add("com.google.android.packageinstaller");
             allow.add("com.android.packageinstaller");
         }
@@ -1546,6 +1552,82 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             syncKidsPinning();
     }
 
+    /** 0.10.49: after a parent PIN, let Android's installer confirm our own signed APK update, then re-lock. */
+    private int parentUpdateGen;
+    private boolean pendingUpdateConfirm;
+    private boolean parentUpdateActive() {
+        return System.currentTimeMillis() < prefs.getLong(ScreenTime.PARENT_UPDATE_UNTIL, 0);
+    }
+    private void beginParentUpdate() {
+        if (!prefs.getBoolean("kidsMode", false)) return;
+        long until = System.currentTimeMillis() + ScreenTime.PARENT_UPDATE_MS;
+        prefs.edit().putLong(ScreenTime.PARENT_UPDATE_UNTIL, until)
+                .putString("kidsFgPkg", "com.android.packageinstaller").apply();
+        if (deviceOwner()) {
+            try {
+                android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                android.content.ComponentName admin = adminComponent();
+                dpm.clearUserRestriction(admin, android.os.UserManager.DISALLOW_INSTALL_APPS);
+                dpm.clearUserRestriction(admin, android.os.UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES);
+            } catch (Exception ignored) { }
+            try { syncDeviceOwnerKiosk(); } catch (Exception ignored) { }
+        }
+        if (prefs.getBoolean("kidsLock", false) && inLockTask() && !deviceOwner()) {
+            try { stopLockTask(); } catch (Exception ignored) { }
+        }
+        final int gen = ++parentUpdateGen;
+        if (view != null) view.postDelayed(() -> { if (gen == parentUpdateGen) endParentUpdate(); }, ScreenTime.PARENT_UPDATE_MS + 250);
+    }
+    private void endParentUpdate() {
+        parentUpdateGen++;
+        pendingUpdateConfirm = false;
+        boolean was = prefs.contains(ScreenTime.PARENT_UPDATE_UNTIL);
+        android.content.SharedPreferences.Editor ed = prefs.edit().remove(ScreenTime.PARENT_UPDATE_UNTIL);
+        String fg = prefs.getString("kidsFgPkg", null);
+        if (fg != null && ScreenTime.parentUpdatePackage(fg) && !parentStoreActive()) ed.remove("kidsFgPkg");
+        ed.apply();
+        if (!was) return;
+        if (deviceOwner() && prefs.getBoolean("kidsMode", false)) {
+            try {
+                android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                android.content.ComponentName admin = adminComponent();
+                dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_INSTALL_APPS);
+                dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES);
+            } catch (Exception ignored) { }
+            try { syncDeviceOwnerKiosk(); } catch (Exception ignored) { }
+        }
+        if (prefs.getBoolean("kidsMode", false) && prefs.getBoolean("kidsLock", false))
+            syncKidsPinning();
+    }
+
+    /** PackageInstaller callback: Android's "Install this update?" prompt, or a failed session. */
+    private boolean handleInstallerResult(Intent i) {
+        if (i == null || !"com.codeaque.launcher.INSTALLED".equals(i.getAction())) return false;
+        int st = i.getIntExtra(android.content.pm.PackageInstaller.EXTRA_STATUS, -999);
+        if (st == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Runnable go = () -> {
+                beginParentUpdate();
+                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
+                if (confirm != null) {
+                    confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    String ip = confirm.getPackage();
+                    if (ip == null && confirm.getComponent() != null) ip = confirm.getComponent().getPackageName();
+                    if (ip != null) allowKidsForeground(ip);
+                    pendingUpdateConfirm = true;
+                    try { startActivity(confirm); }
+                    catch (Exception e) { pendingUpdateConfirm = false; toast("The installer could not be opened: " + e.getMessage()); endParentUpdate(); }
+                }
+            };
+            if (prefs.getBoolean("kidsMode", false) && !pinFresh() && !parentUpdateActive()) {
+                askPin("Parent PIN: Update", go);
+            } else go.run();
+        } else if (st != android.content.pm.PackageInstaller.STATUS_SUCCESS) {
+            endParentUpdate();
+            Toast.makeText(this, "Update not installed: " + i.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE), Toast.LENGTH_LONG).show();
+        } else endParentUpdate();
+        return true;
+    }
+
     private void action(String a) {
         if (a != null && a.startsWith("steamstore:")) { openSteamStore(a.substring(11)); return; }
         if (a != null && a.startsWith("roblox:")) { openRobloxPlace(a.substring(7)); return; }
@@ -1603,7 +1685,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 leaveBoxSet();
                 pinOkUntil = 0;                               // 0.10.35: a PIN from before Kids mode must not unlock Settings
-                prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).apply(); timeUpScreen = false;
+                prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply(); timeUpScreen = false;
                 parentStoreGen++;
                 ScreenTimeService.sync(this); rescan();
                 syncDeviceOwnerKiosk();
@@ -1747,8 +1829,12 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     private void install(UpdateInfo u) {
-        if (prefs.getBoolean("kidsMode", false) && !pinFresh()) { toast("A parent PIN is needed to install updates."); return; }
+        if (prefs.getBoolean("kidsMode", false) && !pinFresh() && !parentUpdateActive()) {
+            runOnUiThread(() -> askPin("Parent PIN: Update", () -> new Thread(() -> install(u)).start()));
+            return;
+        }
         try {
+            if (prefs.getBoolean("kidsMode", false)) runOnUiThread(() -> beginParentUpdate());
             toast("Downloading CodeAque " + u.version + " ...");
             String want = null;
             try { want = UpdateInfo.expectedSha(get(u.sumsUrl, null)); }
@@ -1782,6 +1868,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             }
             f.delete();
         } catch (Exception e) {
+            if (prefs.getBoolean("kidsMode", false)) runOnUiThread(() -> endParentUpdate());
             toast("The update could not be installed (" + e.getClass().getSimpleName() + "): " + e.getMessage() + ". Please try again in a few minutes.");
         }
     }
@@ -2481,9 +2568,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void applyAlwaysKids() {
         if (!prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT)) return;
         if (!prefs.getBoolean("kidsMode", false))
-            prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).apply();   // last-used kidsProfile (kids / kids12) is left as it is
+            prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply();   // last-used kidsProfile (kids / kids12) is left as it is
         else
-            prefs.edit().remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).apply();
+            prefs.edit().remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply();
     }
     private void alwaysKidsToggle() {
         boolean on = !prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT);
@@ -2514,10 +2601,10 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     /** Pin CodeAque when Kids mode + the Settings toggle are on. No-op if already pinned or we just handed off to a game. */
     private void syncKidsPinning() {
         if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
-        if (parentStoreActive() || prefs.getString("kidsFgPkg", null) != null) return;   // Play Store window or an approved game is allowed in front
+        if (parentStoreActive() || parentUpdateActive() || prefs.getString("kidsFgPkg", null) != null) return;   // Play / update window or an approved game
         view.post(() -> {
             if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
-            if (parentStoreActive() || prefs.getString("kidsFgPkg", null) != null) return;
+            if (parentStoreActive() || parentUpdateActive() || prefs.getString("kidsFgPkg", null) != null) return;
             if (inLockTask()) return;
             try { startLockTask(); }
             catch (Exception e) { /* Android may refuse if we are not focused; the bounce fallback still runs. */ }
@@ -2545,7 +2632,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     /** Remember the game we just launched, and unpin so it can come to the front (without device owner, only one task can be pinned). */
     private void allowKidsForeground(String pkg) {
         if (!prefs.getBoolean("kidsMode", false) || pkg == null || pkg.isEmpty() || pkg.equals(getPackageName())) return;
-        if (ScreenTime.blockedKidPackage(pkg) || Catalog.emulatorPkg(pkg)) return;
+        if (ScreenTime.blockedKidPackage(pkg) || Catalog.emulatorPkg(pkg)) {
+            boolean ok = (parentUpdateActive() && ScreenTime.parentUpdatePackage(pkg))
+                    || (parentStoreActive() && ScreenTime.parentStorePackage(pkg));
+            if (!ok) return;
+        }
         prefs.edit().putString("kidsFgPkg", pkg).apply();
         // Device owner can keep lock-task and still open a whitelisted game. Without it, pinning must pause.
         if (deviceOwner() && prefs.getBoolean("kidsMode", false)) {
@@ -2571,6 +2662,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
         if (prefs.getBoolean("parentSettings", false)) return;   // 0.10.40: parent opened Settings after the PIN (adult mode should already have kids off)
         if (parentStoreActive()) return;   // 0.10.49: leaving for a PIN-approved Play Store install
+        if (parentUpdateActive()) return;   // 0.10.49: leaving for a PIN-approved CodeAque APK update
         if (prefs.getString("kidsFgPkg", null) != null) return;   // leaving for an approved game
         if (pinDialogOpen) return;
         final int gen = ++kidsBounceGen;
@@ -2729,7 +2821,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 .setPositiveButton(on ? "Turn on" : "Turn off", (d, w) -> {
                     android.content.SharedPreferences.Editor ed = prefs.edit().putBoolean("kidsMode", on);
                     if (on) ed.remove("parentSettings");
-                    ed.remove(ScreenTime.PARENT_STORE_UNTIL);
+                    ed.remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL);
                     ed.apply();
                     parentStoreGen++;
                     if (!on) { timeUpScreen = false; stopKidsPinning(); }

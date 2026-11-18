@@ -261,7 +261,8 @@ final class ScreenTimeTick implements Runnable {
         if (fg != null && !fg.equals(svc.getPackageName())) {
             String allow = p.getString("kidsFgPkg", null);
             boolean blocked = ScreenTime.blockedKidPackage(fg) || Catalog.emulatorPkg(fg);
-            boolean storeOk = ScreenTime.parentStoreAllowed(fg, p.getLong(ScreenTime.PARENT_STORE_UNTIL, 0), now);
+            boolean storeOk = ScreenTime.parentStoreAllowed(fg, p.getLong(ScreenTime.PARENT_STORE_UNTIL, 0), now)
+                    || ScreenTime.parentUpdateAllowed(fg, p.getLong(ScreenTime.PARENT_UPDATE_UNTIL, 0), now);
             // 0.10.40: never bounce the parent out of system Settings after a PIN in adult mode
             if (p.getBoolean("parentSettings", false) && Catalog.settingsPkg(fg)) { /* leave Settings alone */ }
             else if (storeOk) { /* 0.10.49: parent PIN approved a Play Store install; leave it open */ }

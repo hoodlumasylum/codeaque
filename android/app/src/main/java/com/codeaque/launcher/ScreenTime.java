@@ -157,6 +157,19 @@ public final class ScreenTime {
         return nowMs < untilMs && parentStorePackage(pkg);
     }
 
+    /** 0.10.49: after a parent PIN, allow Android's package installer just long enough to install our own signed APK update. */
+    public static final long PARENT_UPDATE_MS = 10 * 60_000L;
+    public static final String PARENT_UPDATE_UNTIL = "parentUpdateUntil";
+
+    public static boolean parentUpdatePackage(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        return pkg.toLowerCase(java.util.Locale.ROOT).contains("packageinstaller");
+    }
+
+    public static boolean parentUpdateAllowed(String pkg, long untilMs, long nowMs) {
+        return nowMs < untilMs && parentUpdatePackage(pkg);
+    }
+
     /** 0.10.49: allowed play hours in the device's local time. Minutes are 0–1439 from midnight.
      *  If weekendSeparate is false, the weekday window applies every day. A window with start == end
      *  is treated as all day. A window with start > end wraps midnight. overrideUntil is a wall-clock

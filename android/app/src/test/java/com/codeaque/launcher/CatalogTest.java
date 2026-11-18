@@ -678,6 +678,15 @@ public class CatalogTest {
                 && !ScreenTime.parentStoreAllowed("com.android.settings", until, until - 1)
                 && !ScreenTime.parentStoreAllowed("com.android.vending", 0, 1), "parent-store window is time-limited and Play-only");
         check(ScreenTime.PARENT_STORE_MS == 10 * 60_000L, "parent-store window is 10 minutes");
+        check(ScreenTime.parentUpdatePackage("com.android.packageinstaller") && ScreenTime.parentUpdatePackage("com.google.android.packageinstaller")
+                && !ScreenTime.parentUpdatePackage("com.android.vending") && !ScreenTime.parentUpdatePackage("com.android.settings")
+                && !ScreenTime.parentUpdatePackage("com.roblox.client") && !ScreenTime.parentUpdatePackage(null), "parent-update packages are the installer only");
+        long uUntil = 2_000_000L;
+        check(ScreenTime.parentUpdateAllowed("com.android.packageinstaller", uUntil, uUntil - 1)
+                && !ScreenTime.parentUpdateAllowed("com.android.packageinstaller", uUntil, uUntil)
+                && !ScreenTime.parentUpdateAllowed("com.android.vending", uUntil, uUntil - 1)
+                && !ScreenTime.parentUpdateAllowed("com.android.packageinstaller", 0, 1), "parent-update window is time-limited and installer-only");
+        check(ScreenTime.PARENT_UPDATE_MS == 10 * 60_000L, "parent-update window is 10 minutes");
         ScreenTime.Hours win = new ScreenTime.Hours(true, 16 * 60, 19 * 60, false, 10 * 60, 18 * 60, 0);
         java.util.Calendar hc = java.util.Calendar.getInstance(tz);
         hc.set(2026, java.util.Calendar.NOVEMBER, 16, 15, 0, 0); hc.set(java.util.Calendar.MILLISECOND, 0);
