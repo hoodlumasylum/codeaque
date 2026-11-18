@@ -400,7 +400,16 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     private ArtLoader artLoader;
-    @Override public void artUpdated(String key) { if (view != null) view.postInvalidate(); }
+    @Override public void artUpdated(String key) {
+        if (key != null && key.startsWith("play:")) {
+            String pkg = key.substring(5);
+            playArtCache.remove(pkg + "#f");
+            playArtCache.remove(pkg + "#i");
+            playArtCache.remove(pkg + "#F");
+            playArtCache.remove(pkg + "#pi");
+        }
+        if (view != null) view.artArrived();
+    }
     private void requestPlayArt(String pkg, java.io.File dir) {
         if (artLoader == null || pkg == null) return;
         artLoader.requestPlay(pkg, dir);
@@ -451,6 +460,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         return out;
     }
 
+    private final java.util.Set<String> featureRetry = java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+
     private android.graphics.Bitmap playArt(Catalog.Item it, boolean feature) {
         // 0.10.46: web tiles (Xbox / GeForce NOW / Luna / Boosteroid) still have a Play package — fetch their icon.
         if (it == null || it.isRom() || it.storePackage() == null) return null;
@@ -460,10 +471,18 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         String pkg = it.storePackage(), k = pkg + (feature ? "#f" : "#i");
         if (playArtCache.containsKey(k)) return playArtCache.get(k);
         java.io.File dir = new java.io.File(getCacheDir(), "playart");
-        java.io.File f = feature ? PlayArt.featureFile(dir, pkg) : PlayArt.iconFile(dir, pkg);
-        if (!f.isFile() && feature) f = PlayArt.iconFile(dir, pkg);   // feature graphic optional; use the icon
-        final java.io.File pic = f;
-        if (pic.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(pic));
+        java.io.File feat = PlayArt.featureFile(dir, pkg), icon = PlayArt.iconFile(dir, pkg);
+        if (feature) {
+            if (feat.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(feat));
+            // 0.10.51: an icon-only cache from an older parser may still have a listing screenshot
+            if (icon.isFile()) {
+                if (!PlayArt.isFreshMiss(dir, pkg) && online() && featureRetry.add(pkg)) requestPlayArt(pkg, dir);
+                return decodeLater(playArtCache, k, () -> decodeCover(icon));
+            }
+            if (!PlayArt.isFreshMiss(dir, pkg) && online()) requestPlayArt(pkg, dir);
+            return null;
+        }
+        if (icon.isFile()) return decodeLater(playArtCache, k, () -> decodeCover(icon));
         if (!PlayArt.isFreshMiss(dir, pkg) && online()) requestPlayArt(pkg, dir);
         return null;
     }

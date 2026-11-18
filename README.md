@@ -31,7 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
-## What's new in 0.10.50 (unreleased)
+## What's new in 0.10.51 (unreleased)
+
+**Smoother one-row scrolling.** The 0.10.50 row still felt jittery because snap was fighting the finger (the first draw after a move treated the fling as ended and eased the row back toward the focused tile between touch events), covers were decoded at full size and scaled with a rounded `clipPath` every frame, paints and shaders were allocated during `onDraw`, the whole screen (phoenix background and embers) was invalidated while the row moved, and a late cover download could redraw mid-fling. 0.10.51 keeps the same one-canvas home (not a RecyclerView: the main APK is still built with aapt2/d8 and no AndroidX, and the IME, category chips, swipe-anywhere row, PIN and Screen Time are wired to this view). Snap never runs while a finger is down. A fling coasts, then eases to a tile. Covers are centre-cropped once to the exact tile size and cached. Chrome (background, tabs, hints) is frozen to a snapshot while the row is busy. New art waits until the row is still. A 60 Hz physics bench is in the unit tests; that is not a measurement on a phone GPU.
+
+**Covers fill the tile edge to edge.** Each cover is trimmed of transparent icon padding, then centre-cropped to the tile's exact pixel size, including the rounded corners. The baked picture is drawn slightly under the gold stroke so there is no dark hairline or letterbox band inside the frame. Big bold titles and the GET / PLAY badges stay.
+
+**Better cover when Play has no feature graphic.** Listings that only publish a square icon (for example a silhouette) now use the game's own first Play Store screenshot as the wide cover, then the trimmed icon, then the installed icon. An older cache that only has the icon is retried once for a screenshot. Official feature graphics still win. Transient Play failures are still retried and are not stored as a miss.
+
+These changes have not been tried on a real phone, a K56, or a Win600.
+
+## What's new in 0.10.50
+
 
 **Kids search uses the phone keyboard.** The Search tab now has a real text field. Tapping it (or pressing A on a controller while the field is focused) opens the device's own keyboard, not a keyboard drawn in the middle of the screen. Search or Go on that keyboard runs the same in-launcher Play search as before — installed games first marked PLAY, then GET after a parent PIN, never a raw Play Store search. The Kids lock and lock-task allow-list let the current keyboard app stay up; they do not bounce it away. If no system keyboard appears (for example on some handhelds), the old on-screen keyboard is shown as a fallback.
 

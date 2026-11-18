@@ -13,10 +13,11 @@ import java.util.List;
 import java.util.Locale;
 
 /** The whole home screen, drawn on one Canvas (no child views to lay out or recycle): cheap on a 2 GB RK3566.
- *  Off-screen tiles are skipped. Cover bitmaps are cached and decoded off the UI thread by MainActivity.
- *  Gamepad is unchanged: D-pad / stick, L1 R1 change category, A open, B back, Y settings.
- *  Touch (0.10.29): one tap opens a tile. Swipe left or right moves between sections. A slower drag on a long
- *  row scrolls it and flings with friction. The on-screen Back button does the same as controller B. */
+ *  Off-screen tiles are skipped. Cover bitmaps are decoded off the UI thread and, from 0.10.51, pre-scaled to
+ *  the tile size and cached. Gamepad is unchanged: D-pad / stick, L1 R1 change category, A open, B back, Y settings.
+ *  Touch (0.10.29 / 0.10.51): one tap opens a tile. Swipe left or right moves between sections. A drag on the
+ *  row (from anywhere except tabs and buttons) scrolls it; a fling coasts, then eases to a tile. Snap never
+ *  runs against a live finger. The on-screen Back button does the same as controller B. */
 public class HomeView extends View {
     public interface Host {
         void open(Catalog.Item item);
@@ -82,6 +83,8 @@ public class HomeView extends View {
         cats = Catalog.replaceItems(cats, id, items);
         tile = Math.max(0, Math.min(tile, Math.max(0, items().size() - 1)));
         if (scrollAnim > Math.max(0, items().size())) { scrollAnim = 0; tile = 0; }
+        row.focusTile(tile, items().size());
+        row.scroll = scrollAnim;
         invalidate();
     }
 
@@ -92,6 +95,8 @@ public class HomeView extends View {
         int i = Catalog.indexOf(cats, id);
         cat = i < 0 ? 0 : i; catAnim = cat;
         tile = Math.max(0, Math.min(tile, items().size() - 1));
+        row.focusTile(tile, items().size());
+        row.scroll = scrollAnim;
         invalidate();
         notifyRoblox(false);
     }
@@ -114,11 +119,27 @@ public class HomeView extends View {
     private long downTime;
     private boolean rowDrag, sectionSwipe, gestureChose;
     /** Tile-units per second while a finger fling is coasting. userScroll means the finger owns the scroll
-     *  (focus-follow waits) until the fling slows down. */
+     *  (focus-follow waits) until the fling slows down. Kept in sync with {@link #row}. */
     private float flingV;
     private boolean userScroll;
     /** 0.10.49: animated scale of the focused browse tile (1 = rest, 1.05 = subtle lift). */
     private float focusScale = 1f;
+    final HomeScroll row = new HomeScroll();
+    private Typeface tfBlack, tfBold, tfRegular, tfMedium;
+    private final TileBmpCache tileBmps;
+    private Bitmap chromeSnap, phoenixScreen, phoenixBg;
+    private int chromeW, chromeH, phoenixSw, phoenixSh, bakesThisFrame;
+    private boolean chromeReady, phoenixTried, artPending, robloxNearPosted;
+    private int[] coverPixels;
+    private final Rect bakeSrc = new Rect();
+    private final RectF bakeDst = new RectF();
+    private final Paint tileBake = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final PorterDuffXfermode bakeDstIn = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
+    private long lastRobloxNearAt;
+    private final long[] frameNs = new long[120];
+    private int frameAt, frameSamples;
+    private long frameWorstNs;
+    String lastFrameReport = "";
     private VelocityTracker velocity;
     private int logoTaps; private long logoTapAt;
     private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
@@ -139,7 +160,19 @@ public class HomeView extends View {
         super(c);
         this.host = host;
         tile = 0; cat = 0; catAnim = 0;          // 0.10.1: start on Featured (Roblox, Minecraft, then Steam)
+        row.reset(0, 0);
         setFocusable(true); setFocusableInTouchMode(true);
+        tfRegular = Typeface.create("sans-serif", Typeface.NORMAL);
+        tfBold = Typeface.create("sans-serif", Typeface.BOLD);
+        tfMedium = Typeface.create("sans-serif-medium", Typeface.BOLD);
+        tfBlack = Typeface.create("sans-serif-black", Typeface.BOLD);
+        if (tfBlack == null) tfBlack = tfBold;
+        int cacheKb = 8 * 1024;
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) cacheKb = Math.max(4096, Math.min(16384, am.getMemoryClass() * 1024 / 8));
+        } catch (Exception ignored) { }
+        tileBmps = new TileBmpCache(cacheKb);
         try {
             logo = BitmapFactory.decodeStream(c.getAssets().open("logo.png"));
             splash = BitmapFactory.decodeStream(c.getAssets().open("splash.jpg"));   // 1280x720 copy of the 1672x941 art   // the white CodeAque logo (3:1)
@@ -164,7 +197,7 @@ public class HomeView extends View {
 
     private void setCat(int c) {
         c = (c + cats.size()) % cats.size();
-        if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; host.sound("hhcat");
+        if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; row.reset(0, 0); chromeReady = false; host.sound("hhcat");
             if (onSearch()) { searchFocus = SF_BOX; kbRow = 0; kbCol = 0; host.requestKidsIme(); }
             else host.hideKidsIme();
         }
@@ -176,6 +209,8 @@ public class HomeView extends View {
         userScroll = false; flingV = 0;   // the controller takes the scroll back; focus-follow eases to this tile
         i = Math.max(0, Math.min(items().size() - 1, i));
         if (i != tile) { tile = i; host.sound("hhmove"); }
+        row.focusTile(tile, items().size());
+        row.scroll = scrollAnim;
         invalidate();
         notifyRoblox(true);
     }
@@ -456,6 +491,9 @@ public class HomeView extends View {
                 velocity = VelocityTracker.obtain();
                 velocity.addMovement(e);
                 userScroll = false; flingV = 0;
+                row.pointerDown();
+                row.scroll = scrollAnim;
+                row.tile = tile;
                 if (!onInstallBtn(x, y)) {
                     int hi = hitBrowseItem(x, y);
                     if (hi >= 0) { holdTile = hi; holdAt = e.getEventTime() + 450; postInvalidateDelayed(450); }
@@ -490,7 +528,10 @@ public class HomeView extends View {
                 } else if (rowDrag) {
                     userScroll = true; flingV = 0;
                     float step = browseList() ? (browseTileW() + browseGap()) : (tileW() + tileGap());
-                    scrollAnim = clampScroll(scrollAnim + (lastTouchX - x) / Math.max(1f, step));
+                    float d = (lastTouchX - x) / Math.max(1f, step);
+                    row.dragging = true;
+                    row.pointerMove(d, maxScroll());
+                    scrollAnim = row.scroll;
                     lastTouchX = x;
                     invalidate();
                 }
@@ -505,10 +546,25 @@ public class HomeView extends View {
                     if (x - downX < -40 * s) setCat(cat + 1);
                     else if (x - downX > 40 * s) setCat(cat - 1);
                 } else if (rowDrag && e.getActionMasked() == MotionEvent.ACTION_UP && velocity != null) {
+                    float vis = visibleTiles();
                     float step = Math.max(1f, browseList() ? (browseTileW() + browseGap()) : (tileW() + tileGap()));
                     flingV = -velocity.getXVelocity() / step;   // finger left -> later tiles
-                    userScroll = Math.abs(flingV) > 0.15f;
+                    row.scroll = scrollAnim;
+                    row.pointerUp(flingV, vis, maxScroll(), items().size());
+                    flingV = row.vel;
+                    userScroll = row.busy();
+                    if (!row.busy()) tile = row.tile;
+                    captureChrome();
                     invalidate();
+                } else if (row.dragging && e.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                    row.cancelPointer(visibleTiles(), maxScroll(), items().size());
+                    scrollAnim = row.scroll; tile = row.tile; userScroll = false; flingV = 0;
+                }
+                if (!rowDrag && row.dragging && (e.getActionMasked() == MotionEvent.ACTION_UP || e.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
+                    // Down started a pointer session; a tap / cancelled gesture must not leave dragging stuck
+                    // or the next onDraw would skip snap forever... actually pointerDown is on every DOWN.
+                    // If we never entered rowDrag, drop the drag flag so D-pad snap still works.
+                    row.dragging = false;
                 }
                 if (velocity != null) { velocity.recycle(); velocity = null; }
                 rowDrag = false; sectionSwipe = false; tabDrag = false;
@@ -543,7 +599,7 @@ public class HomeView extends View {
         int n = cats.size();
         if (n == 0) { tabX = new float[0]; tabW = new float[0]; tabTotal = 0; return; }
         if (tabX == null || tabX.length != n) { tabX = new float[n]; tabW = new float[n]; }
-        p.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        p.setTypeface(tfMedium != null ? tfMedium : tfBold);
         p.setTextSize(20 * s);
         float x = tabPad();
         for (int i = 0; i < n; i++) {
@@ -626,38 +682,22 @@ public class HomeView extends View {
         float k = anim ? Math.min(1, dt * 12) : 1;          // easing towards the target
         catAnim += (cat - catAnim) * k;
         fireTileHold();
-        float vis, maxScroll, focusTarget;
-        if (browseList()) {
-            vis = Math.max(1, (W - 2 * browsePad()) / (browseTileW() + browseGap()));
-            maxScroll = Math.max(0, items().size() - vis);
-            focusTarget = Math.max(0, Math.min(tile - (vis - 1) / 2f, maxScroll));
-        } else {
-            vis = Math.max(1, (W - 2 * tilesLeft()) / (tileW() + tileGap()));
-            maxScroll = Math.max(0, items().size() - vis);
-            focusTarget = Math.max(0, Math.min(tile - (vis - 1) / 2f, maxScroll));
-        }
-        boolean coast = userScroll;
-        if (userScroll) {
-            // 0.10.49: longer, smoother fling; when it dies, snap to the nearest centred tile by easing, never jumping.
-            scrollAnim += flingV * dt;
-            flingV *= (float) Math.exp(-2.4 * dt);
-            if (scrollAnim < 0) { scrollAnim = 0; flingV = 0; }
-            if (scrollAnim > maxScroll) { scrollAnim = maxScroll; flingV = 0; }
-            if (Math.abs(flingV) < 0.12f) {
-                userScroll = false; flingV = 0;
-                tile = Math.max(0, Math.min(items().size() - 1, Math.round(scrollAnim + (vis - 1) / 2f)));
-            }
-        } else {
-            float dist = focusTarget - scrollAnim;          // controller / snap: critically-damped ease, never a jump
-            float settle = 1f - (float) Math.exp(-9.0 * dt);
-            if (settle > 1f) settle = 1f;
-            scrollAnim += dist * settle;
-            if (Math.abs(focusTarget - scrollAnim) < 0.0015f) scrollAnim = focusTarget;
-        }
-        float wantScale = (!inCats && !searchKeysFocused() && browseList() && !items().isEmpty()) ? 1.05f : 1f;
-        float sk = 1f - (float) Math.exp(-12.0 * dt);
-        focusScale += (wantScale - focusScale) * sk;
-        if (Math.abs(wantScale - focusScale) < 0.001f) focusScale = wantScale;
+        float vis = visibleTiles(), maxScroll = maxScroll();
+        int nItems = items().size();
+        // Keep physics in HomeScroll. A live finger (row.dragging) never snaps — that fight caused swipe jitter.
+        row.scroll = scrollAnim;
+        if (!row.dragging && !row.flinging) row.tile = tile;
+        boolean wantScale = (!inCats && !searchKeysFocused() && browseList() && nItems > 0) ? true : false;
+        boolean coast = row.busy();
+        boolean moving = row.step(dt, vis, maxScroll, nItems, wantScale);
+        scrollAnim = row.scroll;
+        if (!row.busy()) tile = row.tile;
+        focusScale = row.focusScale;
+        flingV = row.vel;
+        userScroll = row.busy();
+        if (coast && !row.busy() && artPending) { artPending = false; postInvalidateOnAnimation(); }
+        recordFrame(dt, coast || moving);
+        float focusTarget = row.focusTarget(vis, maxScroll);
 
         layoutTabs();
         if (!tabDrag) {
@@ -666,27 +706,99 @@ public class HomeView extends View {
             tabScroll += tdist * Math.min(1f, dt * 12f);
             if (Math.abs(tabScrollTo - tabScroll) < 0.5f) tabScroll = tabScrollTo;
         }
-        background(c, W, H, anim);
-        topBar(c, W, H);
-        notifyRoblox(true);
-        if (!boxset) categories(c, W, H);
-        if (onSearch()) drawSearchUi(c, W, H);
-        else host.placeKidsSearchField(0, 0, 0, 0, "", "", false, false);
-
-        if (!boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
+        boolean freezeChrome = row.busy() && chromeReady && chromeSnap != null && chromeSnap.getWidth() == W && chromeSnap.getHeight() == H;
+        if (freezeChrome) {
+            p.setShader(null); p.setAlpha(255); p.setFilterBitmap(false);
+            c.drawBitmap(chromeSnap, 0, 0, p);
+        } else {
+            background(c, W, H, anim && !row.busy());
+            topBar(c, W, H);
+            if (!boxset) categories(c, W, H);
+            if (onSearch()) drawSearchUi(c, W, H);
+            else host.placeKidsSearchField(0, 0, 0, 0, "", "", false, false);
+            if (!boxset) mark(c, W, H);
+            hints(c, W, H);
+            if (row.busy()) captureChromeFrom(c, W, H);
+        }
+        notifyRoblox(!row.busy());
+        bakesThisFrame = 0;
         if (browseList()) browseList(c, W, H); else tiles(c, W, H);
-        hints(c, W, H);
         if (browseList()) installFab(c, W, H);
         if (prompt != null) prompt(c, W, H);
         if (kids && host.timeUpScreen()) timeUpPanel(c, W, H);
         if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
 
-        boolean settling = coast || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f
-                || Math.abs(tabScrollTo - tabScroll) > 0.5f || Math.abs(wantScale - focusScale) > 0.001f;
+        boolean settling = moving || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f
+                || Math.abs(tabScrollTo - tabScroll) > 0.5f;
         if (anim || settling) {
             if ("on".equals(fx) || settling) postInvalidateOnAnimation();
             else postInvalidateDelayed(33);                 // auto: 30 fps background on weak chips
         } else if (kids) postInvalidateDelayed(1000);      // 0.10.49: pick up allowed-hours lock without a continuous loop
+        else if (artPending) { artPending = false; postInvalidateOnAnimation(); }
+    }
+
+    private float visibleTiles() {
+        if (browseList()) {
+            float step = browseTileW() + browseGap();
+            if (step <= 1) return 1;
+            return Math.max(1, (getWidth() - 2 * browsePad()) / step);
+        }
+        float step = tileW() + tileGap();
+        if (step <= 1) return 1;
+        return Math.max(1, (getWidth() - 2 * tilesLeft()) / step);
+    }
+
+    /** True while a finger or fling owns the row — art arrivals must not invalidate mid-scroll. */
+    public boolean rowBusy() { return row.busy(); }
+
+    /** A cover finished decoding. Apply it after the row is still, so a late bitmap cannot hitch a fling. */
+    public void artArrived() {
+        if (row.busy()) artPending = true;
+        else invalidate();
+    }
+
+    public String frameReport() { return lastFrameReport == null ? "" : lastFrameReport; }
+
+    private void recordFrame(float dt, boolean scrolling) {
+        if (!scrolling) return;
+        long ns = (long) (dt * 1e9f);
+        frameNs[frameAt] = ns;
+        frameAt = (frameAt + 1) % frameNs.length;
+        if (frameSamples < frameNs.length) frameSamples++;
+        if (ns > frameWorstNs) frameWorstNs = ns;
+        int n = frameSamples, over = 0;
+        long sum = 0, worst = 0;
+        for (int i = 0; i < n; i++) {
+            long v = frameNs[i];
+            sum += v;
+            if (v > worst) worst = v;
+            if (v > 18_000_000L) over++;
+        }
+        lastFrameReport = n + " frames, avg " + (n == 0 ? 0 : (sum / n) / 1_000_000f)
+                + " ms, worst " + (worst / 1_000_000f) + " ms, over-18ms " + over;
+    }
+
+    private void captureChrome() { chromeReady = false; }
+
+    /** After a full chrome draw, snapshot it so a fling only has to redraw the tile row. */
+    private void captureChromeFrom(Canvas src, int W, int H) {
+        if (W < 2 || H < 2) return;
+        try {
+            if (chromeSnap == null || chromeW != W || chromeH != H) {
+                chromeSnap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+                chromeW = W; chromeH = H;
+            }
+            // The canvas we just drew into is the view's; copy the pixels now, then the row is drawn on top.
+            // We cannot reliably copy from a hardware canvas, so rebuild into the snapshot once.
+            Canvas cc = new Canvas(chromeSnap);
+            background(cc, W, H, false);
+            topBar(cc, W, H);
+            if (!boxset) categories(cc, W, H);
+            if (onSearch()) drawSearchUi(cc, W, H);
+            if (!boxset) mark(cc, W, H);
+            hints(cc, W, H);
+            chromeReady = true;
+        } catch (Throwable ignored) { chromeReady = false; }
     }
 
     /** Returns false (and frees the picture) once the splash is over. Geometry is in the 1672x941 art's pixels. */
@@ -724,14 +836,11 @@ public class HomeView extends View {
             return;
         }
         if (T.embers) {                      // 0.10.27 Phoenix: Hoodlum Asylum's own phoenix art + rising embers
-            if (phoenixBg == null) try { phoenixBg = BitmapFactory.decodeResource(getResources(), R.drawable.phoenix_bg); } catch (Throwable ignored) { }
-            if (phoenixBg != null) {
-                float sc = Math.max(W / (float) phoenixBg.getWidth(), H / (float) phoenixBg.getHeight());
-                float bw = phoenixBg.getWidth() * sc, bh = phoenixBg.getHeight() * sc;
-                r.set((W - bw) / 2, (H - bh) / 2, (W + bw) / 2, (H + bh) / 2);
-                p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(phoenixBg, null, r, p);
-                p.setColor(0x59000000); c.drawRect(0, 0, W, H, p);
-                embers(c, W, H);
+            ensurePhoenix(W, H);
+            if (phoenixScreen != null) {
+                p.setFilterBitmap(false); p.setAlpha(255); p.setShader(null);
+                c.drawBitmap(phoenixScreen, 0, 0, p);
+                if (anim) embers(c, W, H);
                 return;
             }
         }
@@ -821,7 +930,6 @@ public class HomeView extends View {
 
     private final float[] flakes = new float[180];
     /** Christmas: soft snow drifting down at three depths (60 flakes: cheap on a 2 GB RK3566). */
-    private Bitmap phoenixBg;
     /** 0.10.27 Phoenix: glowing embers drifting upward (same particle field as the snow, moving the other way). */
     private void embers(Canvas c, int W, int H) {
         if (flakes[0] == 0) { java.util.Random rnd = new java.util.Random(11); for (int i = 0; i < flakes.length; i++) flakes[i] = 0.0001f + rnd.nextFloat(); }
@@ -859,18 +967,24 @@ public class HomeView extends View {
         path.close(); c.drawPath(path, q);
     }
 
+    private Typeface face(boolean bold) {
+        if (heavy) return tfBlack != null ? tfBlack : Typeface.DEFAULT_BOLD;
+        if (bold) return tfBold != null ? tfBold : Typeface.DEFAULT_BOLD;
+        return tfRegular != null ? tfRegular : Typeface.DEFAULT;
+    }
+
     private void goldText(Canvas c, String txt, float x, float y, float size, Paint.Align a, boolean bold) {
         p.setTextSize(size); p.setTextAlign(a); p.setFakeBoldText(bold);
-        p.setTypeface(Typeface.create("sans-serif-black", Typeface.NORMAL));
+        p.setTypeface(tfBlack != null ? tfBlack : Typeface.DEFAULT_BOLD);
         p.setShader(new LinearGradient(0, y - size, 0, y, new int[]{T.goldLight, GOLD, GOLD_D, T.goldLight}, null, Shader.TileMode.CLAMP));
-        c.drawText(txt, x, y, p); p.setShader(null); p.setFakeBoldText(false); p.setTypeface(Typeface.DEFAULT);
+        c.drawText(txt, x, y, p); p.setShader(null); p.setFakeBoldText(false); p.setTypeface(tfRegular);
     }
 
     private void text(Canvas c, String txt, float x, float y, float size, int col, Paint.Align a, boolean bold) {
         p.setTextSize(size); p.setTextAlign(a); p.setColor(col);
-        p.setTypeface(heavy ? Typeface.create("sans-serif-black", Typeface.BOLD) : bold ? Typeface.create("sans-serif", Typeface.BOLD) : Typeface.create("sans-serif", Typeface.NORMAL));
+        p.setTypeface(face(bold));
         if (heavy) p.setShadowLayer(4 * s, 0, 1.5f * s, 0xE6000000);
-        c.drawText(txt, x, y, p); p.clearShadowLayer(); p.setTypeface(Typeface.DEFAULT);
+        c.drawText(txt, x, y, p); p.clearShadowLayer(); p.setTypeface(tfRegular);
     }
 
     /** 0.10.19: tile names drawn big and heavy (sans-serif-black, soft shadow). */
@@ -879,7 +993,7 @@ public class HomeView extends View {
      *  0.10.48: a line that is still too wide at the minimum size is ellipsized, so long game names stay inside the tile. */
     private void tileName(Canvas c, String lab, float cx, float y, float maxW, float start, float min) {
         heavy = true;
-        p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
+        p.setTypeface(tfBlack != null ? tfBlack : Typeface.DEFAULT_BOLD);
         String l1 = lab, l2 = null; float ts = start;
         for (; ; ts -= 0.5f * s) {
             p.setTextSize(ts); l1 = lab; l2 = null;
@@ -1043,11 +1157,11 @@ public class HomeView extends View {
         for (int i = 0; i < its.size(); i++) {
             float x = left + (i - scrollAnim) * (tw + gap);
             if (x > W + tw || x + tw < -tw) continue;   // skip off-screen (one canvas; nothing to recycle)
-            boolean sel = i == tile && !inCats;
+            boolean sel = i == row.highlight(visibleTiles(), its.size()) && !inCats;
             Catalog.Item it = its.get(i); badgeItem = it;
             float grow = sel ? th * (focusScale - 1f) / 2f : 0;
             r.set(x - grow, top - grow, x + tw + grow, top + th + grow);
-            if (sel) {
+            if (sel && !row.busy()) {
                 p.setShader(new RadialGradient(r.centerX(), r.centerY(), tw * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), tw * 0.85f, p); p.setShader(null);
             }
@@ -1145,7 +1259,7 @@ public class HomeView extends View {
         String[] words = it.label.toUpperCase(Locale.ROOT).split(" ");
         float maxW = r.width() - 16 * s, ts = 34 * s;   // 0.10.19 bigger
         java.util.List<String> lines = new java.util.ArrayList<>();
-        p.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
+        p.setTypeface(tfBlack != null ? tfBlack : Typeface.DEFAULT_BOLD);
         while (true) {
             p.setTextSize(ts); lines.clear(); String cur = "";
             for (String w : words) { String t = cur.isEmpty() ? w : cur + " " + w; if (p.measureText(t) <= maxW || cur.isEmpty()) cur = t; else { lines.add(cur); cur = w; } }
@@ -1173,14 +1287,36 @@ public class HomeView extends View {
         // 0.10.50: browse tiles use the 0.10.48 look — ordinary cover, centre-cropped to fill the (Wi-Fi-sized) tile.
         boolean kg = nameInside && kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
         Bitmap cov = kg ? host.wideCover(it) : host.cover(it), ai = cov == null ? host.appIcon(it) : null;
-        c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
         if (cov != null) {
-            // Centre-crop: scale to fill the tile, keep aspect, no stretch, clip to the rounded rect.
-            float sc = Math.max(r.width() / Math.max(1, cov.getWidth()), r.height() / Math.max(1, cov.getHeight()));
-            float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
-            src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
-            p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(cov, null, src, p);
-        } else if (!nameInside) {
+            // 0.10.51: pre-bake an opaque, centre-cropped, rounded tile at the un-grown size and draw it 1:1
+            // (slightly outset so the art sits under the gold stroke and there is no dark AA gap).
+            int bw = Math.max(1, Math.round(browseList() ? browseTileW() : tileW()));
+            int bh = Math.max(1, Math.round(browseList() ? browseTileH() : tileH()));
+            Bitmap baked = bakedTile(it, cov, bw, bh, rad);
+            if (baked != null) {
+                p.setShader(null); p.setAlpha(255);
+                p.setFilterBitmap(sel && (Math.abs(r.width() - bw) > 0.5f || Math.abs(r.height() - bh) > 0.5f));
+                float pad = Math.max(1f, s);
+                src.set(r.left - pad, r.top - pad, r.right + pad, r.bottom + pad);
+                c.drawBitmap(baked, null, src, p);
+                drawTileStroke(c, sel, rad);
+                if (T.snow) { p.setColor(0xF2FFFFFF); r2.set(r.left + 6 * s, r.top - 4 * s, r.right - 6 * s, r.top + 5 * s); c.drawRoundRect(r2, 5 * s, 5 * s, p); }
+                if (nameInside) {
+                    String lab = it.label.toUpperCase(Locale.ROOT);
+                    tileName(c, lab, r.centerX(), r.bottom - 10 * s, r.width() - 12 * s, 26 * s * big(), 11 * s);
+                }
+                timeUpBadge(c, it);
+                return;
+            }
+            // Waiting to bake: opaque rounded fill, no clipPath (avoids a mid-scroll hitch and a fringe).
+            p.setShader(null); p.setColor(0xFF151515); p.setAlpha(255);
+            c.drawRoundRect(r, rad, rad, p);
+            drawTileStroke(c, sel, rad);
+            timeUpBadge(c, it);
+            return;
+        }
+        c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
+        if (!nameInside) {
             // Same face as the Wi-Fi / Update tiles, so a missing cover still matches that style.
             p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
             c.drawRect(r, p); p.setShader(null);
@@ -1267,7 +1403,7 @@ public class HomeView extends View {
         float x = backBtn.right + 16 * s;
         for (String[] hnt : hs) {
             if (x > W - 150 * s) break;          // keep Online visible; the Back button is always drawn
-            p.setTextSize(13 * s); p.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            p.setTextSize(13 * s); p.setTypeface(tfBold != null ? tfBold : Typeface.DEFAULT_BOLD);
             float keyW = Math.max(26 * s, p.measureText(hnt[0]) + 14 * s);
             stroke.setStrokeWidth(1.6f * s); stroke.setColor(0xFFDDE7E1);
             r.set(x, y - 18 * s, x + keyW, y + 6 * s); c.drawRoundRect(r, 12 * s, 12 * s, stroke);
@@ -1762,6 +1898,122 @@ public class HomeView extends View {
         return null;
     }
 
+    private void ensurePhoenix(int W, int H) {
+        if (W < 2 || H < 2) return;
+        if (phoenixScreen != null && phoenixSw == W && phoenixSh == H && !phoenixScreen.isRecycled()) return;
+        if (!phoenixTried) {
+            phoenixTried = true;
+            new Thread(new PhoenixLoad(this, W, H), "phoenix-bg").start();
+            return;
+        }
+        if (phoenixBg != null) bakePhoenix(W, H);
+    }
+
+    void loadPhoenix(int rw, int rh) {
+        Bitmap raw = null;
+        try { raw = BitmapFactory.decodeResource(getResources(), R.drawable.phoenix_bg); }
+        catch (Throwable ignored) { return; }
+        if (raw == null) return;
+        Bitmap baked = null;
+        try { baked = scalePhoenix(raw, rw, rh); } catch (Throwable ignored) { }
+        post(new PhoenixReady(this, raw, baked));
+    }
+
+    void phoenixReady(Bitmap src, Bitmap ready) {
+        phoenixBg = src;
+        if (ready != null) { phoenixScreen = ready; phoenixSw = ready.getWidth(); phoenixSh = ready.getHeight(); }
+        else bakePhoenix(getWidth(), getHeight());
+        chromeReady = false;
+        artArrived();
+    }
+
+    private void bakePhoenix(int W, int H) {
+        if (phoenixBg == null || W < 2 || H < 2) return;
+        if (phoenixScreen != null && phoenixSw == W && phoenixSh == H && !phoenixScreen.isRecycled()) return;
+        try {
+            Bitmap out = scalePhoenix(phoenixBg, W, H);
+            if (out == null) return;
+            phoenixScreen = out;
+            phoenixSw = W;
+            phoenixSh = H;
+        } catch (Throwable ignored) { }
+    }
+
+    private static Bitmap scalePhoenix(Bitmap raw, int W, int H) {
+        if (raw == null || W < 2 || H < 2) return null;
+        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        float sc = Math.max(W / (float) raw.getWidth(), H / (float) raw.getHeight());
+        float bw = raw.getWidth() * sc, bh = raw.getHeight() * sc;
+        Paint pp = new Paint(Paint.FILTER_BITMAP_FLAG);
+        c.drawBitmap(raw, null, new RectF((W - bw) / 2, (H - bh) / 2, (W + bw) / 2, (H + bh) / 2), pp);
+        c.drawColor(0x59000000);
+        return out;
+    }
+
+    private void drawTileStroke(Canvas c, boolean sel, float rad) {
+        stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
+        if (row.busy()) {
+            stroke.setShader(null);
+            stroke.setColor(sel ? GOLD : T.border);
+        } else {
+            stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
+        }
+        c.drawRoundRect(r, rad, rad, stroke);
+        stroke.setShader(null);
+    }
+
+    /** Pre-scaled, opaque, rounded cover at the exact tile size. Null if this frame is already baking too many. */
+    private Bitmap bakedTile(Catalog.Item it, Bitmap cov, int tw, int th, float rad) {
+        if (it == null || cov == null || cov.isRecycled() || tw < 2 || th < 2) return null;
+        String key = it.key() + "@" + tw + "x" + th + "#" + cov.getWidth() + "x" + cov.getHeight() + "#" + System.identityHashCode(cov);
+        Bitmap have = tileBmps.get(key);
+        if (have != null && !have.isRecycled()) return have;
+        int cap = row.busy() ? 1 : 4;
+        if (bakesThisFrame >= cap) return null;
+        bakesThisFrame++;
+        have = bakeCover(cov, tw, th, rad);
+        if (have != null) tileBmps.put(key, have);
+        return have;
+    }
+
+    private Bitmap bakeCover(Bitmap cov, int tw, int th, float rad) {
+        try {
+            Bitmap out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(out);
+            int sw = cov.getWidth(), sh = cov.getHeight();
+            int[] box;
+            if (cov.hasAlpha()) {
+                int n = sw * sh;
+                if (coverPixels == null || coverPixels.length < n) coverPixels = new int[n];
+                cov.getPixels(coverPixels, 0, sw, 0, 0, sw, sh);
+                box = CoverFit.coverSrcTrimmed(coverPixels, sw, sh, tw, th, 16);
+            } else {
+                box = CoverFit.coverSrc(sw, sh, tw, th);
+            }
+            if (box[2] <= box[0] || box[3] <= box[1]) box = new int[]{0, 0, sw, sh};
+            c.drawColor(0xFF101418);
+            tileBake.setXfermode(null);
+            tileBake.setShader(null);
+            tileBake.setAlpha(255);
+            tileBake.setFilterBitmap(true);
+            tileBake.setAntiAlias(true);
+            bakeSrc.set(box[0], box[1], box[2], box[3]);
+            bakeDst.set(-1, -1, tw + 1, th + 1);   // 1px overscan, sits under the gold stroke
+            c.drawBitmap(cov, bakeSrc, bakeDst, tileBake);
+            tileBake.setShader(new LinearGradient(0, th * 0.52f, 0, th, 0x00000000, 0xF2000000, Shader.TileMode.CLAMP));
+            c.drawRect(0, th * 0.52f, tw, th, tileBake);
+            tileBake.setShader(null);
+            tileBake.setXfermode(bakeDstIn);
+            tileBake.setColor(0xFFFFFFFF);
+            c.drawRoundRect(new RectF(0, 0, tw, th), rad, rad, tileBake);
+            tileBake.setXfermode(null);
+            return out;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
 }
 
 /** Package-level (not an inner class) so the older D8 dexer can compile the search debounce. */
@@ -1769,5 +2021,54 @@ final class HomeSearchDebounce implements Runnable {
     final HomeView view;
     HomeSearchDebounce(HomeView view) { this.view = view; }
     @Override public void run() { view.fireSearch(); }
+}
+
+/** Package-level cache of baked tiles. Not android.util.LruCache: D8 8.2.2 crashes when that class is subclassed. */
+final class TileBmpCache {
+    private final int maxKb;
+    private int usedKb;
+    private final java.util.LinkedHashMap<String, android.graphics.Bitmap> map =
+            new java.util.LinkedHashMap<String, android.graphics.Bitmap>(16, 0.75f, true);
+
+    TileBmpCache(int cacheKb) { this.maxKb = Math.max(1024, cacheKb); }
+
+    synchronized android.graphics.Bitmap get(String key) { return map.get(key); }
+
+    synchronized void put(String key, android.graphics.Bitmap value) {
+        if (key == null || value == null) return;
+        android.graphics.Bitmap old = map.put(key, value);
+        if (old != null) usedKb -= sizeOf(old);
+        usedKb += sizeOf(value);
+        evict();
+    }
+
+    private static int sizeOf(android.graphics.Bitmap b) {
+        return b == null ? 1 : Math.max(1, b.getByteCount() / 1024);
+    }
+
+    private void evict() {
+        java.util.Iterator<java.util.Map.Entry<String, android.graphics.Bitmap>> it = map.entrySet().iterator();
+        while (usedKb > maxKb && it.hasNext()) {
+            java.util.Map.Entry<String, android.graphics.Bitmap> e = it.next();
+            usedKb -= sizeOf(e.getValue());
+            it.remove();
+        }
+    }
+}
+
+final class PhoenixLoad implements Runnable {
+    final HomeView view;
+    final int w, h;
+    PhoenixLoad(HomeView view, int w, int h) { this.view = view; this.w = w; this.h = h; }
+    @Override public void run() { view.loadPhoenix(w, h); }
+}
+
+final class PhoenixReady implements Runnable {
+    final HomeView view;
+    final android.graphics.Bitmap src, ready;
+    PhoenixReady(HomeView view, android.graphics.Bitmap src, android.graphics.Bitmap ready) {
+        this.view = view; this.src = src; this.ready = ready;
+    }
+    @Override public void run() { view.phoenixReady(src, ready); }
 }
 

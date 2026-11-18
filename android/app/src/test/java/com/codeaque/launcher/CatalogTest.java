@@ -165,6 +165,8 @@ public class CatalogTest {
             check(!SafeContacts.update(people, 0, "X", "12") && people.get(0).name.equals("Dad") && !SafeContacts.update(people, 5, "Z", "07700900111") && !SafeContacts.update(null, 0, "A", "07700900111"), "bad edit refused");
             check(SafeContacts.add(people, "Nan", "07700900456") && !SafeContacts.update(people, 1, "Nan2", "07700900999".substring(0, 0) + people.get(0).number), "cannot steal another number");
         }
+        homeScrollChecks();
+        coverFitChecks();
         System.out.println("CatalogTest: all checks passed");
     }
 
@@ -182,6 +184,8 @@ public class CatalogTest {
                 else if (q.contains("id=game.iconly")) body = ("<meta property=\"og:image\" content=\"" + base + "/img/icon\">"
                         + "<img src=\"https://evil.example/x.png\" alt=\"Feature graphic\">").getBytes("UTF-8");
                 else if (q.contains("id=game.foreign")) body = "<meta property=\"og:image\" content=\"https://evil.example/i.png\">".getBytes("UTF-8");
+                else if (q.contains("id=game.shots")) body = ("<meta property=\"og:image\" content=\"" + base + "/img/icon\">"
+                        + "<img src=\"" + base + "/img/feature\" class=\"x\" alt=\"Screenshot image\"></html>").getBytes("UTF-8");
                 else { ex.sendResponseHeaders(404, -1); ex.close(); return; }
                 ex.sendResponseHeaders(200, body.length); ex.getResponseBody().write(body); ex.close();
             });
@@ -191,6 +195,7 @@ public class CatalogTest {
             java.io.File dir = java.nio.file.Files.createTempDirectory("playart").toFile();
             check(PlayArt.fetch(base, "game.ok", dir) && PlayArt.iconFile(dir, "game.ok").length() == 3 && PlayArt.featureFile(dir, "game.ok").length() == 4, "icon + feature graphic cached");
             check(PlayArt.fetch(base, "game.iconly", dir) && !PlayArt.featureFile(dir, "game.iconly").exists(), "foreign feature graphic refused, icon kept");
+            check(PlayArt.fetch(base, "game.shots", dir) && PlayArt.iconFile(dir, "game.shots").length() == 3 && PlayArt.featureFile(dir, "game.shots").length() == 4, "listing screenshot cached as the cover when there is no feature");
             check(!PlayArt.fetch(base, "game.foreign", dir) && !PlayArt.iconFile(dir, "game.foreign").exists() && PlayArt.missFile(dir, "game.foreign").exists(), "foreign icon refused");
             check(!PlayArt.fetch(base, "game.missing", dir) && !PlayArt.iconFile(dir, "game.missing").exists(), "404 keeps the CodeAque icon");
             check(!PlayArt.fetch(base, "bad id;rm", dir), "bad package id");
@@ -205,6 +210,17 @@ public class CatalogTest {
             check(PlayArt.parse("<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/OWNICONabcdefgh=s0\">[null,2,[1024,500],[null,null,\"https://play-lh.googleusercontent.com/OTHER\"]]", false)[0] == null, "no other app's graphic");
             String[] a = PlayArt.parse("<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/abc=s0-br30\">", false);
             check(a[0] == null && "https://play-lh.googleusercontent.com/abc=s256".equals(a[1]), "real Play icon url " + a[1]);
+            String[] shot = PlayArt.parse("<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/ICONSYLLabcdefgh=s0\">"
+                    + "<img src=\"https://play-lh.googleusercontent.com/SHOTMOTORabcdefghijkl=w526-h296-rw\" class=\"x\" alt=\"Screenshot image\">"
+                    + "<img src=\"https://play-lh.googleusercontent.com/SIMILARAPPSHOT123456=w526-h296\" alt=\"Screenshot image\">", false);
+            check("https://play-lh.googleusercontent.com/SHOTMOTORabcdefghijkl=w640-h312".equals(shot[0]), "first-party screenshot as cover when there is no feature: " + shot[0]);
+            String[] both = PlayArt.parse("<img src=\"https://play-lh.googleusercontent.com/FEATWIDEabcdefghijkl\" alt=\"Feature graphic\">"
+                    + "<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/ICONSYLLabcdefgh=s0\">"
+                    + "<img src=\"https://play-lh.googleusercontent.com/SHOTMOTORabcdefghijkl\" alt=\"Screenshot image\">", false);
+            check("https://play-lh.googleusercontent.com/FEATWIDEabcdefghijkl=w640-h312".equals(both[0]), "official feature still wins over a screenshot: " + both[0]);
+            String[] altFirst = PlayArt.parse("<img alt=\"Screenshot image\" src=\"https://play-lh.googleusercontent.com/ALTSHOTORDER123456\">"
+                    + "<meta property=\"og:image\" content=\"https://play-lh.googleusercontent.com/ICONSYLLabcdefgh=s0\">", false);
+            check("https://play-lh.googleusercontent.com/ALTSHOTORDER123456=w640-h312".equals(altFirst[0]), "screenshot alt-before-src: " + altFirst[0]);
             check(PlayArt.listingUrl(PlayArt.PLAY, "com.roblox.client").equals("https://play.google.com/store/apps/details?id=com.roblox.client&hl=en_GB"), "listing url");
             check(ArtLoader.PARALLEL == 3 && ArtLoader.MAX_TRIES == 3, "art loader bounds");
             check(ArtLoader.backoffMs(0) == 400 && ArtLoader.backoffMs(1) == 1200 && ArtLoader.backoffMs(2) == 3600, "art backoff");
@@ -906,6 +922,67 @@ public class CatalogTest {
         check(unsafe, "unsafe path refused");
         check(BootAnim.magiskPresent(true, x -> false) && !BootAnim.magiskPresent(false, x -> false)
                 && BootAnim.magiskPresent(false, x -> "/data/adb/magisk/magisk".equals(x)), "magisk present");
+    }
+
+
+    static void homeScrollChecks() {
+        HomeScroll s = new HomeScroll();
+        s.reset(0, 0);
+        s.pointerDown();
+        s.pointerMove(0.8f, 10);
+        check(s.dragging && s.scroll > 0.79f && s.scroll < 0.81f, "drag moves the row");
+        float held = s.scroll;
+        s.step(1f / 60f, 3, 10, 12, true);
+        s.step(1f / 60f, 3, 10, 12, true);
+        check(s.dragging && Math.abs(s.scroll - held) < 0.0001f, "snap does not run against a live finger");
+        check(s.tile == 0, "drag does not commit the focused tile");
+        check(s.highlight(3, 12) == s.nearest(3, 12), "highlight follows the nearest tile while dragging");
+        s.pointerUp(2.4f, 3, 10, 12);
+        check(!s.dragging && s.flinging, "lift with velocity starts a fling");
+        int frames = 0;
+        float last = s.scroll;
+        boolean reversed = false;
+        while (s.step(1f / 60f, 3, 10, 12, true) && frames < 600) {
+            frames++;
+            if (s.flinging && s.scroll + 0.0001f < last) reversed = true;
+            last = s.scroll;
+        }
+        check(!s.flinging && !s.dragging, "fling then snap settle");
+        check(!reversed, "fling does not reverse mid-coast");
+        check(frames > 10 && frames < 400, "settle takes a reasonable number of 60 Hz frames: " + frames);
+        check(Math.abs(s.scroll - s.focusTarget(3, 10)) < 0.005f, "settles on the focused tile");
+        HomeScroll.Bench b = HomeScroll.benchFling(12, 3, 2.4f, 1f / 60f);
+        check(!b.snappedDuringDrag, "bench: no snap during drag");
+        check(!b.reversedDuringFling, "bench: fling did not reverse");
+        check(b.frames > 10 && b.frames < 400, "bench frames " + b.frames);
+        // Honest CPU number for this host, not a phone GPU measurement.
+        System.out.println("HomeScroll.benchFling: " + b.frames + " frames (~" + String.format(java.util.Locale.US, "%.0f", b.simMs)
+                + " ms simulated at 60 Hz), cpu " + (b.cpuNs / 1_000_000f) + " ms on this machine, final tile " + b.finalTile);
+    }
+
+    static void coverFitChecks() {
+        int[] src = CoverFit.coverSrc(200, 100, 188, 136);
+        // 200x100 into 188x136: fill height, crop width. srcH=100, srcW=100*188/136=138, left=(200-138)/2=31
+        check(src[0] == 31 && src[1] == 0 && src[2] == 31 + 138 && src[3] == 100, "wide image is cropped on the sides: " + java.util.Arrays.toString(src));
+        int[] tall = CoverFit.coverSrc(100, 200, 188, 136);
+        // fill width, crop height. srcW=100, srcH=100*136/188=72, top=(200-72)/2=64
+        check(tall[0] == 0 && tall[2] == 100 && tall[1] == 64 && tall[3] == 64 + 72, "tall image is cropped top/bottom: " + java.util.Arrays.toString(tall));
+        int[] sq = CoverFit.coverSrc(512, 512, 188, 136);
+        int sh = 512 * 136 / 188;
+        check(sq[0] == 0 && sq[2] == 512 && sq[3] - sq[1] == sh, "square icon fills a wide tile by cropping top and bottom");
+        // 8px transparent padding around a 16x16 opaque block in a 32x32 image
+        int w = 32, h = 32;
+        int[] px = new int[w * h];
+        for (int y = 8; y < 24; y++) for (int x = 8; x < 24; x++) px[y * w + x] = 0xFF3366CC;
+        int[] box = CoverFit.contentBox(px, w, h, 16);
+        check(box[0] == 8 && box[1] == 8 && box[2] == 24 && box[3] == 24, "transparent padding trimmed: " + java.util.Arrays.toString(box));
+        int[] cropped = CoverFit.coverSrcTrimmed(px, w, h, 188, 136, 16);
+        // content 16x16 into 188x136: fill width, crop height. srcW=16, srcH=16*136/188=11, top=8+(16-11)/2
+        check(cropped[0] == 8 && cropped[2] == 24 && cropped[3] - cropped[1] == 11, "trimmed then centre-cropped: " + java.util.Arrays.toString(cropped));
+        int[] empty = CoverFit.contentBox(new int[16], 4, 4, 16);
+        check(empty[0] == 0 && empty[2] == 4 && empty[3] == 4, "fully transparent image keeps the full bounds");
+        int[] same = CoverFit.coverSrc(188, 136, 188, 136);
+        check(same[0] == 0 && same[1] == 0 && same[2] == 188 && same[3] == 136, "already the tile size is a no-op crop");
     }
 
 }

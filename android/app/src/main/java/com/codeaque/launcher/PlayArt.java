@@ -32,7 +32,9 @@ public final class PlayArt {
     private static final Pattern FEATURE = Pattern.compile("<img[^>]*\\bsrc=\"([^\"]+)\"[^>]*\\balt=\"Feature graphic\"");
 
     /** {feature graphic or null, icon or null}. The icon is the listing's own og:image. The feature graphic is used only
-     *  when the page marks it as such (other wide pictures on a listing can belong to other apps). */
+     *  when the page marks it as such (other wide pictures on a listing can belong to other apps). When the listing has
+     *  no official feature, the first {@code alt="Screenshot image"} on the page is used — that is this app's own
+     *  screenshot carousel; similar apps' shots appear later. */
     public static String[] parse(String html, boolean test) {
         String f = null, i = null;
         if (html != null) {
@@ -40,11 +42,24 @@ public final class PlayArt {
             m = OG.matcher(html); if (m.find()) i = m.group(1).replace("&amp;", "&");
         }
         if (f == null && i != null) f = ownFeature(html, i);
+        if (f == null) f = ownScreenshot(html);   // 0.10.51: first-party screenshot when there is no feature graphic
         if (!allowed(f, test)) f = null;
         if (!allowed(i, test)) i = null;
         if (i != null && i.startsWith(IMG_HOST)) i = i.replaceAll("=[^/=]*$", "") + "=s256";
         if (f != null && f.startsWith(IMG_HOST)) f = f.replaceAll("=[^/=]*$", "") + "=w640-h312";
         return new String[]{f, i};
+    }
+
+    private static final Pattern SHOT_SRC = Pattern.compile("<img[^>]*\\bsrc=\"([^\"]+)\"[^>]*\\balt=\"Screenshot image\"");
+    private static final Pattern SHOT_ALT = Pattern.compile("<img[^>]*\\balt=\"Screenshot image\"[^>]*\\bsrc=\"([^\"]+)\"");
+
+    /** First official screenshot on this listing (the first Screenshot image). */
+    static String ownScreenshot(String html) {
+        if (html == null) return null;
+        Matcher m = SHOT_SRC.matcher(html);
+        if (m.find()) return m.group(1).replace("&amp;", "&");
+        m = SHOT_ALT.matcher(html);
+        return m.find() ? m.group(1).replace("&amp;", "&") : null;
     }
 
     private static final Pattern WIDE = Pattern.compile("\\[null,\\d+,\\[(?:500,1024|1024,500)\\],\\[null,null,\"([^\"]+)\"");
