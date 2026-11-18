@@ -6,20 +6,18 @@ import android.os.Handler;
 import android.os.Looper;
 
 /**
- * 0.10.62: duck system / notification stream volume only while the
- * recognizer is starting, so the start beep is muted. Always restore.
+ * 0.10.62: hide the recognizer start cue while startListening runs, and
+ * always restore afterwards.
+ * 0.10.63: do that by switching the ringer to silent, never by setting a
+ * stream volume to 0 (that puts many phones into vibrate mode, so the cue
+ * vibrates instead of beeping). If silent is not allowed, skip the duck.
  * Named top-level class for d8 8.2.
  */
 public final class NovaListenBeep {
-    static final int[] STREAMS = new int[] {
-            AudioManager.STREAM_NOTIFICATION,
-            AudioManager.STREAM_SYSTEM
-    };
-
     final Handler ui = new Handler(Looper.getMainLooper());
     final NovaListenBeepRestore restore = new NovaListenBeepRestore(this);
     AudioManager am;
-    int[] saved;
+    int savedRinger = -1;
     boolean ducked;
 
     public void duck(Context c) {
@@ -31,24 +29,30 @@ public final class NovaListenBeep {
             am = null;
         }
         if (am == null) return;
-        int[] vol = new int[STREAMS.length];
-        boolean any = false;
-        for (int i = 0; i < STREAMS.length; i++) {
-            try {
-                vol[i] = am.getStreamVolume(STREAMS[i]);
-                if (vol[i] > 0) {
-                    am.setStreamVolume(STREAMS[i], 0, 0);
-                    any = true;
-                }
-            } catch (Exception e) {
-                vol[i] = -1;
-            }
-        }
-        if (!any) {
+        int previous;
+        try { previous = am.getRingerMode(); }
+        catch (Exception e) {
             am = null;
             return;
         }
-        saved = vol;
+        try {
+            am.setRingerMode(NovaListenBeepGate.modeForDuck());
+            int now = am.getRingerMode();
+            if (NovaListenBeepGate.mustRevert(previous, now) || !NovaListenBeepGate.duckSucceeded(now)) {
+                if (now != previous) {
+                    try { am.setRingerMode(previous); } catch (Exception ignored) { }
+                }
+                am = null;
+                savedRinger = -1;
+                return;
+            }
+        } catch (Exception e) {
+            try { am.setRingerMode(previous); } catch (Exception ignored) { }
+            am = null;
+            savedRinger = -1;
+            return;
+        }
+        savedRinger = previous;
         ducked = true;
         ui.postDelayed(restore, 1500);
     }
@@ -58,18 +62,20 @@ public final class NovaListenBeep {
         if (!ducked) return;
         ducked = false;
         AudioManager mgr = am;
-        int[] vol = saved;
+        int previous = savedRinger;
         am = null;
-        saved = null;
-        if (mgr == null || vol == null) return;
-        for (int i = 0; i < STREAMS.length && i < vol.length; i++) {
-            if (vol[i] < 0) continue;
-            try { mgr.setStreamVolume(STREAMS[i], vol[i], 0); } catch (Exception ignored) { }
-        }
+        savedRinger = -1;
+        if (mgr == null || previous < 0) return;
+        try { mgr.setRingerMode(previous); } catch (Exception ignored) { }
+        // Never leave a mute attempt stuck in vibrate if we were not there.
+        try {
+            int now = mgr.getRingerMode();
+            if (NovaListenBeepGate.mustRevert(previous, now)) mgr.setRingerMode(previous);
+        } catch (Exception ignored) { }
     }
 }
 
-/** Named delayed restore so a missed onReady cannot leave the streams muted. */
+/** Named delayed restore so a missed onReady cannot leave the ringer changed. */
 final class NovaListenBeepRestore implements Runnable {
     final NovaListenBeep beep;
     NovaListenBeepRestore(NovaListenBeep beep) { this.beep = beep; }

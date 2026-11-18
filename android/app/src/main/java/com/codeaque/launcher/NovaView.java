@@ -12,7 +12,6 @@ import android.speech.tts.TextToSpeech;
 import android.text.InputType;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
@@ -61,8 +60,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     TextView answerView, muteLabel, voiceOfferStatus, engineLabel, liveCaption;
     Button voiceOfferBtn;
     EditText askField;
-    Button micBtn, typeBtn, hideBtn, speechInstallBtn;
-    TextView listenStatus;
+    Button micBtn, typeBtn, hideBtn, speechInstallBtn, asrOfferBtn;
+    TextView listenStatus, asrOfferStatus;
+    NovaMicMeter micMeter;
     TextToSpeech tts;
     NovaSpeech speech;
     String pendingSpeak, lastAnswer = NovaHelp.GREETING, lastSpoken, voiceTag;
@@ -75,7 +75,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     NovaReplyTimeout replyWait;
     NovaListenSoon listenSoon;
     int emptyListenCycles;
-    boolean listenGiveUp;
+    boolean listenGiveUp, preferBuiltin, asrDlBusy, busyRetried;
     long listenHideAfter;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady, deviceVoice;
     int ttsInitTries;
@@ -235,6 +235,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         listenStatus = null;
         liveCaption = null;
         speechInstallBtn = null;
+        asrOfferBtn = null;
+        asrOfferStatus = null;
+        micMeter = null;
         stopListen();
         buildPanel(getResources().getDisplayMetrics().density);
         setPanelShown(expanded);
@@ -379,6 +382,20 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         speechInstallBtn = btn(NovaSpeechAvail.INSTALL_BTN, new NovaSpeechInstallClick(this));
         speechInstallBtn.setVisibility(GONE);
         panel.addView(speechInstallBtn);
+        asrOfferStatus = new TextView(getContext());
+        asrOfferStatus.setTextColor(0xFFE8C872);
+        asrOfferStatus.setTextSize(12);
+        asrOfferStatus.setPadding(0, pad / 2, 0, 0);
+        asrOfferStatus.setVisibility(GONE);
+        panel.addView(asrOfferStatus);
+        asrOfferBtn = btn(NovaAsrFiles.DOWNLOAD_BTN, new NovaAsrOfferClick(this));
+        asrOfferBtn.setVisibility(GONE);
+        panel.addView(asrOfferBtn);
+        micMeter = new NovaMicMeter(getContext());
+        LinearLayout.LayoutParams meterLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        meterLp.topMargin = pad / 2;
+        panel.addView(micMeter, meterLp);
+        refreshAsrOffer();
 
         answerView = new TextView(getContext());
         answerView.setText(lastAnswer);
@@ -503,6 +520,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         voiceLoop = true;
         listenGiveUp = false;
         emptyListenCycles = 0;
+        busyRetried = false;
         cancelListenSoon();
         refreshVoiceButtons();
         startListen();
@@ -520,9 +538,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             if (host != null) host.onNovaHiddenByUser();
         } else {
             exitVoiceMode();
-            lastAnswer = "The mic wasn't allowed, so you can type your question instead.";
-            if (answerView != null) answerView.setText(lastAnswer);
-            refreshMicLabel();
+            onPermissionDenied();
         }
     }
 
@@ -532,7 +548,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (!NovaListenGate.canRestart(voiceLoop, expanded, listenGiveUp, talking, thinking(), speakJobInFlight, pendingSpeak != null)) return;
         if (talking || speakJobInFlight || pendingSpeak != null || now < silentUntil) return;
         if (speech == null) speech = new NovaSpeech();
-        speech.start(getContext(), new NovaTalkCb(this));
+        speech.start(getContext(), new NovaTalkCb(this), preferBuiltin);
         refreshMicLabel();
     }
 
@@ -593,9 +609,25 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         boolean can = NovaListenGate.canRestart(voiceLoop, expanded, listenGiveUp,
                 talking, thinking(), speakJobInFlight, pendingSpeak != null);
         if (!can || !NovaListenGate.shouldRetryEmpty(emptyListenCycles)) {
+            boolean ready = NovaAsr.filesReady(getContext());
+            if (NovaListenPick.shouldFallToBuiltin(ready, preferBuiltin, emptyListenCycles, false)) {
+                preferBuiltin = true;
+                listenGiveUp = false;
+                emptyListenCycles = 0;
+                showListenStatus(NovaSpeechAvail.SYSTEM_ERROR_BUILTIN);
+                NovaListenDiag.setReason(NovaSpeechAvail.SYSTEM_ERROR_BUILTIN);
+                refreshMicLabel();
+                startListen();
+                return;
+            }
             listenGiveUp = true;
             cancelListenSoon();
-            showListenStatus(NovaListenGate.TAP_MIC);
+            if (NovaListenPick.shouldOfferBuiltin(ready, false, false, emptyListenCycles)) {
+                showNeedBuiltin(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN);
+            } else {
+                showListenStatus(NovaListenGate.TAP_MIC);
+                NovaListenDiag.setReason(NovaListenGate.TAP_MIC);
+            }
             refreshMicLabel();
             return;
         }
@@ -609,6 +641,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (listenStatus == null) return;
         listenStatus.setVisibility(VISIBLE);
         listenStatus.setText(msg == null ? "" : msg);
+        if (msg != null && !msg.isEmpty()) NovaListenDiag.setReason(msg);
     }
 
     void setLiveCaption(String text) {
@@ -622,25 +655,139 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onMicBusy(String message) {
+        // The hidden listen service may have been holding the mic. Pause it once, then retry.
+        if (NovaListenPick.retryBusyAfterPause(busyRetried)) {
+            busyRetried = true;
+            NovaListenService.pauseForChat(getContext());
+            listenGiveUp = false;
+            showListenStatus("Mic was busy. Trying again…");
+            scheduleListen(400);
+            return;
+        }
         listenGiveUp = true;
         cancelListenSoon();
         convoState = NovaConvo.MIC_BUSY;
         setLiveCaption("");
-        showListenStatus(message == null || message.isEmpty() ? NovaConvo.MIC_BUSY_TEXT : message);
+        String msg = message == null || message.isEmpty() ? NovaConvo.MIC_BUSY_TEXT : message;
+        showListenStatus(msg);
+        NovaListenDiag.setReason(msg);
         refreshMicLabel();
-        // Do not post a listen retry — the screen recorder (or another app) still holds the mic.
+        // Do not keep retrying — another app still holds the mic.
     }
 
-    /** 0.10.59: no SpeechRecognizer and no system prompt — show the Play Store path. */
+    /** 0.10.59/0.10.63: no system recognizer — offer built-in listening, then Play Store. */
     void showSpeechServiceMissing() {
-        lastAnswer = NovaSpeechAvail.NO_SERVICE;
-        if (answerView != null) answerView.setText(lastAnswer);
-        if (listenStatus != null) {
-            listenStatus.setText(NovaSpeechAvail.NO_SERVICE);
-            listenStatus.setVisibility(VISIBLE);
+        if (NovaAsr.filesReady(getContext())) {
+            preferBuiltin = true;
+            listenGiveUp = false;
+            showListenStatus(NovaSpeechAvail.NO_SERVICE_BUILTIN);
+            NovaListenDiag.setReason(NovaSpeechAvail.NO_SERVICE_BUILTIN);
+            startListen();
+            return;
+        }
+        showNeedBuiltin(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN);
+        if (speechInstallBtn != null) speechInstallBtn.setVisibility(VISIBLE);
+    }
+
+    void showNeedBuiltin(String message) {
+        String msg = message == null || message.isEmpty()
+                ? NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN : message;
+        lastAnswer = msg;
+        if (answerView != null) answerView.setText(msg);
+        showListenStatus(msg);
+        NovaListenDiag.setReason(msg);
+        listenGiveUp = true;
+        cancelListenSoon();
+        refreshAsrOffer();
+        if (asrOfferBtn != null && !NovaAsr.filesReady(getContext())) {
+            asrOfferBtn.setVisibility(VISIBLE);
         }
         if (speechInstallBtn != null) speechInstallBtn.setVisibility(VISIBLE);
         refreshMicLabel();
+    }
+
+    public void onPermissionDenied() {
+        listenGiveUp = true;
+        cancelListenSoon();
+        voiceLoop = false;
+        NovaListenDiag.setPermissionDenied(true);
+        NovaListenDiag.setReason(NovaSpeechAvail.PERMISSION_DENIED);
+        lastAnswer = NovaSpeechAvail.PERMISSION_DENIED;
+        if (answerView != null) answerView.setText(lastAnswer);
+        showListenStatus(NovaSpeechAvail.PERMISSION_DENIED);
+        refreshMicLabel();
+    }
+
+    public void onSpeechRms(float level) {
+        if (micMeter != null) micMeter.setLevel(level);
+    }
+
+    void refreshAsrOffer() {
+        boolean ready = NovaAsr.filesReady(getContext());
+        if (asrOfferBtn != null) {
+            asrOfferBtn.setEnabled(!asrDlBusy);
+            if (ready) asrOfferBtn.setVisibility(GONE);
+        }
+        if (asrOfferStatus != null && !asrDlBusy && ready) {
+            asrOfferStatus.setVisibility(GONE);
+        }
+    }
+
+    void startAsrDownload() {
+        if (asrDlBusy) return;
+        if (NovaAsr.filesReady(getContext())) {
+            preferBuiltin = true;
+            listenGiveUp = false;
+            startListen();
+            return;
+        }
+        asrDlBusy = true;
+        if (asrOfferBtn != null) asrOfferBtn.setEnabled(false);
+        if (asrOfferStatus != null) {
+            asrOfferStatus.setVisibility(VISIBLE);
+            asrOfferStatus.setText("Downloading built-in listening… 0%");
+        }
+        showListenStatus("Downloading built-in listening… 0%");
+        new Thread(new NovaAsrPack(getContext(), new NovaViewAsrDl(this)), "nova-asr-dl").start();
+    }
+
+    void onAsrDlProgress(int percent) {
+        String msg = "Downloading built-in listening… " + percent + "%";
+        if (asrOfferStatus != null) {
+            asrOfferStatus.setVisibility(VISIBLE);
+            asrOfferStatus.setText(msg);
+        }
+        showListenStatus(msg);
+        NovaListenDiag.setReason(msg);
+    }
+
+    void onAsrDlDone(boolean ok, String error) {
+        asrDlBusy = false;
+        if (ok) {
+            if (asrOfferBtn != null) asrOfferBtn.setVisibility(GONE);
+            if (asrOfferStatus != null) {
+                asrOfferStatus.setVisibility(VISIBLE);
+                asrOfferStatus.setText("Built-in listening is ready. Tap Mic to talk.");
+            }
+            showListenStatus("Built-in listening is ready. Tap Mic to talk.");
+            NovaListenDiag.setReason("Built-in listening is ready. Tap Mic to talk.");
+            preferBuiltin = true;
+            listenGiveUp = false;
+            if (voiceLoop && expanded) startListen();
+        } else {
+            String msg = error != null ? error : "The download didn't finish. You can try again.";
+            if (asrOfferBtn != null) {
+                asrOfferBtn.setVisibility(VISIBLE);
+                asrOfferBtn.setEnabled(true);
+            }
+            if (asrOfferStatus != null) {
+                asrOfferStatus.setVisibility(VISIBLE);
+                asrOfferStatus.setText(msg);
+            }
+            showListenStatus(msg);
+            NovaListenDiag.setReason(msg);
+        }
+        refreshAsrOffer();
     }
 
     public void onSpeechPromptResult(String text) {
@@ -755,6 +902,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         voiceLoop = true;
         listenGiveUp = false;
         emptyListenCycles = 0;
+        busyRetried = false;
         refreshVoiceButtons();
         greet();
         // 0.10.57: if she is muted, listen straight away. Otherwise wait until
@@ -1624,7 +1772,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         pinchStartSpan = eventSpan(ev);
         if (pinchStartSpan < 1f) pinchStartSpan = 1f;
         pinchScale = 1f;
-        try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); } catch (Exception ignored) { }
     }
 
     void finishPinch(boolean cancelled) {
@@ -1652,7 +1799,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         dragging = true;
         snapping = false;
         cancelArmedTap();
-        try { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); } catch (Exception ignored) { }
     }
 
     void cancelArmedTap() { tapArmedAt = 0; }
@@ -1723,7 +1869,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         stopSpeak();
         stopAnim();
         setVisibility(GONE);
-        try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); } catch (Exception ignored) { }
         try { android.widget.Toast.makeText(getContext(), NovaListenHidden.TOAST_HIDDEN, android.widget.Toast.LENGTH_SHORT).show(); }
         catch (Exception ignored) { }
         if (host != null) host.onNovaHiddenByUser();
@@ -1735,7 +1880,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (prefs != null) prefs.edit().putBoolean(PREF_HIDDEN, false).apply();
         hidden = false;
         startAnim();
-        try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); } catch (Exception ignored) { }
         requestLayout();
         invalidate();
     }

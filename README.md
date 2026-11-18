@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.63
+
+**Listening no longer depends on Google.** If this phone has no speech service (common without the Google app), or the system recognizer keeps failing, Nova can use a built-in offline listener. It is a small English model (about 45 MB) that you download when you want it, the same way as her voice — it is not stored in the app. Chat and Nova's tab say why she is not hearing you, for example "No speech service on this phone, using built-in" or "Mic permission denied", and a mic level bar shows whether the microphone is actually open. If the mic was not allowed and the system will not ask again, you get an Open Settings path.
+
+**The system recognizer is tried more carefully.** On Android 12 and newer she will use the phone's on-device recognizer when it is there. She asks for English as en-GB, then en-US if that fails. She no longer starts with "prefer offline", which silently failed on phones with no offline language pack. After five empty tries she falls over to the built-in listener if it is downloaded, instead of only showing "Tap Mic to talk". "Mic is busy" first releases Nova's own hidden-listen service and tries once more, so that service cannot sit on the mic and look stuck.
+
+**She no longer vibrates.** Opening, moving, pinching, or hiding Nova does not use haptic feedback. Muting the recognizer start beep no longer turns notification volume to zero (that put many phones into vibrate mode, so the start cue buzzed). It uses silent mode for a moment and always restores your ringer. The hidden-listen and Screen Time notification channels also have vibration turned off.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. Built-in listening (model download, AudioRecord, and recognition quality), the on-device system recognizer, the mic meter on a device, and the silent-mode beep mute on a phone remain untested.
+
 ## What's new in 0.10.62
 
 **Listening no longer flashes on and off.** While hands-free mode is on, the Listening chip stays put between recognizer restarts, instead of hiding every time a silence timeout or "no match" comes back. Restarts wait 300 ms at first, then back off up to 2 seconds if she keeps hearing nothing. After five empty tries she stops and shows "Tap Mic to talk" — tap Mic to start again. The start beep is muted while the recognizer starts (system and notification volume only, and it is always restored). She never restarts the mic while she is speaking or thinking.

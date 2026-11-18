@@ -60,6 +60,8 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
         notice.setPadding(0, pad / 4, 0, pad);
         box.addView(notice);
 
+        addListenPanel(act, box, prefs, d);
+
         TextView h2 = hint(act, "On-device brain");
         box.addView(h2);
         TextView gs = hint(act, "");
@@ -90,7 +92,35 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
         addSpeedRow(act, box, prefs, d);
         TextView live = vs;
         test.setOnClickListener(new NovaVoicePreviewClick(new NovaSettingsUi(act, prefs, live, test, test, hint(act, ""), test)));
-        // Refresh status on a short timer is not needed; Test voice and download update it.
+        addListenPanel(act, box, prefs, d);
+    }
+
+    /** Listen reason, mic meter, and built-in listening download — Nova's tab. */
+    static void addListenPanel(Activity act, LinearLayout box, SharedPreferences prefs, float d) {
+        int pad = Math.round(12 * d);
+        TextView head = hint(act, "Listening");
+        head.setPadding(0, pad, 0, 0);
+        box.addView(head);
+        String line = NovaListenDiag.line();
+        if (line == null || line.isEmpty()) {
+            line = "Listening status will show here after you use the mic.";
+        }
+        box.addView(hint(act, line));
+        NovaMicMeter meter = new NovaMicMeter(act);
+        meter.setLevel(NovaListenDiag.level());
+        android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = pad / 2;
+        box.addView(meter, lp);
+        TextView st = hint(act, NovaAsr.filesReady(act)
+                ? "Built-in listening is on this phone."
+                : "Built-in listening works without Google (" + NovaAsrFiles.SIZE_LABEL + ", Apache-2.0)." );
+        box.addView(st);
+        Button dl = btn(act, NovaAsrFiles.DOWNLOAD_BTN);
+        if (NovaAsr.filesReady(act)) dl.setVisibility(android.view.View.GONE);
+        box.addView(dl);
+        dl.setOnClickListener(new NovaAsrSettingsClick(act, st, dl));
     }
 
     static void addSpeedRow(Activity act, LinearLayout box, SharedPreferences prefs, float d) {

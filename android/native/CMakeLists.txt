@@ -30,6 +30,11 @@ target_include_directories(nova-tts PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(nova-tts sherpa-onnx-c-api onnxruntime log)
 target_compile_options(nova-tts PRIVATE -O2 -fvisibility=hidden)
 
+add_library(nova-asr SHARED nova_asr_jni.c)
+target_include_directories(nova-asr PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(nova-asr sherpa-onnx-c-api onnxruntime log)
+target_compile_options(nova-asr PRIVATE -O2 -fvisibility=hidden)
+
 # llama + ggml shared libs produced by the llama.cpp Android build
 file(GLOB LLAMA_SOS "${LLAMA_LIB_DIR}/*.so")
 add_library(nova-llm SHARED nova_llm_jni.cpp)

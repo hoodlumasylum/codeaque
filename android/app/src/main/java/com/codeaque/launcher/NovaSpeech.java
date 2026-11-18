@@ -3,6 +3,7 @@ package com.codeaque.launcher;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -12,9 +13,10 @@ import android.speech.SpeechRecognizer;
 import java.util.ArrayList;
 
 /**
- * 0.10.54: speech recognizer in Chat. Prefers the offline recognizer, no API keys.
- * 0.10.55: hands-free loop while voice mode is on — soft errors (timeout, no match)
- * resume listening; late errors after stop are ignored so TTS is not interrupted.
+ * 0.10.54: speech recognizer in Chat.
+ * 0.10.63: do not start with EXTRA_PREFER_OFFLINE; try the on-device system
+ * recognizer on API 31+; fall back en-GB then en-US; when the system service
+ * is missing or keeps erroring, use a built-in sherpa-onnx recognizer.
  * Named listener (NovaSpeechListen) — d8 8.2 has NPEd on anonymous listeners.
  */
 public final class NovaSpeech {
@@ -34,16 +36,23 @@ public final class NovaSpeech {
         void onSpeechPartial(String text);
         /** Mic is held by another app (for example a screen recorder). Do not retry in a loop. */
         void onSpeechMicBusy(String message);
+        /** Mic level 0..1 for the on-screen meter. */
+        default void onSpeechRms(float level) { }
+        /** No system service (or it failed). Offer or start the built-in pack. */
+        default void onSpeechNeedBuiltin(String message) { }
     }
 
     final Handler ui = new Handler(Looper.getMainLooper());
     SpeechRecognizer rec;
     Callbacks cb;
-    boolean listening, offlineTried, destroyed;
+    boolean listening, offlineTried, destroyed, usedOnDevice, usedUsLang, usingBuiltin;
+    boolean pausedHidden;
     Context app;
     /** 0.10.61: bumped on each start/stop so a late result cannot replay an old question. */
     int listenGen;
     final NovaListenBeep beep = new NovaListenBeep();
+    String language = NovaSpeechAvail.LANGUAGE;
+    NovaAsrMic asrMic;
 
     public static boolean voiceTalkOn(SharedPreferences p) {
         return p == null || p.getBoolean(PREF_VOICE_TALK, true);
@@ -51,26 +60,69 @@ public final class NovaSpeech {
 
     public boolean isListening() { return listening; }
 
+    public boolean usingBuiltin() { return usingBuiltin; }
+
     public void start(Context ctx, Callbacks callbacks) {
+        start(ctx, callbacks, false);
+    }
+
+    public void start(Context ctx, Callbacks callbacks, boolean forceBuiltin) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            ui.post(new NovaSpeechStart(this, ctx, callbacks));
+            ui.post(new NovaSpeechStart(this, ctx, callbacks, forceBuiltin));
             return;
         }
         stop();
         destroyed = false;
         cb = callbacks;
+        usingBuiltin = false;
+        usedOnDevice = false;
+        usedUsLang = false;
+        language = NovaListenPick.firstLanguage();
         if (ctx == null) {
             fail("Voice talk isn't available on this phone. You can type your question instead.");
             return;
         }
         app = ctx.getApplicationContext();
-        boolean recOk = false;
+        NovaListenService.pauseForChat(app);
+        pausedHidden = true;
+
+        if (Build.VERSION.SDK_INT >= 23
+                && app.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            NovaListenDiag.setPermissionDenied(true);
+            NovaListenDiag.setReason(NovaSpeechAvail.PERMISSION_DENIED);
+            fail(NovaSpeechAvail.PERMISSION_DENIED);
+            return;
+        }
+        NovaListenDiag.setPermissionDenied(false);
+
+        boolean recOk = false, onDeviceOk = false;
         try { recOk = SpeechRecognizer.isRecognitionAvailable(ctx); } catch (Exception ignored) { }
+        if (Build.VERSION.SDK_INT >= 31) {
+            try { onDeviceOk = SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx); }
+            catch (Throwable ignored) { }
+        }
         boolean promptOk = promptAvailable(ctx);
-        int path = NovaSpeechAvail.path(recOk, promptOk);
-        if (path == NovaSpeechAvail.NEED_INSTALL) {
-            fail(NovaSpeechAvail.NO_SERVICE);
-            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_SERVICE, NovaSpeechAvail.NO_SERVICE, false));
+        boolean builtinReady = NovaAsr.filesReady(ctx);
+        int path = NovaSpeechAvail.path(recOk, onDeviceOk, promptOk, builtinReady, true);
+
+        if (NovaListenPick.useBuiltinNow(forceBuiltin, builtinReady, recOk, onDeviceOk)) {
+            startBuiltin(forceBuiltin && (recOk || onDeviceOk)
+                    ? NovaSpeechAvail.SYSTEM_ERROR_BUILTIN
+                    : NovaSpeechAvail.NO_SERVICE_BUILTIN);
+            return;
+        }
+        if (path == NovaSpeechAvail.NEED_PERMISSION) {
+            NovaListenDiag.setPermissionDenied(true);
+            NovaListenDiag.setReason(NovaSpeechAvail.PERMISSION_DENIED);
+            fail(NovaSpeechAvail.PERMISSION_DENIED);
+            return;
+        }
+        if (path == NovaSpeechAvail.NEED_BUILTIN || path == NovaSpeechAvail.NEED_INSTALL) {
+            String msg = NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN;
+            NovaListenDiag.setReason(msg);
+            fail(msg);
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_BUILTIN, msg, false));
             return;
         }
         if (path == NovaSpeechAvail.USE_PROMPT) {
@@ -78,19 +130,79 @@ public final class NovaSpeech {
             return;
         }
         try {
-            rec = SpeechRecognizer.createSpeechRecognizer(ctx);
+            rec = createBest(ctx);
+            if (rec == null) throw new IllegalStateException("no recognizer");
             rec.setRecognitionListener(new NovaSpeechListen(this));
         } catch (Exception e) {
             rec = null;
+            if (builtinReady) {
+                startBuiltin(NovaSpeechAvail.SYSTEM_ERROR_BUILTIN);
+                return;
+            }
             if (promptOk) {
                 if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.USE_PROMPT, null, false));
                 return;
             }
-            fail(NovaSpeechAvail.NO_SERVICE);
-            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_SERVICE, NovaSpeechAvail.NO_SERVICE, false));
+            String msg = NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN;
+            NovaListenDiag.setReason(msg);
+            fail(msg);
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_BUILTIN, msg, false));
             return;
         }
-        listen(true);
+        listen(NovaListenPick.preferOfflineFirst(), language);
+    }
+
+    SpeechRecognizer createBest(Context ctx) {
+        if (ctx == null) return null;
+        if (Build.VERSION.SDK_INT >= 31) {
+            try {
+                boolean od = false;
+                try { od = SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx); }
+                catch (Throwable ignored) { }
+                if (od) {
+                    SpeechRecognizer r = SpeechRecognizer.createOnDeviceSpeechRecognizer(ctx);
+                    usedOnDevice = true;
+                    return r;
+                }
+            } catch (Throwable ignored) { }
+        }
+        try {
+            if (SpeechRecognizer.isRecognitionAvailable(ctx)) {
+                usedOnDevice = false;
+                return SpeechRecognizer.createSpeechRecognizer(ctx);
+            }
+        } catch (Exception ignored) { }
+        if (Build.VERSION.SDK_INT >= 31) {
+            try {
+                SpeechRecognizer r = SpeechRecognizer.createOnDeviceSpeechRecognizer(ctx);
+                usedOnDevice = true;
+                return r;
+            } catch (Throwable ignored) { }
+        }
+        return null;
+    }
+
+    void startBuiltin(String reason) {
+        destroyRecognizerOnly();
+        usingBuiltin = true;
+        NovaListenDiag.setUsingBuiltin(true);
+        NovaListenDiag.setReason(reason);
+        if (asrMic == null) asrMic = new NovaAsrMic(new NovaSpeechAsrCb(this));
+        String err = asrMic.start(app);
+        if (err != null) {
+            usingBuiltin = false;
+            NovaListenDiag.setUsingBuiltin(false);
+            if (err.contains("busy") || err.contains("Mic is busy")) {
+                if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.MIC_BUSY, NovaConvo.MIC_BUSY_TEXT, false));
+                return;
+            }
+            fail(err);
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_BUILTIN, err, false));
+            return;
+        }
+        listenGen = NovaConvo.nextGen(listenGen);
+        listening = true;
+        notifyState(true);
     }
 
     public void toggle(Context ctx, Callbacks callbacks) {
@@ -103,6 +215,17 @@ public final class NovaSpeech {
         offlineTried = false;
         listenGen = NovaConvo.nextGen(listenGen);
         beep.restoreNow();
+        usingBuiltin = false;
+        NovaListenDiag.setUsingBuiltin(false);
+        NovaListenDiag.setLevel(0f);
+        if (asrMic != null) {
+            try { asrMic.stop(); } catch (Exception ignored) { }
+        }
+        destroyRecognizerOnly();
+        notifyState(false);
+    }
+
+    void destroyRecognizerOnly() {
         SpeechRecognizer r = rec;
         rec = null;
         if (r != null) {
@@ -110,7 +233,6 @@ public final class NovaSpeech {
             try { r.cancel(); } catch (Exception ignored) { }
             try { r.destroy(); } catch (Exception ignored) { }
         }
-        notifyState(false);
     }
 
     public void destroy() {
@@ -121,18 +243,24 @@ public final class NovaSpeech {
     }
 
     void listen(boolean preferOffline) {
+        listen(preferOffline, language);
+    }
+
+    void listen(boolean preferOffline, String lang) {
         if (destroyed || rec == null) return;
-        Intent i = recognizeIntent(preferOffline);
+        if (lang == null || lang.isEmpty()) lang = NovaSpeechAvail.LANGUAGE;
+        language = lang;
+        Intent i = recognizeIntent(preferOffline, lang);
         offlineTried = preferOffline;
         listenGen = NovaConvo.nextGen(listenGen);
         listening = true;
         notifyState(true);
-        // Duck the start beep only for the moment of startListening.
         if (app != null) beep.duck(app);
         try { rec.startListening(i); }
         catch (Exception e) {
             beep.restoreNow();
-            if (preferOffline) { listen(false); return; }
+            if (preferOffline) { listen(false, lang); return; }
+            if (tryLanguageOrBuiltin(NovaVoiceGate.ERR_CLIENT)) return;
             listening = false;
             notifyState(false);
             fail("I couldn't start the mic. You can type your question instead.");
@@ -140,6 +268,13 @@ public final class NovaSpeech {
     }
 
     void onReady() { beep.restoreNow(); }
+
+    void onRms(float rmsdB) {
+        if (destroyed || !listening) return;
+        float level = NovaListenDiag.meterFromRmsDb(rmsdB);
+        NovaListenDiag.setLevel(level);
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RMS, null, false, listenGen, 0, level));
+    }
 
     void onResults(Bundle b) {
         int gen = listenGen;
@@ -171,14 +306,14 @@ public final class NovaSpeech {
     void onError(int code) {
         if (destroyed || !listening) return;
         int gen = listenGen;
-        // Offline packs are missing on some phones: retry once without EXTRA_PREFER_OFFLINE.
         if (offlineTried && (code == SpeechRecognizer.ERROR_CLIENT
                 || code == SpeechRecognizer.ERROR_SERVER
                 || code == SpeechRecognizer.ERROR_NETWORK
                 || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT)) {
-            listen(false);
+            listen(false, language);
             return;
         }
+        if (tryLanguageOrBuiltin(code)) return;
         listening = false;
         beep.restoreNow();
         notifyState(false);
@@ -193,6 +328,44 @@ public final class NovaSpeech {
         fail(friendlyError(code));
     }
 
+    /**
+     * Retry en-US after en-GB, drop the on-device recognizer for the default
+     * one, then fall through to the built-in pack when it is ready.
+     * @return true if a retry was started (caller must not treat this as a stop).
+     */
+    boolean tryLanguageOrBuiltin(int code) {
+        if (usingBuiltin) return false;
+        String next = NovaListenPick.nextLanguage(language, NovaListenPick.languageWorthyError(code));
+        if (next != null && rec != null) {
+            usedUsLang = true;
+            listen(false, next);
+            return true;
+        }
+        if (usedOnDevice && app != null
+                && NovaListenPick.networkOrServer(code)) {
+            destroyRecognizerOnly();
+            usedOnDevice = false;
+            try {
+                rec = SpeechRecognizer.createSpeechRecognizer(app);
+                rec.setRecognitionListener(new NovaSpeechListen(this));
+                listen(false, language);
+                return true;
+            } catch (Exception e) {
+                rec = null;
+            }
+        }
+        if (app != null && NovaAsr.filesReady(app)
+                && (NovaListenPick.networkOrServer(code) || code == SpeechRecognizer.ERROR_SERVER
+                || code == SpeechRecognizer.ERROR_CLIENT)) {
+            // Hard system failure (not a simple no-match). Switch to built-in.
+            if (!softListenError(code) || code == SpeechRecognizer.ERROR_CLIENT) {
+                startBuiltin(NovaSpeechAvail.SYSTEM_ERROR_BUILTIN);
+                return true;
+            }
+        }
+        return false;
+    }
+
     static String firstResult(Bundle b) {
         if (b == null) return null;
         ArrayList<String> list = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
@@ -202,7 +375,7 @@ public final class NovaSpeech {
 
     static String friendlyError(int code) {
         if (code == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS)
-            return "The mic wasn't allowed, so you can type your question instead.";
+            return NovaSpeechAvail.PERMISSION_DENIED;
         if (code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || code == SpeechRecognizer.ERROR_NO_MATCH)
             return "I didn't catch that. Try again, or type it.";
         if (NovaConvo.isMicBusy(code))
@@ -211,10 +384,15 @@ public final class NovaSpeech {
     }
 
     public static Intent recognizeIntent(boolean preferOffline) {
+        return recognizeIntent(preferOffline, NovaSpeechAvail.LANGUAGE);
+    }
+
+    public static Intent recognizeIntent(boolean preferOffline, String language) {
+        if (language == null || language.isEmpty()) language = NovaSpeechAvail.LANGUAGE;
         Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, NovaSpeechAvail.LANGUAGE);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, NovaSpeechAvail.LANGUAGE);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language);
         i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Nova");

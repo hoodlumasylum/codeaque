@@ -1550,9 +1550,13 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 safeLaunch(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + c.number)));
             }
         } else if (req == REQ_MIC) {
+            NovaMicPerm.markAsked(this);
             if (nova != null) nova.onMicPermission(ok);
-            if (ok) NovaListenService.tryStartFromUser(this);
-            else toast("The mic was not allowed, so you can still type your question.");
+            if (ok) {
+                if (nova == null || !nova.expanded) NovaListenService.tryStartFromUser(this);
+            } else {
+                toast(NovaSpeechAvail.PERMISSION_DENIED);
+            }
         }
     }
 
@@ -3132,12 +3136,34 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             if (nova != null) nova.onMicPermission(true);
             return;
         }
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Nova would like the mic")
+        boolean asked = NovaMicPerm.asked(this);
+        boolean rationale = false;
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            rationale = shouldShowRequestPermissionRationale(android.Manifest.permission.RECORD_AUDIO);
+        }
+        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+        if (asked && !rationale) {
+            b.setTitle(NovaSpeechAvail.PERMISSION_DENIED)
+                    .setMessage("The microphone is off for CodeAque. Open Settings, tap Permissions, and allow the microphone, then tap Mic in Chat again.")
+                    .setPositiveButton("Open Settings", new NovaMicOpenSettingsClick(this))
+                    .setNegativeButton("Not now", new NovaMicNotNowClick(this))
+                    .show();
+            if (nova != null) nova.onPermissionDenied();
+            return;
+        }
+        b.setTitle("Nova would like the mic")
                 .setMessage("When Voice talk is on, Nova listens so you can ask out loud, without tapping a button each time. She pauses while she is speaking so she does not hear herself. The words stay on this phone.")
-                .setPositiveButton("Allow", (d, w) -> requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC))
-                .setNegativeButton("Not now", (d, w) -> { if (nova != null) nova.onMicPermission(false); })
+                .setPositiveButton("Allow", new NovaMicAllowClick(this))
+                .setNegativeButton("Not now", new NovaMicNotNowClick(this))
                 .show();
+    }
+
+    void onMicDialogDenied() {
+        if (nova != null) nova.onMicPermission(false);
+    }
+
+    void onMicDialogOpenSettings() {
+        if (nova != null) nova.onPermissionDenied();
     }
 
     @Override public boolean updateReady() { return Catalog.updateAvailable; }

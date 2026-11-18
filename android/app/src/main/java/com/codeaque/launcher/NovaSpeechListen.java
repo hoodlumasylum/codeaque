@@ -14,7 +14,7 @@ public final class NovaSpeechListen implements RecognitionListener {
 
     @Override public void onReadyForSpeech(Bundle params) { if (speech != null) speech.onReady(); }
     @Override public void onBeginningOfSpeech() { }
-    @Override public void onRmsChanged(float rmsdB) { }
+    @Override public void onRmsChanged(float rmsdB) { if (speech != null) speech.onRms(rmsdB); }
     @Override public void onBufferReceived(byte[] buffer) { }
     @Override public void onEndOfSpeech() { }
     @Override public void onError(int error) { if (speech != null) speech.onError(error); }

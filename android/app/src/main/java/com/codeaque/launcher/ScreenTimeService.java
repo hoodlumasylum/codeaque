@@ -130,10 +130,8 @@ public class ScreenTimeService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel ch = new NotificationChannel(CH, "Screen time", NotificationManager.IMPORTANCE_LOW);
-            ch.setDescription("Kids mode play time and Strict mode");
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null) nm.createNotificationChannel(ch);
+            NovaNotifyQuiet.install(nm, CH, "Screen time", "Kids mode play time and Strict mode");
         }
         startForeground(NOTE_ID, note("Kids mode is on", "Screen time is watching play time."));
         h.post(tick);

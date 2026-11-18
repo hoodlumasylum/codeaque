@@ -22,14 +22,18 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
 
     @Override public void onSpeechError(String message) {
         if (view == null) return;
-        // A hard error still must not hide the Listening chip mid-loop, and
-        // must not retry if we have already given up or she is speaking.
-        if (message != null && message.toLowerCase().contains("wasn't allowed")) {
-            view.showListenStatus(message);
+        if (message != null && (message.toLowerCase().contains("wasn't allowed")
+                || message.contains(NovaSpeechAvail.PERMISSION_DENIED))) {
+            view.onPermissionDenied();
             return;
         }
         if (message != null && message.contains("Mic is busy")) {
             view.onMicBusy(message);
+            return;
+        }
+        if (message != null && (message.contains("download built-in")
+                || message.contains("No speech service"))) {
+            view.showSpeechServiceMissing();
             return;
         }
         view.onEmptyListen(NovaVoiceGate.ERR_CLIENT);
@@ -52,5 +56,13 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
     @Override public void onSpeechNeedService() {
         if (view == null) return;
         view.showSpeechServiceMissing();
+    }
+
+    @Override public void onSpeechRms(float level) {
+        if (view != null) view.onSpeechRms(level);
+    }
+
+    @Override public void onSpeechNeedBuiltin(String message) {
+        if (view != null) view.showNeedBuiltin(message);
     }
 }

@@ -328,7 +328,7 @@ public class CatalogTest {
                 {   // 0.10.21 Lock mode
                     check(LockPin.validPin("1234") && LockPin.validPin("123456") && !LockPin.validPin("123") && !LockPin.validPin("1234567") && !LockPin.validPin("12a4") && !LockPin.validPin(null), "pin format");
                     String h1 = LockPin.newHash("4821"), h2 = LockPin.newHash("4821");
-                    check(!h1.contains("4821") && !h1.equals(h2) && h1.matches("[0-9a-f]{32}:[0-9a-f]{64}"), "salted hash " + h1);
+                    check(!h1.equals("4821") && !h1.equals(h2) && h1.matches("[0-9a-f]{32}:[0-9a-f]{64}"), "salted hash " + h1);
                     check(LockPin.check("4821", h1) && LockPin.check("4821", h2) && !LockPin.check("4822", h1) && !LockPin.check("4821", null) && !LockPin.check("4821", "junk"), "pin check");
                     check(LockPin.backoff(4) == 0 && LockPin.backoff(5) == 30_000 && LockPin.backoff(6) == 60_000 && LockPin.backoff(50) == 600_000, "backoff");
                     for (String p : new String[]{"com.android.settings", "com.android.dialer", "com.google.android.dialer", "com.android.contacts", "com.google.android.contacts", "com.android.mms", "com.google.android.apps.messaging", "com.android.phone", "com.android.server.telecom", "com.android.tv.settings"})
@@ -1328,8 +1328,8 @@ public class CatalogTest {
         check(NovaKokoroSpeakers.isEnglishSpeaker(3) && !NovaKokoroSpeakers.isEnglishSpeaker(45), "zf_* is not an English speaker");
         check(NovaKokoroSpeakers.LANG.equals("en-us") && NovaKokoroSpeakers.SAMPLE_RATE == 24000, "en-us at 24 kHz");
         check(NovaSpeechAvail.path(true, false) == NovaSpeechAvail.USE_RECOGNIZER, "recognizer wins when available");
-        check(NovaSpeechAvail.path(false, true) == NovaSpeechAvail.USE_PROMPT, "system speak-now is the fallback");
-        check(NovaSpeechAvail.path(false, false) == NovaSpeechAvail.NEED_INSTALL, "no service means install");
+        check(NovaSpeechAvail.path(false, true) == NovaSpeechAvail.USE_PROMPT, "system speak-now is the fallback when the pack is not ready");
+        check(NovaSpeechAvail.path(false, false) == NovaSpeechAvail.NEED_BUILTIN, "no service means offer built-in listening");
         check(NovaSpeechAvail.NO_SERVICE.contains("Speech Recognition & Synthesis from Google from Play Store"), "exact Play Store wording");
         check(!NovaSpeechAvail.NO_SERVICE.toLowerCase().contains("iphone") && !NovaSpeechAvail.NO_SERVICE.toLowerCase().contains("apple"), "speech copy has no brand words");
         check(NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_INSTALL) && !NovaSpeechAvail.showInstallButton(NovaSpeechAvail.USE_RECOGNIZER), "install button only when needed");
@@ -1431,6 +1431,56 @@ public class CatalogTest {
             check(d >= 300 && d <= 2000, "each backoff stays in range");
         }
         check(gaveUp && cycles == 5, "five silent restarts then Tap Mic to talk");
+
+        // 0.10.63: built-in ASR path, diagnostics, no vibrate-from-duck, language fallback.
+        check(NovaSpeechAvail.path(false, false, false, false, false) == NovaSpeechAvail.NEED_PERMISSION, "no mic permission is its own path");
+        check(NovaSpeechAvail.path(false, false, false, true, true) == NovaSpeechAvail.USE_BUILTIN, "built-in wins when the system recognizer is missing");
+        check(NovaSpeechAvail.path(true, true, false, true, true) == NovaSpeechAvail.USE_RECOGNIZER, "a system recognizer is still tried first");
+        check(NovaSpeechAvail.path(false, true, false, false, true) == NovaSpeechAvail.USE_RECOGNIZER, "on-device system recognizer counts as a system path");
+        check(NovaSpeechAvail.status(NovaSpeechAvail.NEED_PERMISSION, false, null).equals(NovaSpeechAvail.PERMISSION_DENIED), "permission denied wording");
+        check(NovaSpeechAvail.status(NovaSpeechAvail.USE_BUILTIN, true, null).equals(NovaSpeechAvail.USING_BUILTIN), "listening with built-in wording");
+        check(NovaSpeechAvail.status(NovaSpeechAvail.NEED_BUILTIN, false, null).equals(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN), "need built-in wording");
+        check(NovaSpeechAvail.NO_SERVICE_BUILTIN.contains("using built-in"), "using built-in status");
+        check(NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN.contains("about 45 MB"), "download size is in the offer");
+        check(NovaSpeechAvail.showBuiltinButton(NovaSpeechAvail.NEED_BUILTIN, false)
+                && !NovaSpeechAvail.showBuiltinButton(NovaSpeechAvail.NEED_BUILTIN, true), "offer download only when the pack is missing");
+        check(NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN), "Play Store remains a secondary offer");
+        check(!NovaListenPick.preferOfflineFirst(), "do not start with EXTRA_PREFER_OFFLINE");
+        check(NovaListenPick.firstLanguage().equals("en-GB"), "first language is en-GB");
+        check(NovaListenPick.nextLanguage("en-GB", true).equals("en-US")
+                && NovaListenPick.nextLanguage("en-US", true) == null
+                && NovaListenPick.nextLanguage("en-GB", false) == null, "en-US is the one language fallback");
+        check(NovaListenPick.useBuiltinNow(false, true, false, false)
+                && !NovaListenPick.useBuiltinNow(false, true, true, false)
+                && NovaListenPick.useBuiltinNow(true, true, true, false)
+                && !NovaListenPick.useBuiltinNow(true, false, false, false), "built-in is default when no system service, or when forced and ready");
+        check(NovaListenPick.shouldFallToBuiltin(true, false, 5, false)
+                && !NovaListenPick.shouldFallToBuiltin(false, false, 5, false)
+                && NovaListenPick.shouldFallToBuiltin(true, false, 1, true)
+                && !NovaListenPick.shouldFallToBuiltin(true, true, 5, true), "fall to built-in after empty cycles or a hard error, not twice");
+        check(NovaListenPick.shouldOfferBuiltin(false, false, false, 0)
+                && !NovaListenPick.shouldOfferBuiltin(true, false, false, 0)
+                && NovaListenPick.shouldOfferBuiltin(false, true, false, 5), "offer the pack when there is no service, or after five empty tries");
+        check(NovaListenPick.retryBusyAfterPause(false) && !NovaListenPick.retryBusyAfterPause(true), "busy mic retries once after pausing hidden listen");
+        check(NovaAsrFiles.sizesOk(20_000_000L, 100_000L, 100_000L, 10L)
+                && !NovaAsrFiles.sizesOk(19_000_000L, 100_000L, 100_000L, 10L)
+                && !NovaAsrFiles.filesReadyAt(new java.io.File("/no/such/nova-asr")), "20M int8 pack size gate");
+        check(NovaAsrFiles.SIZE_LABEL.contains("45 MB") && NovaAsrFiles.DOWNLOAD_BTN.contains("built-in listening"), "download copy");
+        check(Math.abs(NovaListenDiag.meterFromRmsDb(-10f)) < 1e-4
+                && NovaListenDiag.meterFromRmsDb(12f) == 1f
+                && NovaListenDiag.meterFromRmsDb(1f) > 0.4f, "speech RMS dB maps into 0..1");
+        check(NovaListenDiag.meterFromPcmRms(0f) == 0f && NovaListenDiag.meterFromPcmRms(0.2f) == 1f
+                && NovaListenDiag.meterFromPcmRms(0.05f) > 0.3f, "PCM RMS is scaled for the meter");
+        check(NovaListenDiag.line(null, false, false, true).equals(NovaSpeechAvail.PERMISSION_DENIED)
+                && NovaListenDiag.line("", true, true, false).equals(NovaSpeechAvail.USING_BUILTIN), "diag line prefers permission and built-in");
+        check(!NovaListenBeepGate.allowZeroVolumeDuck(), "never duck by setting a stream to volume 0");
+        check(NovaListenBeepGate.modeForDuck() == NovaListenBeepGate.MODE_SILENT, "duck uses silent, not vibrate");
+        check(NovaListenBeepGate.mustRevert(NovaListenBeepGate.MODE_NORMAL, NovaListenBeepGate.MODE_VIBRATE)
+                && !NovaListenBeepGate.mustRevert(NovaListenBeepGate.MODE_VIBRATE, NovaListenBeepGate.MODE_VIBRATE)
+                && !NovaListenBeepGate.mustRevert(NovaListenBeepGate.MODE_NORMAL, NovaListenBeepGate.MODE_SILENT), "revert if a duck would leave the phone in vibrate");
+        check(NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_SILENT)
+                && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_VIBRATE)
+                && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
 
 

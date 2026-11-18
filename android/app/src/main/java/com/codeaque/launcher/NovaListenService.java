@@ -86,15 +86,18 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
         try { c.stopService(new Intent(c, NovaListenService.class)); } catch (Exception ignored) { }
     }
 
+    /** Chat is about to use the mic. Release this service without clearing the hidden-listen pref. */
+    public static void pauseForChat(Context c) {
+        stopOnly(c);
+    }
+
     @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override public void onCreate() {
         super.onCreate();
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel ch = new NotificationChannel(CH, "Nova listening", NotificationManager.IMPORTANCE_LOW);
-            ch.setDescription("Nova is listening while hidden");
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null) nm.createNotificationChannel(ch);
+            NovaNotifyQuiet.install(nm, CH, "Nova listening", "Nova is listening while hidden");
         }
         startFg(note());
         tts = new TextToSpeech(this, this);
