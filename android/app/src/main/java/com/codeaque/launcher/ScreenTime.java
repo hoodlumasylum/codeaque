@@ -139,4 +139,21 @@ public final class ScreenTime {
         if (p.equals("com.android.documentsui") || p.equals("com.google.android.documentsui")) return true;
         return false;
     }
+
+    /** 0.10.49: Play Store and Play's installer only — not Settings or Files. */
+    public static final long PARENT_STORE_MS = 10 * 60_000L;
+    public static final String PARENT_STORE_UNTIL = "parentStoreUntil";
+
+    public static boolean parentStorePackage(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        String p = pkg.toLowerCase(java.util.Locale.ROOT);
+        if (p.equals("com.android.vending") || p.startsWith("com.android.vending.") || p.equals("com.google.android.finsky")) return true;
+        if (p.contains("packageinstaller")) return true;
+        return false;
+    }
+
+    /** True while a parent-PIN install window is still open and this package is Play Store / its installer. */
+    public static boolean parentStoreAllowed(String pkg, long untilMs, long nowMs) {
+        return nowMs < untilMs && parentStorePackage(pkg);
+    }
 }

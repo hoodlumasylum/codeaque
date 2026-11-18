@@ -134,9 +134,13 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         immersive();
         rescan();
         ScreenTimeService.sync(this);
-        resumeStoreQueue();
+        int storeGen = parentStoreGen;
+        resumeStoreQueue();   // may open the next PIN-approved Play Store page (bumps parentStoreGen)
         if (prefs.getBoolean("kidsMode", false)) {
-            prefs.edit().remove("kidsFgPkg").apply();   // back on the Kids home: only CodeAque itself is allowed in front
+            if (parentStoreGen == storeGen) {
+                endParentStore();   // 0.10.49: back on the Kids home with no further store page — re-lock
+                prefs.edit().remove("kidsFgPkg").apply();
+            }
             syncDeviceOwnerKiosk();
             syncKidsPinning();
         } else if (deviceOwner()) syncDeviceOwnerKiosk();
@@ -977,7 +981,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void parentGo(boolean toSettings, boolean alwaysAsk) {
         Runnable go = () -> {
             boolean wasKids = prefs.getBoolean("kidsMode", false);
-            prefs.edit().putBoolean("kidsMode", false).apply();
+            prefs.edit().putBoolean("kidsMode", false).remove(ScreenTime.PARENT_STORE_UNTIL).apply();
+            parentStoreGen++;
             timeUpScreen = false;
             if (wasKids) stopKidsPinning();   // 0.10.37: PIN exit drops screen pinning
             if (wasKids) syncDeviceOwnerKiosk();   // clears Kids install / factory-reset restrictions
@@ -1143,7 +1148,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             }
             for (String r : KIOSK_RULES) dpm.addUserRestriction(admin, r);
             if (prefs.getBoolean("kidsMode", false))
-                for (String r : KIDS_KIOSK_RULES) dpm.addUserRestriction(admin, r);
+                for (String r : KIDS_KIOSK_RULES)
+                    if (!(android.os.UserManager.DISALLOW_INSTALL_APPS.equals(r) && parentStoreActive()))
+                        dpm.addUserRestriction(admin, r);
             IntentFilter home = new IntentFilter(Intent.ACTION_MAIN); home.addCategory(Intent.CATEGORY_HOME); home.addCategory(Intent.CATEGORY_DEFAULT);
             dpm.addPersistentPreferredActivity(admin, home, new android.content.ComponentName(this, MainActivity.class));
             startLockTask();
@@ -1188,6 +1195,12 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         String fg = prefs.getString("kidsFgPkg", null);
         if (fg != null && !ScreenTime.blockedKidPackage(fg) && !Catalog.emulatorPkg(fg)
                 && !Catalog.cloudGamingPkg(fg)) allow.add(fg);
+        if (parentStoreActive()) {   // 0.10.49: lock-task must allow Play Store after a parent PIN
+            allow.add("com.android.vending");
+            allow.add("com.google.android.finsky");
+            allow.add("com.google.android.packageinstaller");
+            allow.add("com.android.packageinstaller");
+        }
         return allow;
     }
 
@@ -1446,9 +1459,64 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     private void store(String pkg) {
-        if (prefs.getBoolean("kidsMode", false) && pinSet() && !pinFresh()) { askPin("Parent PIN", () -> store(pkg)); return; }   // 0.10.23
-        try { start(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg))); }
-        catch (ActivityNotFoundException e) { start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + pkg))); }
+        if (pkg == null || pkg.isEmpty()) return;
+        if (prefs.getBoolean("kidsMode", false) && pinSet() && !pinFresh() && !parentStoreActive()) { askPin("Parent PIN", () -> store(pkg)); return; }   // 0.10.23
+        if (prefs.getBoolean("kidsMode", false)) beginParentStore();
+        pendingPlay = null;   // a store visit is not a game launch (do not treat the game package as the allowed foreground)
+        Intent market = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg));
+        market.setPackage("com.android.vending");
+        try { start(market); }
+        catch (ActivityNotFoundException e1) {
+            try { start(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg))); }
+            catch (ActivityNotFoundException e2) {
+                if (prefs.getBoolean("kidsMode", false)) { toast("Play Store is not available on this device."); return; }
+                start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)));
+            }
+        }
+    }
+
+    /** 0.10.49: after a correct parent PIN, let Play Store (and Play's installer) stay open for 10 minutes,
+     *  or until CodeAque is back in front. Kids still cannot open the store without the PIN. */
+    private int parentStoreGen;
+    private boolean parentStoreActive() {
+        return System.currentTimeMillis() < prefs.getLong(ScreenTime.PARENT_STORE_UNTIL, 0);
+    }
+    private void beginParentStore() {
+        if (!prefs.getBoolean("kidsMode", false)) return;
+        boolean already = parentStoreActive();
+        long until = System.currentTimeMillis() + ScreenTime.PARENT_STORE_MS;
+        prefs.edit().putLong(ScreenTime.PARENT_STORE_UNTIL, until).putString("kidsFgPkg", "com.android.vending").apply();
+        if (deviceOwner()) {
+            try {
+                android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                dpm.clearUserRestriction(adminComponent(), android.os.UserManager.DISALLOW_INSTALL_APPS);
+            } catch (Exception ignored) { }
+            try { syncDeviceOwnerKiosk(); } catch (Exception ignored) { }
+        }
+        if (prefs.getBoolean("kidsLock", false) && inLockTask() && !deviceOwner()) {
+            try { stopLockTask(); } catch (Exception ignored) { }
+        }
+        final int gen = ++parentStoreGen;
+        if (view != null) view.postDelayed(() -> { if (gen == parentStoreGen) endParentStore(); }, ScreenTime.PARENT_STORE_MS + 250);
+        if (!already) toast("Play Store can stay open for 10 minutes, or until you come back to CodeAque.");
+    }
+    private void endParentStore() {
+        parentStoreGen++;
+        boolean was = prefs.contains(ScreenTime.PARENT_STORE_UNTIL);
+        android.content.SharedPreferences.Editor ed = prefs.edit().remove(ScreenTime.PARENT_STORE_UNTIL);
+        String fg = prefs.getString("kidsFgPkg", null);
+        if (fg != null && ScreenTime.parentStorePackage(fg)) ed.remove("kidsFgPkg");
+        ed.apply();
+        if (!was) return;
+        if (deviceOwner() && prefs.getBoolean("kidsMode", false)) {
+            try {
+                android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+                dpm.addUserRestriction(adminComponent(), android.os.UserManager.DISALLOW_INSTALL_APPS);
+            } catch (Exception ignored) { }
+            try { syncDeviceOwnerKiosk(); } catch (Exception ignored) { }
+        }
+        if (prefs.getBoolean("kidsMode", false) && prefs.getBoolean("kidsLock", false))
+            syncKidsPinning();
     }
 
     private void action(String a) {
@@ -1508,7 +1576,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             case "kidson":                                   // 0.10.26: one tap, no PIN, no question
                 leaveBoxSet();
                 pinOkUntil = 0;                               // 0.10.35: a PIN from before Kids mode must not unlock Settings
-                prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").apply(); timeUpScreen = false;
+                prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).apply(); timeUpScreen = false;
+                parentStoreGen++;
                 ScreenTimeService.sync(this); rescan();
                 syncDeviceOwnerKiosk();
                 syncKidsPinning();
@@ -2383,9 +2452,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void applyAlwaysKids() {
         if (!prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT)) return;
         if (!prefs.getBoolean("kidsMode", false))
-            prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").apply();   // last-used kidsProfile (kids / kids12) is left as it is
+            prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).apply();   // last-used kidsProfile (kids / kids12) is left as it is
         else
-            prefs.edit().remove("parentSettings").apply();
+            prefs.edit().remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).apply();
     }
     private void alwaysKidsToggle() {
         boolean on = !prefs.getBoolean("alwaysKids", Catalog.ALWAYS_KIDS_DEFAULT);
@@ -2416,10 +2485,10 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     /** Pin CodeAque when Kids mode + the Settings toggle are on. No-op if already pinned or we just handed off to a game. */
     private void syncKidsPinning() {
         if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
-        if (prefs.getString("kidsFgPkg", null) != null) return;   // an approved game is allowed in front
+        if (parentStoreActive() || prefs.getString("kidsFgPkg", null) != null) return;   // Play Store window or an approved game is allowed in front
         view.post(() -> {
             if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
-            if (prefs.getString("kidsFgPkg", null) != null) return;
+            if (parentStoreActive() || prefs.getString("kidsFgPkg", null) != null) return;
             if (inLockTask()) return;
             try { startLockTask(); }
             catch (Exception e) { /* Android may refuse if we are not focused; the bounce fallback still runs. */ }
@@ -2472,6 +2541,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void maybeBounceKidsLeave() {
         if (!prefs.getBoolean("kidsMode", false) || !prefs.getBoolean("kidsLock", false)) return;
         if (prefs.getBoolean("parentSettings", false)) return;   // 0.10.40: parent opened Settings after the PIN (adult mode should already have kids off)
+        if (parentStoreActive()) return;   // 0.10.49: leaving for a PIN-approved Play Store install
         if (prefs.getString("kidsFgPkg", null) != null) return;   // leaving for an approved game
         if (pinDialogOpen) return;
         final int gen = ++kidsBounceGen;
@@ -2630,7 +2700,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 .setPositiveButton(on ? "Turn on" : "Turn off", (d, w) -> {
                     android.content.SharedPreferences.Editor ed = prefs.edit().putBoolean("kidsMode", on);
                     if (on) ed.remove("parentSettings");
+                    ed.remove(ScreenTime.PARENT_STORE_UNTIL);
                     ed.apply();
+                    parentStoreGen++;
                     if (!on) { timeUpScreen = false; stopKidsPinning(); }
                     if (deviceOwner()) { if (on || locked()) { syncDeviceOwnerKiosk(); } }
                     else if (!on) { /* not owner: screen pin already stopped */ }

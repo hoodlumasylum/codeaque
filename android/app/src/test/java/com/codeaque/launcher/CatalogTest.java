@@ -667,6 +667,16 @@ public class CatalogTest {
         check(ScreenTime.blockedKidPackage("com.android.settings") && ScreenTime.blockedKidPackage("com.android.vending")
                 && ScreenTime.blockedKidPackage("com.google.android.packageinstaller") && ScreenTime.blockedKidPackage("com.android.documentsui")
                 && !ScreenTime.blockedKidPackage("com.roblox.client") && !ScreenTime.blockedKidPackage(null), "blocked packages");
+        check(ScreenTime.parentStorePackage("com.android.vending") && ScreenTime.parentStorePackage("com.google.android.packageinstaller")
+                && ScreenTime.parentStorePackage("com.android.packageinstaller") && ScreenTime.parentStorePackage("com.google.android.finsky")
+                && !ScreenTime.parentStorePackage("com.android.settings") && !ScreenTime.parentStorePackage("com.android.documentsui")
+                && !ScreenTime.parentStorePackage("com.roblox.client") && !ScreenTime.parentStorePackage(null), "parent-store packages are Play only");
+        long until = 1_000_000L;
+        check(ScreenTime.parentStoreAllowed("com.android.vending", until, until - 1)
+                && !ScreenTime.parentStoreAllowed("com.android.vending", until, until)
+                && !ScreenTime.parentStoreAllowed("com.android.settings", until, until - 1)
+                && !ScreenTime.parentStoreAllowed("com.android.vending", 0, 1), "parent-store window is time-limited and Play-only");
+        check(ScreenTime.PARENT_STORE_MS == 10 * 60_000L, "parent-store window is 10 minutes");
         check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && LockPin.needsPin("exitcodeaque") && LockPin.needsPin("phonesettings") && LockPin.needsPin("phoneaccounts") && LockPin.needsPin("homeapp") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock, device owner, Exit and Phone Settings when locked; Update is gated in Kids mode instead");
         java.util.List<String> settingsActs = new java.util.ArrayList<>();
         java.util.List<Catalog.Category> cats39 = Catalog.categories();

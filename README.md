@@ -31,7 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
-## What's new in 0.10.48 (unreleased)
+## What's new in 0.10.49 (unreleased)
+
+**Kids mode can install from the Play Store after the parent PIN.** On 0.10.48 the Kids lock (and, if CodeAque is the device owner, the kiosk allow-list and the "no installing apps" rule) bounced or blocked the Play Store even after the PIN was entered, so ticked or tapped games never installed. After a correct parent PIN, 0.10.49 opens the game's Play Store page and lets Play Store stay open for 10 minutes, or until you return to CodeAque, then locks again. Kids still cannot open the Play Store without the PIN. Nothing is sideloaded.
+
+## What's new in 0.10.48
+
 
 Game tiles on the tabbed home (Kids, Kids 12+, adult default, and Roblox) are now the **same size and style as the Wi-Fi / Update tiles**: one row of big equal tiles, the cover filling each tile (centre-cropped, not stretched), and the game name in the same big bold uppercase type over the lower part of the cover. Long names shrink or ellipsize so they stay inside the tile. Classic home is unchanged.
 
