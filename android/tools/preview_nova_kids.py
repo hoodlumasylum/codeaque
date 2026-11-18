@@ -12,8 +12,9 @@ FX, FY, FW, FH = 0.18, 0.02, 0.66, 0.78
 LEX, LEY, LEW, LEH = 0.352, 0.370, 0.108, 0.052
 REX, REY, REW, REH = 0.518, 0.344, 0.124, 0.054
 MX, MY, MW, MH = 0.418, 0.488, 0.195, 0.070
+OX, OY, OW, OH = 0.400, 0.470, 0.235, 0.125
+MOUTH_FRAMES = [ROOT / f"app/src/main/assets/nova-mouth-{i}.png" for i in (1, 2, 3)]
 LID = (176, 137, 120, 255)
-LIP_U, LIP_L, INNER, TEETH = (195, 138, 114, 255), (168, 107, 85, 255), (42, 14, 10, 255), (232, 212, 200, 255)
 
 def font(size, bold=False):
     for p in (
@@ -47,19 +48,38 @@ def apply_gaze(head, gx=0.0, gy=0.0):
     return out
 
 def apply_mouth(head, open_=0.7):
+    """Cross-fade the pre-rendered mouth frames from her own portrait."""
     if open_ <= 0.04:
         return head
-    out = head.copy()
-    d = ImageDraw.Draw(out)
-    l, t, r, b = map_box(head, MX, MY, MW, MH)
-    h = (b - t) * (0.28 + 0.85 * open_)
-    cx, mid = (l + r) / 2, (t + b) / 2 + (b - t) * 0.08
-    hole = [l + (r - l) * 0.12, mid - h * 0.45, r - (r - l) * 0.12, mid + h * 0.55]
-    d.ellipse(hole, fill=INNER)
-    th = (hole[3] - hole[1]) * 0.22
-    d.ellipse([hole[0] + 2, hole[1] + 1, hole[2] - 2, hole[1] + th + 1], fill=TEETH)
-    d.arc(hole, 10, 170, fill=LIP_L, width=6)
-    d.arc(hole, 190, 350, fill=LIP_U, width=5)
+    frames = []
+    for pth in MOUTH_FRAMES:
+        if pth.exists():
+            frames.append(Image.open(pth).convert("RGBA"))
+    if not frames:
+        return head
+    if open_ < 0.33:
+        a, b, t = 0, 0, (open_ - 0.04) / 0.29
+    elif open_ < 0.66:
+        a, b, t = 0, 1, (open_ - 0.33) / 0.33
+    else:
+        a, b, t = 1, 2, (open_ - 0.66) / 0.34
+    t = max(0.0, min(1.0, t))
+    box = [int(round(v)) for v in map_box(head, OX, OY, OW, OH)]
+    out = head.convert("RGBA")
+    def paste(idx, alpha):
+        if idx >= len(frames) or alpha <= 0:
+            return
+        im = frames[idx].resize((max(1, box[2] - box[0]), max(1, box[3] - box[1])), Image.Resampling.LANCZOS)
+        if alpha < 0.999:
+            ch = im.split()
+            im = Image.merge("RGBA", (*ch[:3], ch[3].point(lambda v: int(v * alpha))))
+        out.alpha_composite(im, (box[0], box[1]))
+    if a == b:
+        paste(a, t)
+    else:
+        paste(a, 1.0)
+        if t > 0.02:
+            paste(b, t)
     return out
 
 def circle_bubble(head, size, ring=8):
@@ -193,7 +213,7 @@ def main():
     src = Image.open(FACE).convert("RGBA")
     head = head_crop(src)
     idle = apply_gaze(head, 0.12, -0.04)
-    talk = apply_mouth(apply_gaze(head, -0.15, 0.05), 0.85)
+    talk = apply_mouth(apply_gaze(head, -0.15, 0.05), 0.70)
 
     home = kids_home()
     bub = circle_bubble(idle, 220, ring=7)

@@ -35,7 +35,7 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 **Nova in Kids mode.** The corner bubble is shown on the Kids home as well as in Adult mode. In Kids mode she only talks about finding and playing games, the Learning tab, and clean jokes. She does not give Settings, PIN, or how-to-leave-Kids help, and she does not send anyone to a link. A parent can still hide the bubble in Settings > Nova. The optional overlay over other games stays off in Kids mode.
 
-**She talks.** In Kids mode, opening Nova greets the child out loud (system text-to-speech) and she speaks her replies, with a simple talking-mouth animation. Sound is on by default; mute is on the bubble and in her panel.
+**She talks.** In Kids mode, opening Nova greets the child out loud (system text-to-speech) and she speaks her replies, with a talking-mouth animation made from her own portrait (soft, cross-faded lip frames — not a drawn oval). Sound is on by default; mute is on the bubble and in her panel.
 
 **Tell me a joke.** A button tells a pre-written, offline, age-6-friendly joke (no insults, toilet humour, scares or religion) and speaks it aloud.
 

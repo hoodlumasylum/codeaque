@@ -18,6 +18,11 @@ import java.io.InputStream;
  */
 public final class NovaFace {
     public static final String ASSET = "nova-face.jpg";
+    public static final String[] MOUTH_ASSETS = {
+            "nova-mouth-1.png", "nova-mouth-2.png", "nova-mouth-3.png"
+    };
+    /** Overlay box for the pre-rendered mouth frames (slightly larger than MOUTH so the full lower lip is inside). */
+    public static final float OX = 0.400f, OY = 0.470f, OW = 0.235f, OH = 0.125f;
     // Lid boxes (include the lash margin).
     public static final float LLX = 0.345f, LLY = 0.358f, LLW = 0.120f, LLH = 0.075f;
     public static final float RLX = 0.516f, RLY = 0.336f, RLW = 0.132f, RLH = 0.068f;
@@ -28,11 +33,10 @@ public final class NovaFace {
     // Closed-lips box on the 1024 portrait (face_layout.MOUTH), used to lip-sync.
     public static final float MX = 0.418f, MY = 0.488f, MW = 0.195f, MH = 0.070f;
     static final int FALLBACK_LID = 0xFFB08978;
-    static final int LIP_UPPER = 0xFFC38A72, LIP_LOWER = 0xFFA86B55, LIP_INNER = 0xFF2A0E0A, TEETH = 0xFFE8D4C8;
 
     final Paint bmp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     final Paint lid = new Paint(Paint.ANTI_ALIAS_FLAG);
-    final Paint lip = new Paint(Paint.ANTI_ALIAS_FLAG);
+    final Paint mouthPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Paint clip = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -41,6 +45,7 @@ public final class NovaFace {
     final Path almond = new Path();
     final Matrix gazeM = new Matrix();
     Bitmap portrait;
+    Bitmap[] mouthFrames;
     int lidColor = FALLBACK_LID;
     int srcW, srcH;
 
@@ -48,7 +53,7 @@ public final class NovaFace {
         if (portrait != null && !portrait.isRecycled()) return true;
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inPreferredConfig = Bitmap.Config.ARGB_8888;
-        o.inSampleSize = 2;   // 512px is enough for the bubble and the panel face
+        o.inSampleSize = 1;   // full 1024: the large (pinch-out) portrait is big enough to show softening
         try (InputStream in = am.open(ASSET)) {
             portrait = BitmapFactory.decodeStream(in, null, o);
         } catch (Exception e) {
@@ -57,6 +62,7 @@ public final class NovaFace {
         if (portrait == null) return false;
         srcW = portrait.getWidth();
         srcH = portrait.getHeight();
+        loadMouth(am);
         lidColor = sampleLid();
         lid.setColor(lidColor);
         lid.setStyle(Paint.Style.FILL);
@@ -70,6 +76,13 @@ public final class NovaFace {
     public void recycle() {
         if (portrait != null && !portrait.isRecycled()) portrait.recycle();
         portrait = null;
+        if (mouthFrames != null) {
+            for (int i = 0; i < mouthFrames.length; i++) {
+                if (mouthFrames[i] != null && !mouthFrames[i].isRecycled()) mouthFrames[i].recycle();
+                mouthFrames[i] = null;
+            }
+            mouthFrames = null;
+        }
     }
 
     public boolean ready() { return portrait != null && !portrait.isRecycled(); }
@@ -166,28 +179,57 @@ public final class NovaFace {
         c.restoreToCount(s);
     }
 
-    void drawMouth(Canvas c, float open) {
-        mapEye(MX, MY, MW, MH, eye);
-        if (eye.width() < 4) return;
-        float o = open < 0 ? 0 : (open > 1 ? 1 : open);
-        float h = Math.max(2, eye.height() * (0.28f + 0.85f * o));
-        float cx = eye.centerX(), midY = eye.centerY() + eye.height() * 0.08f;
-        RectF hole = new RectF(eye.left + eye.width() * 0.12f, midY - h * 0.45f,
-                eye.right - eye.width() * 0.12f, midY + h * 0.55f);
-        lip.setStyle(Paint.Style.FILL);
-        lip.setColor(LIP_INNER);
-        c.drawOval(hole, lip);
-        if (o > 0.25f) {
-            lip.setColor(TEETH);
-            float th = Math.max(1, hole.height() * 0.22f);
-            c.drawOval(new RectF(hole.left + 2, hole.top + 1, hole.right - 2, hole.top + th + 1), lip);
+    void loadMouth(AssetManager am) {
+        mouthFrames = new Bitmap[MOUTH_ASSETS.length];
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        for (int i = 0; i < MOUTH_ASSETS.length; i++) {
+            try (InputStream in = am.open(MOUTH_ASSETS[i])) {
+                mouthFrames[i] = BitmapFactory.decodeStream(in, null, o);
+            } catch (Exception e) {
+                mouthFrames[i] = null;
+            }
         }
-        lip.setStyle(Paint.Style.STROKE);
-        lip.setStrokeWidth(Math.max(2, eye.height() * 0.22f));
-        lip.setColor(LIP_LOWER);
-        c.drawArc(hole, 10, 160, false, lip);
-        lip.setColor(LIP_UPPER);
-        c.drawArc(hole, 190, 160, false, lip);
+    }
+
+    /**
+     * Cross-fade the pre-rendered mouth frames (from her own portrait) while she talks.
+     * open 0 = rest photo, ~0.33 = slightly parted, ~0.66 = mid, 1 = more open.
+     */
+    void drawMouth(Canvas c, float open) {
+        if (mouthFrames == null) return;
+        float o = open < 0 ? 0 : (open > 1 ? 1 : open);
+        if (o <= 0.04f) return;
+        mapEye(OX, OY, OW, OH, eye);
+        if (eye.width() < 4) return;
+        int a, b;
+        float t;
+        if (o < 0.33f) {
+            a = 0; b = 0;
+            t = (o - 0.04f) / 0.29f;
+        } else if (o < 0.66f) {
+            a = 0; b = 1;
+            t = (o - 0.33f) / 0.33f;
+        } else {
+            a = 1; b = 2;
+            t = (o - 0.66f) / 0.34f;
+        }
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        if (a == b) {
+            blitMouth(c, a, Math.round(255 * t));
+        } else {
+            blitMouth(c, a, 255);
+            if (t > 0.02f) blitMouth(c, b, Math.round(255 * t));
+        }
+    }
+
+    void blitMouth(Canvas c, int index, int alpha) {
+        if (mouthFrames == null || index < 0 || index >= mouthFrames.length) return;
+        Bitmap bm = mouthFrames[index];
+        if (bm == null || bm.isRecycled() || alpha <= 0) return;
+        mouthPaint.setAlpha(alpha);
+        c.drawBitmap(bm, null, eye, mouthPaint);
     }
 
     int sampleLid() {
