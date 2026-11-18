@@ -31,7 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.68
+
+**The launcher opens past the splash screen again.** After 0.10.67 some phones stayed on the CodeAque logo (the system splash) and never reached home. Opening Chat had started loading Nova's voice and on-device brain on a background thread, but the main thread then waited on the same lock to ask "is it loaded yet?" while building her panel — so the first frame never arrived, especially if the 360 MB voice pack was already on the phone. Home now paints first. Nova, speech files, Heart and the on-device brain start afterwards on background threads. The UI never waits on those loads, and a Nova failure cannot stop the launcher.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600, and no emulator was available here to confirm the first frame reaches home. Please try this install and see that home appears after the splash.
+
 ## What's new in 0.10.67
+
 
 **The Mic button works again.** On 0.10.66 the pinned reply ("Speaking… Hi, I'm Nova!…") was drawn on top of the text field and the Mic button on the short landscape Chat card, so taps never reached the button. The reply now has its own space above the input row, does not intercept touches, and the Mic hit target is at least 48 dp. The version label, mic meter, and listen status stay in that reserved bottom area so they still fit. Tapping Mic always toggles listening: it cancels a greeting or reply if one is in the way, the button shows **Listening**, and if the system recognizer fails to start she shows a short message and tries built-in listening.
 

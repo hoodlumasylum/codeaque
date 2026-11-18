@@ -21,8 +21,9 @@ public final class NovaLlm {
     public static final long MIN_BYTES = 700_000_000L;
 
     private static boolean libTried, libOk;
-    private static long handle;
+    private static volatile long handle;
     private static final Object LOCK = new Object();
+    static boolean loading;
 
     private NovaLlm() {}
 
@@ -68,16 +69,28 @@ public final class NovaLlm {
     }
 
     public static boolean isLoaded() {
-        synchronized (LOCK) { return handle != 0; }
+        // Must not wait on load(): a UI read during startup must stay instant.
+        return handle != 0;
     }
 
     public static boolean load(Context c) {
         if (c == null || !filesReady(c) || !phoneStrongEnough(c)) return false;
+        if (handle != 0) return true;
         if (!loadLibrary()) return false;
         synchronized (LOCK) {
             if (handle != 0) return true;
+            if (loading) return false;
+            loading = true;
+        }
+        long h = 0;
+        try {
             int threads = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors()));
-            long h = nativeLoad(file(c).getAbsolutePath(), 2048, threads);
+            h = nativeLoad(file(c).getAbsolutePath(), 2048, threads);
+        } catch (Throwable t) {
+            h = 0;
+        }
+        synchronized (LOCK) {
+            loading = false;
             if (h == 0) return false;
             handle = h;
             return true;

@@ -391,7 +391,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         panel.addView(sv, svLp);
 
         // Pinned reply in its own space ABOVE the input row. Never intercepts taps.
-        int panelDp = Math.max(1, Math.round(panelBox().height() / Math.max(0.5f, d)));
+        // Do not call panelBox() here: during construction the view has no size,
+        // and panelBox used to be a startup hazard if anything else blocked.
+        int viewH = getHeight();
+        int panelDp = viewH > 0 ? Math.max(1, Math.round(viewH / Math.max(0.5f, d))) : 200;
         answerView = new TextView(getContext());
         answerView.setText(lastAnswer);
         answerView.setTextColor(0xFFE8E0D4);

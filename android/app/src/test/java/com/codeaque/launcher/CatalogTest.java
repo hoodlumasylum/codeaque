@@ -1427,7 +1427,7 @@ public class CatalogTest {
                 "never restart while speaking, thinking, or after giving up");
         check(NovaListenGate.idleStatus(true, false).equals("Tap Mic to talk")
                 && NovaListenGate.idleStatus(false, true).equals("Listening…"), "give-up status is Tap Mic to talk");
-        // 0.10.67: a user Mic tap must toggle listening even while she is speaking.
+        // 0.10.68: a user Mic tap must toggle listening even while she is speaking.
         check(NovaMicTap.isToggleOff(true) && !NovaMicTap.isToggleOff(false), "a second Mic tap stops listening");
         check(NovaMicTap.cancelSpeechFirst(true, false, false, false, false)
                 && NovaMicTap.cancelSpeechFirst(false, true, false, false, false)
@@ -1484,6 +1484,12 @@ public class CatalogTest {
                 && !NovaIntent.confident("eight times eight", "play time")
                 && NovaArith.answer("eight times eight").contains("64"),
                 "playtime line stays for genuine playtime; times is arithmetic");
+
+        check(NovaStartup.attachNovaAfterFirstFrame()
+                && !NovaStartup.uiMayWaitOnEngineLoad()
+                && !NovaStartup.loadHoldsLockDuringNative()
+                && NovaStartup.WARMUP_TIMEOUT_MS >= 15_000L,
+                "startup paints home first and never waits on Heart or the brain");
         int cycles = 0;
         boolean gaveUp = false;
         for (int i = 0; i < 8; i++) {
@@ -1545,11 +1551,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.67") && NovaAppVer.CODE == 167, "shipping version is 0.10.67");
-        check(NovaAppVer.label().equals("CodeAque 0.10.67")
-                && NovaAppVer.label("0.10.67").equals("CodeAque 0.10.67")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.67")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.67"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.68") && NovaAppVer.CODE == 168, "shipping version is 0.10.68");
+        check(NovaAppVer.label().equals("CodeAque 0.10.68")
+                && NovaAppVer.label("0.10.68").equals("CodeAque 0.10.68")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.68")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.68"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1579,7 +1585,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.67") && NovaAppVer.CODE == 167, "shipping version is 0.10.67");
+        check(NovaAppVer.NAME.equals("0.10.68") && NovaAppVer.CODE == 168, "shipping version is 0.10.68");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1634,7 +1640,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.67") && NovaAppVer.CODE == 167, "shipping version is 0.10.67");
+        check(NovaAppVer.NAME.equals("0.10.68") && NovaAppVer.CODE == 168, "shipping version is 0.10.68");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

@@ -27,9 +27,10 @@ public final class NovaKokoro {
             "https://huggingface.co/csukuangfj/kokoro-multi-lang-v1_0/resolve/main/";
 
     private static boolean libTried, libOk;
-    private static long handle;
+    private static volatile long handle;
     private static int sampleRate;
     private static final Object LOCK = new Object();
+    static boolean loading;
     public static final String TAG = "NovaVoice";
     static String lastError;
 
@@ -87,48 +88,62 @@ public final class NovaKokoro {
     }
 
     public static boolean isLoaded() {
-        synchronized (LOCK) { return handle != 0; }
+        // Must not wait on load(): the UI thread reads this during Chat layout.
+        return handle != 0;
     }
 
     /** Load the Kokoro model from disk. Safe to call off the UI thread. */
     public static boolean load(Context c) {
         if (c == null) return false;
+        if (handle != 0) return true;
         if (!loadLibrary()) return false;
         if (!filesReady(c)) return false;
+        File d = dir(c);
+        String lex = new File(d, LEX_US).getAbsolutePath();
+        File gb = new File(d, LEX_GB);
+        if (gb.isFile() && gb.length() > 1000L) lex = lex + "," + gb.getAbsolutePath();
+        // English only: do not append a Chinese lexicon. dict_dir/jieba stay unset.
+        File espeak = new File(d, "espeak-ng-data");
+        String dataDir = espeak.isDirectory() ? espeak.getAbsolutePath() : "";
         synchronized (LOCK) {
             if (handle != 0) return true;
-            File d = dir(c);
-            String lex = new File(d, LEX_US).getAbsolutePath();
-            File gb = new File(d, LEX_GB);
-            if (gb.isFile() && gb.length() > 1000L) lex = lex + "," + gb.getAbsolutePath();
-            // English only: do not append a Chinese lexicon. dict_dir/jieba stay unset.
-            File espeak = new File(d, "espeak-ng-data");
-            String dataDir = espeak.isDirectory() ? espeak.getAbsolutePath() : "";
-            try {
-                long h = nativeLoad(
-                        new File(d, MODEL).getAbsolutePath(),
-                        new File(d, VOICES).getAbsolutePath(),
-                        new File(d, TOKENS).getAbsolutePath(),
-                        lex,
-                        dataDir,
-                        NovaKokoroSpeakers.LANG);
-                if (h == 0) {
-                    lastError = "The voice engine did not start.";
-                    Log.w(TAG, lastError);
-                    return false;
-                }
-                handle = h;
-                sampleRate = nativeSampleRate(h);
-                if (sampleRate <= 0) sampleRate = NovaKokoroSpeakers.SAMPLE_RATE;
-                lastError = null;
-                Log.i(TAG, "Kokoro voice loaded, sampleRate=" + sampleRate);
-                return true;
-            } catch (Throwable e) {
-                lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
-                Log.w(TAG, "Kokoro load failed: " + lastError, e);
-                handle = 0;
-                return false;
+            if (loading) return false;
+            loading = true;
+        }
+        long h = 0;
+        int rate = 0;
+        String err = null;
+        try {
+            h = nativeLoad(
+                    new File(d, MODEL).getAbsolutePath(),
+                    new File(d, VOICES).getAbsolutePath(),
+                    new File(d, TOKENS).getAbsolutePath(),
+                    lex,
+                    dataDir,
+                    NovaKokoroSpeakers.LANG);
+            if (h == 0) {
+                err = "The voice engine did not start.";
+                Log.w(TAG, err);
+            } else {
+                rate = nativeSampleRate(h);
+                if (rate <= 0) rate = NovaKokoroSpeakers.SAMPLE_RATE;
+                Log.i(TAG, "Kokoro voice loaded, sampleRate=" + rate);
             }
+        } catch (Throwable e) {
+            err = e.getClass().getSimpleName() + ": " + e.getMessage();
+            Log.w(TAG, "Kokoro load failed: " + err, e);
+            h = 0;
+        }
+        synchronized (LOCK) {
+            loading = false;
+            if (h != 0) {
+                handle = h;
+                sampleRate = rate;
+                lastError = null;
+                return true;
+            }
+            if (err != null) lastError = err;
+            return false;
         }
     }
 

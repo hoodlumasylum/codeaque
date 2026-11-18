@@ -52,6 +52,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private android.widget.FrameLayout root;
     private android.widget.EditText searchField;
     private NovaView nova;
+    private boolean startupReady;
     private String pendingAnimPath;
     private String robloxSession = "", robloxToken = "";
     private boolean robloxOn, robloxLoading, robloxRatingsOk, timeUpScreen;
@@ -74,36 +75,65 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         searchField = buildKidsSearchField();
         root.addView(searchField);
-        nova = new NovaView(this);
-        nova.setHost(this);
-        root.addView(nova, new android.widget.FrameLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        // 0.10.68: paint Home (and the splash) first. Nova, a package rescan,
+        // Heart/LLM warmup, and TTS must not run before the first frame, and
+        // must never stall the UI thread if an engine load is in progress.
         setContentView(root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             if (view != null && view.onKidsSearch() && imeVisible()) view.setSearchImeFallback(false);
             return v.onApplyWindowInsets(insets);
         });
+        immersive();
+        if (view != null) {
+            view.requestFocus();
+            view.post(new NovaStartupAttach(this, b, getIntent()));
+        }
+    }
+
+    /** After the first frame. A Nova failure must not stop the launcher. */
+    void finishStartup(Bundle state, Intent launch) {
+        if (startupReady || isFinishing()) return;
+        try { attachNova(); }
+        catch (Throwable t) {
+            android.util.Log.e("CodeAque", "Nova failed to start; home still works", t);
+            nova = null;
+        }
+        try { startDeferredServices(state, launch); }
+        catch (Throwable t) { android.util.Log.e("CodeAque", "deferred startup failed", t); }
+        startupReady = true;
+        try { resumeHome(); }
+        catch (Throwable t) { android.util.Log.e("CodeAque", "first resume failed", t); }
+    }
+
+    void attachNova() {
+        if (nova != null || root == null) return;
+        nova = new NovaView(this);
+        nova.setHost(this);
+        root.addView(nova, new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    void startDeferredServices(Bundle state, Intent launch) {
         if (artLoader == null) {
             artLoader = new ArtLoader();
             artLoader.setListener(this);
             artLoader.start();
         }
-        immersive();
-        rescan();
         IntentFilter pf = new IntentFilter();         // an app or game installed / removed while CodeAque is open
         pf.addAction(Intent.ACTION_PACKAGE_ADDED); pf.addAction(Intent.ACTION_PACKAGE_REMOVED);
         pf.addAction(Intent.ACTION_PACKAGE_CHANGED); pf.addAction(Intent.ACTION_PACKAGE_REPLACED);
         pf.addDataScheme("package");
         registerReceiver(packages, pf);
-        view.requestFocus();
-        pool = new SoundPool.Builder().setMaxStreams(3).setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
-        for (String n : new String[]{"hhmove", "hhcat", "hhselect", "hhback", "powerup", "chime", "jingle"}) {
-            try { sounds.put(n, pool.load(getAssets().openFd(n + ".wav"), 1)); } catch (Exception ignored) { }
+        if (pool == null) {
+            pool = new SoundPool.Builder().setMaxStreams(3).setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
+            for (String n : new String[]{"hhmove", "hhcat", "hhselect", "hhback", "powerup", "chime", "jingle"}) {
+                try { sounds.put(n, pool.load(getAssets().openFd(n + ".wav"), 1)); } catch (Exception ignored) { }
+            }
         }
-        Intent in0 = getIntent();      // am start -e theme powerup  (same as Settings > Theme)
+        Intent in0 = launch != null ? launch : getIntent();      // am start -e theme powerup  (same as Settings > Theme)
         if (in0 != null && in0.hasExtra("theme")) prefs.edit().putString("theme", Palette.byId(in0.getStringExtra("theme")).id).apply();
-        view.setTheme(Palette.byId(prefs.getString("theme", "neon")));
+        if (view != null) view.setTheme(Palette.byId(prefs.getString("theme", "neon")));
         loadWallpaper();          // 0.10.25: the update check runs from onResume (start and every return)
         maybeAskHomeOnce();
         maybeSuggestRotation();
@@ -119,11 +149,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             prefs.edit().putBoolean(yr, true).apply();
             Toast.makeText(this, "It's December: try the Christmas theme in Settings > Theme", Toast.LENGTH_LONG).show();
         }
-        final String launch = theme().selectSound;      // the theme's sound once on launch
-        if (launch != null) pool.setOnLoadCompleteListener((sp, id, st) -> { Integer want = sounds.get(launch); if (want != null && id == want) sp.play(id, 0.6f, 0.6f, 1, 0, 1f); });
-        Intent i = getIntent();     // for screenshots/tests: am start -e cat cloud -e tile 1
-        if (i != null && i.hasExtra("cat")) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
-        if (b == null) {
+        final String themeSound = theme().selectSound;      // the theme's sound once on launch
+        if (themeSound != null && pool != null) pool.setOnLoadCompleteListener((sp, id, st) -> { Integer want = sounds.get(themeSound); if (want != null && id == want) sp.play(id, 0.6f, 0.6f, 1, 0, 1f); });
+        Intent i = in0;     // for screenshots/tests: am start -e cat cloud -e tile 1
+        if (i != null && i.hasExtra("cat") && view != null) view.focus(i.getStringExtra("cat"), i.getIntExtra("tile", 0));
+        if (state == null) {
             if (handleInstallerResult(i)) return;
             parentEntry(i);   // 0.10.30: CodeAque Adult / CodeAque Settings icon or long-press shortcut
         }
@@ -142,6 +172,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     @Override protected void onResume() {
         super.onResume();
         pausePlayClock();            // 0.10.37: stop counting when CodeAque is back
+        if (!startupReady) return;   // 0.10.68: first resume waits until the splash/home has painted
+        resumeHome();
+    }
+
+    void resumeHome() {
         handleKidsGuardIntent(getIntent());
         scanDreamcast();
         kidsDiff();
