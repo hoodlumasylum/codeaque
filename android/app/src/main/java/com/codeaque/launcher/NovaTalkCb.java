@@ -19,9 +19,22 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
             view.lastAnswer = message;
             if (view.answerView != null) view.answerView.setText(message);
         }
+        // Stay in the hands-free loop after a hard error, unless permission was refused.
+        if (message == null || !message.toLowerCase().contains("wasn't allowed")) {
+            view.postDelayed(new NovaListenSoon(view), 600);
+        }
     }
 
     @Override public void onSpeechState(boolean listening) {
-        if (view != null) view.refreshMicLabel();
+        if (view != null) {
+            view.refreshMicLabel();
+            view.invalidate();
+        }
+    }
+
+    @Override public void onSpeechRetry() {
+        if (view == null) return;
+        view.refreshMicLabel();
+        view.postDelayed(new NovaListenSoon(view), 300);
     }
 }

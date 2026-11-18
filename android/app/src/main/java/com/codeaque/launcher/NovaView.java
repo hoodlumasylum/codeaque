@@ -67,7 +67,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady;
     final RectF tabHit = new RectF();
     boolean dragging, snapping, pinching, hidden, big, tucked, downOnMute, downOnBubble, downOnTab, placed;
-    boolean voiceLoop, awaitingAnswer;
+    boolean voiceLoop, awaitingAnswer, micAsked;
+    TextView listenLabel;
     String talkId;
     int speakSeq;
     boolean ignoreUntilUp, tapArmedMute;
@@ -171,6 +172,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (on) {
             if (askField != null) askField.clearFocus();
         } else {
+            hideSoftIme();
             exitVoiceMode();
             stopSpeak();
             stopListen();
@@ -204,6 +206,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         micBtn = null;
         typeBtn = null;
         hideBtn = null;
+        listenLabel = null;
         stopListen();
         buildPanel(getResources().getDisplayMetrics().density);
         setPanelShown(expanded);
@@ -232,9 +235,20 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         title.setTypeface(Typeface.DEFAULT_BOLD);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
         head.addView(title, tlp);
+        listenLabel = new TextView(getContext());
+        listenLabel.setText("Listening…");
+        listenLabel.setTextColor(0xFF1C1A18);
+        listenLabel.setTextSize(13);
+        listenLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        listenLabel.setPadding(Math.round(10 * d), Math.round(5 * d), Math.round(10 * d), Math.round(5 * d));
+        styleGlass(listenLabel, 0xFFE8C872, 0x00E8C872, 14 * d, 0);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        llp.setMargins(0, 0, Math.round(8 * d), 0);
+        head.addView(listenLabel, llp);
         muteLabel = btn(muted() ? "Muted" : "Sound on", v -> toggleMute());
         head.addView(muteLabel);
         panel.addView(head);
+        refreshMicLabel();
 
         HorizontalScrollView chips = new HorizontalScrollView(getContext());
         chips.setHorizontalScrollBarEnabled(false);
@@ -275,9 +289,22 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         askField.setTextSize(14);
         askField.setSingleLine(true);
         askField.setInputType(InputType.TYPE_CLASS_TEXT);
+        askField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                | android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN);
         styleGlass(askField, 0x66101820, 0x33E8C872, 14 * d, 1f);
         askField.setPadding(pad, pad, pad, pad);
-        askField.setOnEditorActionListener((v, a, e) -> { ask(askField.getText().toString()); return true; });
+        askField.setOnEditorActionListener((v, a, e) -> {
+            boolean go = a == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                    || a == android.view.inputmethod.EditorInfo.IME_ACTION_GO
+                    || a == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                    || (e != null && e.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                        && e.getAction() == KeyEvent.ACTION_DOWN);
+            if (!go) return false;
+            ask(askField.getText().toString());
+            hideSoftIme();
+            return true;
+        });
         LinearLayout.LayoutParams askLp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
         askRow.addView(askField, askLp);
         if (voiceTalkOn()) {
@@ -314,7 +341,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setPadding(0, pad / 2, 0, 0);
-        actions.addView(btn("Ask", v -> ask(askField.getText().toString())), lpBtn());
+        actions.addView(btn("Ask", v -> { ask(askField.getText().toString()); hideSoftIme(); }), lpBtn());
         if (!kids) actions.addView(btn("Hear it", v -> speak(lastAnswer)), lpBtn());
         typeBtn = btn("Type instead", v -> exitVoiceMode());
         typeBtn.setVisibility(voiceLoop ? VISIBLE : GONE);
@@ -389,6 +416,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void onMicTap() {
         if (!voiceTalkOn()) return;
         if (speech != null && speech.isListening()) { exitVoiceMode(); return; }
+        hideSoftIme();
         if (host != null && !host.novaMicAllowed()) { host.novaRequestMic(); return; }
         voiceLoop = true;
         refreshVoiceButtons();
@@ -422,9 +450,29 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     void refreshMicLabel() {
-        if (micBtn == null) return;
-        boolean on = speech != null && speech.isListening();
-        micBtn.setText(on ? "Listening…" : "Mic");
+        boolean on = isListening();
+        if (micBtn != null) micBtn.setText(on ? "Listening…" : "Mic");
+        if (listenLabel != null) listenLabel.setVisibility(on ? VISIBLE : GONE);
+        invalidate();
+    }
+
+    public boolean isListening() {
+        return speech != null && speech.isListening();
+    }
+
+    /** 0.10.55: dismiss the system IME in Chat (Done / Back / B / tap outside). */
+    void hideSoftIme() {
+        if (askField != null) ImeHide.hide(askField);
+        ImeHide.hide(this);
+        if (getRootView() != null) ImeHide.hide(getRootView());
+    }
+
+    boolean imeUp() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsets in = getRootWindowInsets();
+            if (in != null && in.isVisible(android.view.WindowInsets.Type.ime())) return true;
+        }
+        return askField != null && askField.hasFocus();
     }
 
     void tellJoke() {
@@ -467,6 +515,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         voiceLoop = true;
         refreshVoiceButtons();
         greet();
+        if (muted() || pendingSpeak == null) postDelayed(new NovaListenSoon(this), 400);
     }
 
     void exitVoiceMode() {
@@ -487,20 +536,28 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     /** After she finishes speaking, listen again if the conversation loop is still on. */
     public void maybeResumeListen() {
-        if (!voiceLoop || !expanded || muted() || !voiceTalkOn() || awaitingAnswer) return;
+        if (!voiceLoop || !expanded || !voiceTalkOn() || awaitingAnswer) return;
+        if (talking) return;
         if (speech != null && speech.isListening()) return;
-        if (host != null && !host.novaMicAllowed()) { host.novaRequestMic(); return; }
+        if (host != null && !host.novaMicAllowed()) {
+            if (!micAsked) { micAsked = true; host.novaRequestMic(); }
+            return;
+        }
         startListen();
     }
 
     void speakAuto(String s) {
-        if (muted()) return;
+        if (muted()) {
+            if (voiceLoop) postDelayed(new NovaListenSoon(this), 400);
+            return;
+        }
         speak(s);
     }
 
     void speak(String s) {
         if (s == null || s.isEmpty()) return;
         if (muted()) return;
+        stopListen();   // 0.10.55: do not hear herself while speaking
         pendingSpeak = s;
         ensureTts();
         if (ttsReady) flushSpeak();
@@ -559,6 +616,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (tts == null || pendingSpeak == null) return;
         String s = pendingSpeak;
         pendingSpeak = null;
+        stopListen();
         speakSeq++;
         String[] parts = NovaTtsVoice.sentences(s);
         if (parts.length == 0) return;
@@ -580,6 +638,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     public void onTtsStart(String id) {
         if (id == null || talkId == null) return;
         if (!id.startsWith("nova-" + speakSeq + "-")) return;
+        stopListen();
         talking = true;
         // Callbacks can be late: keep the duration fallback as a safety net.
         long extra = android.os.SystemClock.uptimeMillis() + 8000;
@@ -832,6 +891,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (getVisibility() != VISIBLE) return;
         if (hidden) { drawTab(c); return; }
         if (!bubble.isEmpty()) face.draw(c, bubble, st, 0, false);
+        if (isListening()) drawListening(c);
         drawMuteBadge(c);
     }
 
@@ -851,6 +911,22 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             RectF peek = new RectF(tabHit.left + inset, tabHit.top + inset, tabHit.right - inset, tabHit.bottom - inset);
             face.draw(c, peek, st, 0, false);
         }
+    }
+
+    void drawListening(Canvas c) {
+        if (bubble.isEmpty()) return;
+        float cx = bubble.centerX(), cy = bubble.centerY();
+        float r = Math.min(bubble.width(), bubble.height()) * 0.52f;
+        long now = android.os.SystemClock.uptimeMillis();
+        float pulse = 0.65f + 0.35f * (float) Math.sin(now / 280.0);
+        mutePaint.setStyle(Paint.Style.STROKE);
+        mutePaint.setStrokeWidth(Math.max(3, getResources().getDisplayMetrics().density * 2.5f));
+        mutePaint.setColor(((int) (220 * pulse) << 24) | (0x00E8C872));
+        c.drawCircle(cx, cy, r, mutePaint);
+        mutePaint.setStyle(Paint.Style.FILL);
+        mutePaint.setColor(0xF2E8C872);
+        float br = Math.max(5, getResources().getDisplayMetrics().density * 5f);
+        c.drawCircle(bubble.centerX(), bubble.bottom - br * 0.2f, br * pulse, mutePaint);
     }
 
     void drawMuteBadge(Canvas c) {
@@ -885,6 +961,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     @Override public boolean dispatchTouchEvent(MotionEvent ev) {
         if (getVisibility() != VISIBLE) return false;
         float x = ev.getX(), y = ev.getY();
+        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN && askField != null && askField.hasFocus()
+                && !ImeHide.eventInside(askField, ev)) {
+            hideSoftIme();
+        }
         // Panel controls (Ask, chips, field, mic) must get the tap. Don't let a leftover
         // pinch ignoreUntilUp eat the first tap on Chat.
         if (hitsPanel(x, y) && !dragging && !pinching && !downOnBubble && !downOnTab) {
@@ -1195,11 +1275,18 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        if (expanded && event.getAction() == KeyEvent.ACTION_UP
-                && (event.getKeyCode() == KeyEvent.KEYCODE_BACK || event.getKeyCode() == KeyEvent.KEYCODE_BUTTON_B
-                || event.getKeyCode() == KeyEvent.KEYCODE_ESCAPE)) {
-            if (voiceLoop) { exitVoiceMode(); return true; }
-            collapse();
+        int code = event.getKeyCode();
+        boolean back = code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_BUTTON_B
+                || code == KeyEvent.KEYCODE_ESCAPE;
+        if (expanded && back) {
+            if (imeUp() || (askField != null && askField.hasFocus())) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) hideSoftIme();
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                if (voiceLoop) { exitVoiceMode(); return true; }
+                collapse();
+            }
             return true;
         }
         return super.dispatchKeyEvent(event);

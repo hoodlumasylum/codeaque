@@ -1207,6 +1207,36 @@ public class CatalogTest {
         NovaAnim.tickTalk(ex, 20000, true);
         NovaAnim.tick(ex, 20000, 16, 1);
         check(ex.talking && ex.smileT >= 0, "she smiles a little while talking");
+        // 0.10.55: search bar fits on a short landscape phone; custom keyboard has Hide.
+        float sShot = Math.min(2376 / 1000f, 1060 / 720f);
+        float dShot = 2.75f;
+        float catsBottom = 1060 * 0.26f, foot = Math.max(78 * sShot, 56 * dShot);
+        float browseTop = 1060 - foot - 136 * sShot * 1.7f;
+        float avail = browseTop - catsBottom - 16 * sShot;
+        float qh = KidsSearchLayout.queryHeight(sShot, dShot, avail);
+        float ts = KidsSearchLayout.textSize(qh, sShot, dShot);
+        float chip = KidsSearchLayout.chipHeight(sShot, avail - qh - KidsSearchLayout.GAP_S * sShot);
+        check(qh > 36 * sShot, "search bar is taller than the 0.10.54 36*s box");
+        check(KidsSearchLayout.textFits(qh, ts), "search text plus padding fits in the bar");
+        check(qh + KidsSearchLayout.GAP_S * sShot + chip <= avail + 0.5f, "chips sit under the bar without overlapping the game row");
+        check(ts < qh, "search text is smaller than the bar");
+
+        float sWin = 1f, dWin = 1f;
+        float availWin = 720 - 720 * 0.26f - Math.max(78, 56) - 136 - 16;
+        float qhW = KidsSearchLayout.queryHeight(sWin, dWin, availWin);
+        check(KidsSearchLayout.textFits(qhW, KidsSearchLayout.textSize(qhW, sWin, dWin)), "search text fits on a 1280x720 density-1 screen");
+
+        float sShort = Math.min(1024 / 1000f, 480 / 720f), dShort = 2f;
+        float availS = Math.max(40, 480 * 0.4f);
+        float qhS = KidsSearchLayout.queryHeight(sShort, dShort, availS);
+        check(qhS <= availS && KidsSearchLayout.textFits(qhS, KidsSearchLayout.textSize(qhS, sShort, dShort)),
+                "on a short landscape screen the bar still fits its text and the remaining gap");
+
+        check(KidsSearchLayout.lastRowHasHide(KidsSearchLayout.searchKeys(false, false))
+                && KidsSearchLayout.lastRowHasHide(KidsSearchLayout.searchKeys(true, false))
+                && KidsSearchLayout.lastRowHasHide(KidsSearchLayout.searchKeys(false, true)),
+                "custom keyboard has a Hide key on every layout");
+        check(KidsSearchLayout.isHideKey("Hide") && !KidsSearchLayout.isHideKey("GO"), "Hide key is recognised");
     }
 
 }

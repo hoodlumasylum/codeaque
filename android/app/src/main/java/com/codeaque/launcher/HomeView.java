@@ -66,7 +66,9 @@ public class HomeView extends View {
         String kidsSearchChip();
         void requestKidsIme();
         void hideKidsIme();
-        void placeKidsSearchField(float left, float top, float right, float bottom, String text, String hint, boolean focused, boolean showField);
+        /** 0.10.55: so Back / B can hide the system IME first, without leaving Search. */
+        boolean imeVisible();
+        void placeKidsSearchField(float left, float top, float right, float bottom, String text, String hint, boolean focused, boolean showField, float textPx, float padH, float padV);
     }
 
     private Palette T = Palette.NEON;
@@ -319,10 +321,29 @@ public class HomeView extends View {
     }
 
     /** Same as controller B: leave a prompt, or step back to the category row, then to the first section. */
+    /** 0.10.55: hide the custom keyboard or the system IME. True if something was up. */
+    boolean hideAnyKeyboard() {
+        boolean custom = searchKbFallback;
+        boolean ime = host != null && host.imeVisible();
+        if (custom) {
+            searchKbFallback = false;
+            if (searchFocus == SF_KEYS) searchFocus = SF_BOX;
+        }
+        if (host != null) host.hideKidsIme();
+        if (custom || ime) { invalidate(); return true; }
+        return false;
+    }
+
+    boolean searchKeyboardUp() {
+        return searchKbFallback || (host != null && host.imeVisible());
+    }
+
     private void goBack() {
         if (kids && host.timeUpScreen()) return;   // stays up until a parent PIN
         if (prompt != null) { prompt = null; host.sound("hhback"); invalidate(); return; }
         if (boxset) { host.leaveBoxSet(); return; }
+        // Hide the pop-up keyboard first (custom or system IME). Back / B should not also leave Search.
+        if (onSearch() && searchKeyboardUp()) { hideAnyKeyboard(); host.sound("hhback"); return; }
         if (onSearch() && !inCats && searchFocus == SF_TILES) {
             searchFocus = searchKbFallback ? SF_KEYS : SF_CHIPS; host.sound("hhback"); invalidate(); return;
         }
@@ -456,9 +477,18 @@ public class HomeView extends View {
         if (backBtn.contains(x, y)) { goBack(); return; }
         if (onSearch() && !searchRetryBox.isEmpty() && searchRetryBox.contains(x, y)) { host.kidsSearchRetry(); return; }
         if (onSearch() && searchKbFallback && tapSearchKey(x, y)) return;
-        if (onSearch() && tapSearchChip(x, y)) return;
+        if (onSearch() && tapSearchChip(x, y)) {
+            if (searchKeyboardUp() && (searchKbBox.isEmpty() || !searchKbBox.contains(x, y))) hideAnyKeyboard();
+            return;
+        }
         if (onSearch() && searchQueryBox.contains(x, y)) {
             inCats = false; searchFocus = SF_BOX; host.requestKidsIme(); invalidate(); return;
+        }
+        // 0.10.55: a tap outside the field or the custom keyboard closes it.
+        if (onSearch() && searchKeyboardUp()
+                && !searchQueryBox.contains(x, y)
+                && (searchKbBox.isEmpty() || !searchKbBox.contains(x, y))) {
+            hideAnyKeyboard();
         }
         if (logoTop.contains(x, y) || logoCenter.contains(x, y)) { logoHit(); return; }
         if (!boxset && y <= catsBottom() && y >= tabStripTop()) {
@@ -715,7 +745,7 @@ public class HomeView extends View {
             topBar(c, W, H);
             if (!boxset) categories(c, W, H);
             if (onSearch()) drawSearchUi(c, W, H);
-            else host.placeKidsSearchField(0, 0, 0, 0, "", "", false, false);
+            else host.placeKidsSearchField(0, 0, 0, 0, "", "", false, false, 0, 0, 0);
             if (!boxset) mark(c, W, H);
             hints(c, W, H);
             if (row.busy()) captureChromeFrom(c, W, H);
@@ -1583,28 +1613,7 @@ public class HomeView extends View {
     private boolean searchChipsFocused() { return onSearch() && searchFocus == SF_CHIPS && !inCats; }
 
     private String[][] searchKeys() {
-        if (searchSym) {
-            return new String[][]{
-                    {"1","2","3","4","5","6","7","8","9","0"},
-                    {"-","'",".","!","?","@","&",":",";","+"},
-                    {"ABC",",","(",")","\"","/","#","*","⌫"},
-                    {"ABC"," ","GO"}
-            };
-        }
-        if (searchShift) {
-            return new String[][]{
-                    {"Q","W","E","R","T","Y","U","I","O","P"},
-                    {"A","S","D","F","G","H","J","K","L"},
-                    {"⇧","Z","X","C","V","B","N","M","⌫"},
-                    {"123"," ","GO"}
-            };
-        }
-        return new String[][]{
-                {"q","w","e","r","t","y","u","i","o","p"},
-                {"a","s","d","f","g","h","j","k","l"},
-                {"⇧","z","x","c","v","b","n","m","⌫"},
-                {"123"," ","GO"}
-        };
+        return KidsSearchLayout.searchKeys(searchShift, searchSym);
     }
 
     private void mapContentToView(RectF src, RectF dst) {
@@ -1615,12 +1624,15 @@ public class HomeView extends View {
     }
 
     private void layoutSearch(int W, int H) {
+        float den = getResources().getDisplayMetrics().density;
         float top = catsBottom() + 8 * s;
         float bot = browseTop() - 8 * s;
-        float qh = Math.min(46 * s, Math.max(32 * s, 36 * s));
+        float avail = Math.max(32 * s, bot - top);
+        float qh = KidsSearchLayout.queryHeight(s, den, avail);
         searchQueryBox.set(24 * s, top, W - 24 * s, top + qh);
-        float chipTop = searchQueryBox.bottom + 8 * s;
-        float chipH = Math.min(40 * s, Math.max(30 * s, 36 * s));
+        float chipTop = searchQueryBox.bottom + KidsSearchLayout.GAP_S * s;
+        float remain = bot - chipTop;
+        float chipH = KidsSearchLayout.chipHeight(s, remain);
         searchChipBox.set(16 * s, chipTop, W - 16 * s, chipTop + chipH);
         String[] chips = KidsPlay.SEARCH_CHIPS;
         float gap = 8 * s;
@@ -1649,8 +1661,11 @@ public class HomeView extends View {
         }
         mapContentToView(searchQueryBox, r2);
         boolean showField = onSearch() && !searchKbFallback;
+        float ts = KidsSearchLayout.textSize(qh, s, den);
+        float padH = KidsSearchLayout.padH(s, den);
+        float padV = KidsSearchLayout.padV(qh);
         host.placeKidsSearchField(r2.left, r2.top, r2.right, r2.bottom, searchQ,
-                "Search for a game", searchBoxFocused(), showField);
+                KidsSearchLayout.HINT, searchBoxFocused(), showField, ts, padH, padV);
     }
 
     private void drawSearchUi(Canvas c, int W, int H) {
@@ -1660,9 +1675,13 @@ public class HomeView extends View {
         stroke.setShader(null); stroke.setColor(searchBoxFocused() ? GOLD : 0x66FFFFFF); stroke.setStrokeWidth(2 * s);
         c.drawRoundRect(searchQueryBox, 12 * s, 12 * s, stroke);
         if (searchKbFallback) {
-            String shown = searchQ.isEmpty() ? "Search for a game" : searchQ + (searchKeysFocused() || searchBoxFocused() ? "▌" : "");
+            String shown = searchQ.isEmpty() ? KidsSearchLayout.HINT : searchQ + (searchKeysFocused() || searchBoxFocused() ? "▌" : "");
             int col = searchQ.isEmpty() ? DIM : TXT;
-            text(c, shown, searchQueryBox.left + 16 * s, searchQueryBox.centerY() + 6 * s, 18 * s, col, Paint.Align.LEFT, false);
+            float den2 = getResources().getDisplayMetrics().density;
+            float ts2 = KidsSearchLayout.textSize(searchQueryBox.height(), s, den2);
+            float padH2 = KidsSearchLayout.padH(s, den2);
+            float by = KidsSearchLayout.textBaselineY(searchQueryBox.top, searchQueryBox.height(), ts2);
+            text(c, shown, searchQueryBox.left + padH2, by, ts2, col, Paint.Align.LEFT, false);
         }
 
         String[] chips = KidsPlay.SEARCH_CHIPS;
@@ -1785,7 +1804,8 @@ public class HomeView extends View {
         if ("123".equals(lab)) { searchSym = true; searchShift = false; kbRow = 0; kbCol = 0; invalidate(); return; }
         if ("ABC".equals(lab)) { searchSym = false; kbRow = 0; kbCol = 0; invalidate(); return; }
         if ("⌫".equals(lab)) { if (searchQ.length() > 0) searchQ = searchQ.substring(0, searchQ.length() - 1); searchChipSel = -1; scheduleSearch(); invalidate(); return; }
-        if ("GO".equals(lab) || "go".equals(lab)) { searchFocus = SF_TILES; host.runKidsSearch(searchQ); invalidate(); return; }
+        if (KidsSearchLayout.isHideKey(lab)) { hideAnyKeyboard(); return; }
+        if ("GO".equals(lab) || "go".equals(lab)) { hideAnyKeyboard(); searchFocus = SF_TILES; host.runKidsSearch(searchQ); invalidate(); return; }
         searchChipSel = -1;
         if (" ".equals(lab)) searchQ += " ";
         else searchQ += lab;
@@ -1843,7 +1863,7 @@ public class HomeView extends View {
             if ((code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_DPAD_CENTER) && e.getRepeatCount() == 0) {
                 host.requestKidsIme(); return true;
             }
-            if (code == KeyEvent.KEYCODE_ENTER && e.getRepeatCount() == 0) { fireSearch(); return true; }
+            if (code == KeyEvent.KEYCODE_ENTER && e.getRepeatCount() == 0) { hideAnyKeyboard(); fireSearch(); return true; }
             return false;   // IME / hardware typing goes to the EditText
         }
         if (searchChipsFocused()) {

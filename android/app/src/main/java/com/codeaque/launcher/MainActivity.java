@@ -719,8 +719,32 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     @Override public void onBackPressed() {
+        if (hideSoftKeyboard()) return;                // 0.10.55: dismiss the pop-up keyboard first
+        if (view != null && view.searchKeyboardUp() && view.hideAnyKeyboard()) return;
         if (nova != null && nova.collapse()) return;   // 0.10.52: close Nova's panel first
         /* a home screen stays */
+    }
+
+    /** 0.10.55: hide the system IME from whatever field is focused. True if a field had focus. */
+    boolean hideSoftKeyboard() {
+        android.view.View focus = getCurrentFocus();
+        boolean had = focus instanceof android.widget.EditText;
+        ImeHide.hide(this);
+        if (searchField != null && searchField.hasFocus() && view != null) view.requestFocus();
+        imeFallbackGen++;
+        return had || imeVisible();
+    }
+
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        if (ev.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+            android.view.View focus = getCurrentFocus();
+            if (focus instanceof android.widget.EditText && !ImeHide.eventInside(focus, ev)) {
+                ImeHide.hide(this);
+                imeFallbackGen++;
+                if (view != null && view.searchKeyboardUp()) view.hideAnyKeyboard();
+            }
+        }
+        return super.dispatchTouchEvent(ev);
     }
     @Override protected void onDestroy() {
         if (nova != null) nova.release();
@@ -961,7 +985,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         android.widget.Button b = dlg.getButton(AlertDialog.BUTTON_POSITIVE);
         if (b != null) b.setOnClickListener(v -> { if (submit != null) submit.run(); });
     }
-    private void closePinDialog() { pinDialogOpen = false; }
+    private void closePinDialog() { pinDialogOpen = false; ImeHide.hide(this); }
 
     /** Shared accept/reject path for every "enter the parent PIN" dialog. Wrong / empty never runs ok. */
     private void trySubmitPin(AlertDialog dlg, android.widget.EditText e, Runnable ok, boolean[] done) {
@@ -3034,7 +3058,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         }
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Nova would like the mic")
-                .setMessage("Nova can listen while the mic in Chat is on, so you can ask out loud. She does not listen all the time — only after you tap Mic. The words stay on this phone.")
+                .setMessage("When Voice talk is on, Nova listens so you can ask out loud, without tapping a button each time. She pauses while she is speaking so she does not hear herself. The words stay on this phone.")
                 .setPositiveButton("Allow", (d, w) -> requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC))
                 .setNegativeButton("Not now", (d, w) -> { if (nova != null) nova.onMicPermission(false); })
                 .show();
@@ -3931,7 +3955,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         return e;
     }
 
-    @Override public void placeKidsSearchField(float left, float top, float right, float bottom, String text, String hint, boolean focused, boolean showField) {
+    @Override public void placeKidsSearchField(float left, float top, float right, float bottom, String text, String hint, boolean focused, boolean showField, float textPx, float padH, float padV) {
         if (searchField == null) return;
         if (!showField) {
             if (searchField.getVisibility() != android.view.View.GONE) {
@@ -3968,9 +3992,14 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             searchField.setSelection(text.length());
             searchWatchLock = false;
         }
-        float d = getResources().getDisplayMetrics().density;
-        searchField.setPadding(Math.round(16 * d), 0, Math.round(16 * d), 0);
-        searchField.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Math.max(18 * d, h * 0.42f));
+        searchField.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        searchField.setIncludeFontPadding(false);
+        int ph = Math.max(4, Math.round(padH));
+        int pv = Math.max(2, Math.round(padV));
+        searchField.setPadding(ph, pv, ph, pv);
+        float size = textPx > 0 ? textPx : Math.max(8, h * 0.42f);
+        if (size * 1.25f > Math.max(1, h - 2 * pv)) size = Math.max(8, (h - 2 * pv) / 1.25f);
+        searchField.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, size);
     }
 
     @Override public void requestKidsIme() {
@@ -3986,9 +4015,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
     @Override public void hideKidsIme() {
         imeFallbackGen++;
+        ImeHide.hide(this);
         if (searchField != null) {
-            android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-            if (imm != null) imm.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
+            ImeHide.hide(searchField);
             if (searchField.hasFocus() && view != null) view.requestFocus();
         }
     }
@@ -4006,7 +4035,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         } catch (Exception ignored) { }
     }
 
-    boolean imeVisible() {
+    @Override public boolean imeVisible() {
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             android.view.WindowInsets insets = getWindow() != null && getWindow().getDecorView() != null
                     ? getWindow().getDecorView().getRootWindowInsets() : null;

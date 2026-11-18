@@ -31,6 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.55
+
+**Search for a game fits.** The Kids Search bar is a comfortable height, with the placeholder and typed text sized to sit in the middle with padding, including on a short landscape phone. The category chips stay under the bar and do not overlap it. The same field is only on the Kids Search tab (grown-up home has no shared search bar).
+
+**She listens when text mode is off.** If Voice talk is on, opening Chat starts a hands-free conversation: she greets you, then listens without a button press, and listens again after each answer. She pauses the mic while she is speaking so she does not hear herself. A gold Listening… label in Chat and a pulse on her bubble show when she is listening. If the mic permission is missing, she asks once. Tap Type instead or Back to type, or Close to leave.
+
+**You can put the keyboard away.** After typing in Search, in Nova Chat, or in another pop-up field, Done or Enter, Back, a tap outside the field, or controller B closes the keyboard. The custom CodeAque keyboard (used when the system one does not appear) has a visible Hide key, and GO also puts it away. The system IME is closed with hideSoftInputFromWindow.
+
+These changes have not been tried on a real phone, a K56, or a Win600. Search-bar layout, keyboard hide paths, and the listen loop were unit-tested or previewed here only. Hands-free listening, the mic permission, and IME hide on a real device remain untested.
+
+The on-device kid-safe model is still planned, now for 0.10.56.
+
 ## What's new in 0.10.54
 
 **No PIN for CodeAque updates in Kids mode.** Wi-Fi & Update, and the "New update ready" popup, can install a CodeAque update without the parent PIN. Settings, leaving Kids / adult mode, installing other apps, raw Play, sideloading, Screen Time, and changing Kids vs Kids 12+ still need the PIN. The 10-minute installer window still opens so Android can finish the install. A device still on 0.10.53 has to enter the PIN once to install 0.10.54; after that, later CodeAque updates in Kids will not ask. Devices on 0.10.48 still cannot update from Kids (installer bounce) — leave Kids, Update, then turn Kids back on.
@@ -43,7 +55,7 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 **Voice talk.** A Mic button in Chat uses the phone's own speech recognizer (offline if the phone has the pack, otherwise it may use the network recognizer). Recognised words go through the same kid-safe Ask path, and she speaks the answer if voice is on. She only listens while the mic is active. Grown-ups > Nova has a Voice talk on/off switch (default on). The first use shows a short explanation, then Android's mic permission. If the recognizer or permission is missing, you can still type.
 
-**Smarter Nova.** When a learning question is not already in her local set and Smarter Nova is on (default on, Grown-ups > Nova), she can look up a short fact and keep only one or two kid-safe sentences. If it is unsafe or the lookup fails, she says she is not sure and suggests asking a grown-up. No account, no API key, no model picker. She always introduces herself as Nova. Licence credit for Simple English Wikipedia (CC BY-SA) is in About, not in Kids Chat. An on-device model is not in this build; that is planned for 0.10.55.
+**Smarter Nova.** When a learning question is not already in her local set and Smarter Nova is on (default on, Grown-ups > Nova), she can look up a short fact and keep only one or two kid-safe sentences. If it is unsafe or the lookup fails, she says she is not sure and suggests asking a grown-up. No account, no API key, no model picker. She always introduces herself as Nova. Licence credit for Simple English Wikipedia (CC BY-SA) is in About, not in Kids Chat. An on-device model is not in this build; that is planned for 0.10.56.
 
 **No round circle around her.** The bubble is a cut-out of her portrait with a soft edge and a light shadow, at the corner, after a drag, and in the large pinched-out view.
 

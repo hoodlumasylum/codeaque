@@ -2,7 +2,7 @@ package com.codeaque.launcher;
 
 /** UI-thread callback from NovaSpeech. Named so d8 8.2 does not NPE on an anonymous Runnable. */
 public final class NovaSpeechPost implements Runnable {
-    public static final int RESULT = 1, ERROR = 2, STATE = 3;
+    public static final int RESULT = 1, ERROR = 2, STATE = 3, RETRY = 4;
     final NovaSpeech speech;
     final int kind;
     final String text;
@@ -22,5 +22,6 @@ public final class NovaSpeechPost implements Runnable {
         if (kind == RESULT) c.onSpeechResult(text);
         else if (kind == ERROR) c.onSpeechError(text);
         else if (kind == STATE) c.onSpeechState(on);
+        else if (kind == RETRY) c.onSpeechRetry();
     }
 }

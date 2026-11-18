@@ -12,9 +12,10 @@ import android.speech.SpeechRecognizer;
 import java.util.ArrayList;
 
 /**
- * 0.10.54: tap-to-talk in Chat. Prefers the offline recognizer, no API keys.
- * Listen only while the mic is active. Named listener (NovaSpeechListen) — d8 8.2
- * has NPEd on anonymous listeners elsewhere in Nova.
+ * 0.10.54: speech recognizer in Chat. Prefers the offline recognizer, no API keys.
+ * 0.10.55: hands-free loop while voice mode is on — soft errors (timeout, no match)
+ * resume listening; late errors after stop are ignored so TTS is not interrupted.
+ * Named listener (NovaSpeechListen) — d8 8.2 has NPEd on anonymous listeners.
  */
 public final class NovaSpeech {
     public static final String PREF_VOICE_TALK = "novaVoiceTalk";
@@ -23,6 +24,8 @@ public final class NovaSpeech {
         void onSpeechResult(String text);
         void onSpeechError(String message);
         void onSpeechState(boolean listening);
+        /** Timeout / no-match / busy: keep the hands-free loop going. */
+        void onSpeechRetry();
     }
 
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -108,7 +111,7 @@ public final class NovaSpeech {
     void onReady() { }
 
     void onResults(Bundle b) {
-        if (destroyed) return;
+        if (destroyed || !listening) return;
         listening = false;
         notifyState(false);
         String text = firstResult(b);
@@ -120,19 +123,29 @@ public final class NovaSpeech {
         if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false));
     }
 
+    /** Soft errors that should restart listening in a hands-free loop (not a hard failure). */
+    public static boolean softListenError(int code) {
+        return code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                || code == SpeechRecognizer.ERROR_NO_MATCH
+                || code == SpeechRecognizer.ERROR_RECOGNIZER_BUSY;
+    }
+
     void onError(int code) {
-        if (destroyed) return;
+        if (destroyed || !listening) return;
         // Offline packs are missing on some phones: retry once without EXTRA_PREFER_OFFLINE.
-        if (listening && offlineTried && (code == SpeechRecognizer.ERROR_CLIENT
+        if (offlineTried && (code == SpeechRecognizer.ERROR_CLIENT
                 || code == SpeechRecognizer.ERROR_SERVER
                 || code == SpeechRecognizer.ERROR_NETWORK
-                || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
-                || code == SpeechRecognizer.ERROR_NO_MATCH)) {
+                || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT)) {
             listen(false);
             return;
         }
         listening = false;
         notifyState(false);
+        if (softListenError(code)) {
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false));
+            return;
+        }
         fail(friendlyError(code));
     }
 
