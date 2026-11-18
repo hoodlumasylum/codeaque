@@ -101,6 +101,11 @@ public final class NovaSettingsUi implements NovaDlJob.NovaDlUi {
         TextView head = hint(act, "Listening");
         head.setPadding(0, pad, 0, 0);
         box.addView(head);
+        String installed = NovaAppVer.NAME;
+        try {
+            installed = act.getPackageManager().getPackageInfo(act.getPackageName(), 0).versionName;
+        } catch (Exception ignored) { }
+        box.addView(hint(act, NovaAppVer.label(installed)));
         String line = NovaListenDiag.line();
         if (line == null || line.isEmpty()) {
             line = "Listening status will show here after you use the mic.";

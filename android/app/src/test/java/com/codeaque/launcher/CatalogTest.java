@@ -1454,13 +1454,13 @@ public class CatalogTest {
                 && !NovaListenPick.useBuiltinNow(false, true, true, false)
                 && NovaListenPick.useBuiltinNow(true, true, true, false)
                 && !NovaListenPick.useBuiltinNow(true, false, false, false), "built-in is default when no system service, or when forced and ready");
-        check(NovaListenPick.shouldFallToBuiltin(true, false, 5, false)
+        check(NovaListenPick.shouldFallToBuiltin(true, false, 1, false)
                 && !NovaListenPick.shouldFallToBuiltin(false, false, 5, false)
-                && NovaListenPick.shouldFallToBuiltin(true, false, 1, true)
-                && !NovaListenPick.shouldFallToBuiltin(true, true, 5, true), "fall to built-in after empty cycles or a hard error, not twice");
+                && NovaListenPick.shouldFallToBuiltin(true, false, 0, true)
+                && !NovaListenPick.shouldFallToBuiltin(true, true, 5, true), "fall to built-in after one empty cycle or a hard error, not twice");
         check(NovaListenPick.shouldOfferBuiltin(false, false, false, 0)
                 && !NovaListenPick.shouldOfferBuiltin(true, false, false, 0)
-                && NovaListenPick.shouldOfferBuiltin(false, true, false, 5), "offer the pack when there is no service, or after five empty tries");
+                && NovaListenPick.shouldOfferBuiltin(false, true, false, 1), "offer the pack when there is no service, or after one empty try");
         check(NovaListenPick.retryBusyAfterPause(false) && !NovaListenPick.retryBusyAfterPause(true), "busy mic retries once after pausing hidden listen");
         check(NovaAsrFiles.sizesOk(20_000_000L, 100_000L, 100_000L, 10L)
                 && !NovaAsrFiles.sizesOk(19_000_000L, 100_000L, 100_000L, 10L)
@@ -1481,6 +1481,24 @@ public class CatalogTest {
         check(NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_SILENT)
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_VIBRATE)
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
+
+        // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
+        check(NovaAppVer.NAME.equals("0.10.64") && NovaAppVer.CODE == 164, "shipping version is 0.10.64");
+        check(NovaAppVer.label().equals("CodeAque 0.10.64")
+                && NovaAppVer.label("0.10.64").equals("CodeAque 0.10.64")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.64")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.64"), "version label for Chat and Nova's tab");
+        check(NovaListenPick.showBuiltinButton(false, false)
+                && !NovaListenPick.showBuiltinButton(true, false)
+                && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
+        check(NovaListenPick.EMPTY_BEFORE_BUILTIN == 1
+                && NovaListenPick.shouldFallToBuiltin(true, false, 1, false, false)
+                && !NovaListenPick.shouldFallToBuiltin(true, false, 0, false, false)
+                && NovaListenPick.shouldFallToBuiltin(true, false, 0, false, true), "one empty result or a busy mic is enough to switch to built-in");
+        check(NovaListenPick.switchBusyToBuiltin(true, false, true)
+                && !NovaListenPick.switchBusyToBuiltin(true, false, false)
+                && !NovaListenPick.switchBusyToBuiltin(false, false, true)
+                && !NovaListenPick.switchBusyToBuiltin(true, true, true), "after the busy retry, switch to built-in if it is downloaded and not already in use");
 
 
 

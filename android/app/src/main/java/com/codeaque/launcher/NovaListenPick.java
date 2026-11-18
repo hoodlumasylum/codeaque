@@ -34,18 +34,43 @@ public final class NovaListenPick {
         return code == 1 || code == 2 || code == 4 || code == NovaVoiceGate.ERR_CLIENT;
     }
 
+    /**
+     * After one empty system result (or a busy/hard error), switch to the
+     * built-in pack if it is on the phone. Do not wait for five deaf cycles.
+     */
+    public static final int EMPTY_BEFORE_BUILTIN = 1;
+
     public static boolean shouldFallToBuiltin(boolean builtinReady, boolean alreadyBuiltin,
             int emptyCycles, boolean hardSystemError) {
+        return shouldFallToBuiltin(builtinReady, alreadyBuiltin, emptyCycles, hardSystemError, false);
+    }
+
+    public static boolean shouldFallToBuiltin(boolean builtinReady, boolean alreadyBuiltin,
+            int emptyCycles, boolean hardSystemError, boolean micBusy) {
         if (alreadyBuiltin || !builtinReady) return false;
-        if (hardSystemError) return true;
-        return emptyCycles >= NovaListenGate.EMPTY_CYCLES_MAX;
+        if (hardSystemError || micBusy) return true;
+        return emptyCycles >= EMPTY_BEFORE_BUILTIN;
     }
 
     public static boolean shouldOfferBuiltin(boolean builtinReady, boolean recOk,
             boolean onDeviceOk, int emptyCycles) {
         if (builtinReady) return false;
         if (!recOk && !onDeviceOk) return true;
-        return emptyCycles >= NovaListenGate.EMPTY_CYCLES_MAX;
+        return emptyCycles >= EMPTY_BEFORE_BUILTIN;
+    }
+
+    /** Chat should keep the download button on screen whenever the pack is missing. */
+    public static boolean showBuiltinButton(boolean builtinReady, boolean downloading) {
+        return !builtinReady && !downloading;
+    }
+
+    /**
+     * After the hidden-listen pause retry, a still-busy system recognizer
+     * should give the built-in pack a try when it is downloaded.
+     */
+    public static boolean switchBusyToBuiltin(boolean builtinReady, boolean alreadyBuiltin,
+            boolean alreadyRetried) {
+        return builtinReady && !alreadyBuiltin && alreadyRetried;
     }
 
     /** Pause the hidden listen service once, then retry a busy mic. */

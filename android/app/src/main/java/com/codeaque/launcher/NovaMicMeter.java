@@ -11,15 +11,20 @@ import android.view.View;
 public final class NovaMicMeter extends View {
     final Paint back = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    final Paint border;
     final RectF rect = new RectF();
     float level;
 
     public NovaMicMeter(Context c) { this(c, null); }
     public NovaMicMeter(Context c, AttributeSet a) {
         super(c, a);
-        back.setColor(0xFF2A3038);
+        back.setColor(0xFF4A5562);
         fill.setColor(0xFFE8C872);
-        setMinimumHeight(dp(10));
+        border = new Paint(Paint.ANTI_ALIAS_FLAG);
+        border.setStyle(Paint.Style.STROKE);
+        border.setColor(0xCCE8C872);
+        border.setStrokeWidth(Math.max(1f, dp(1)));
+        setMinimumHeight(dp(16));
     }
 
     int dp(int v) {
@@ -38,7 +43,7 @@ public final class NovaMicMeter extends View {
 
     @Override protected void onMeasure(int wSpec, int hSpec) {
         int w = MeasureSpec.getSize(wSpec);
-        int h = dp(12);
+        int h = dp(16);
         if (MeasureSpec.getMode(hSpec) == MeasureSpec.EXACTLY) h = MeasureSpec.getSize(hSpec);
         else if (MeasureSpec.getMode(hSpec) == MeasureSpec.AT_MOST) h = Math.min(h, MeasureSpec.getSize(hSpec));
         setMeasuredDimension(w, h);
@@ -50,8 +55,9 @@ public final class NovaMicMeter extends View {
         c.drawRoundRect(rect, dp(3), dp(3), back);
         float w = rect.width() * level;
         if (w > 1f) {
-            rect.right = rect.left + w;
-            c.drawRoundRect(rect, dp(3), dp(3), fill);
+            android.graphics.RectF fillRect = new android.graphics.RectF(rect.left, rect.top, rect.left + w, rect.bottom);
+            c.drawRoundRect(fillRect, dp(3), dp(3), fill);
         }
+        if (border != null) c.drawRoundRect(rect, dp(3), dp(3), border);
     }
 }

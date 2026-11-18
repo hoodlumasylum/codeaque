@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.64
+
+**Built-in listening is the obvious path in Chat.** "Get built-in listening" stays on the Chat screen whenever the pack is not downloaded, above the fold, with a visible mic level bar (a labelled Mic meter with a gold outline, so it is not a dark strip on a dark card). On a short landscape Chat window, those controls were previously clipped under "Get speech service". The Play Store button is now a secondary control in the scrolling area. Chat and Nova's tab show a **CodeAque 0.10.64** version label so a screenshot can confirm the installed build.
+
+**A deaf or busy system recognizer falls over sooner.** If the phone's speech service starts but hears nothing, she switches to built-in listening after one empty try when the pack is downloaded, instead of five. If the mic is busy (a screen recorder is a common cause), she still pauses her own hidden-listen service and tries once more; if it is still busy and built-in listening is on the phone, she switches to that automatically.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. The new Chat layout on a short landscape screen, automatic fallback to built-in listening when a screen recorder holds the mic, and the version label on a device remain untested.
+
 ## What's new in 0.10.63
 
 **Listening no longer depends on Google.** If this phone has no speech service (common without the Google app), or the system recognizer keeps failing, Nova can use a built-in offline listener. It is a small English model (about 45 MB) that you download when you want it, the same way as her voice — it is not stored in the app. Chat and Nova's tab say why she is not hearing you, for example "No speech service on this phone, using built-in" or "Mic permission denied", and a mic level bar shows whether the microphone is actually open. If the mic was not allowed and the system will not ask again, you get an Open Settings path.
