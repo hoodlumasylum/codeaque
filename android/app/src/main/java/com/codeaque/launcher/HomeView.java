@@ -45,7 +45,7 @@ public class HomeView extends View {
         void timeUpAskParent();
         /** 0.10.37: while a parent PIN dialog is open, tiles must not activate (wrong PIN / A / Enter must not launch). */
         boolean pinDialogOpen();
-        /** 0.10.42 / 0.10.43 / 0.10.45: tabbed big-tile grid (Kids always; adult default unless Classic home is on). */
+        /** 0.10.42 / 0.10.47: tabbed home with one row of large tiles (Kids always; adult default unless Classic home is on). */
         boolean browseLayout();
         /** Description under a browse-list title; empty if none. */
         String itemBlurb(Catalog.Item item);
@@ -191,13 +191,11 @@ public class HomeView extends View {
             case KeyEvent.KEYCODE_DPAD_RIGHT: if (inCats) setCat(cat + 1); else setTile(tile + 1); return true;
             case KeyEvent.KEYCODE_DPAD_UP:
                 if (!inCats) {
-                    if (browseList() && tile >= browseCols()) { setTile(tile - browseCols()); return true; }
                     inCats = true; host.sound("hhmove"); invalidate();
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (inCats) { inCats = false; host.sound("hhmove"); invalidate(); }
-                else if (browseList()) setTile(tile + browseCols());
                 return true;
             case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_DPAD_CENTER:
                 // 0.10.45: short press opens; hold A / Enter ticks the tile for multi-select install
@@ -268,12 +266,10 @@ public class HomeView extends View {
 
     private float maxScroll() {
         if (browseList()) {
-            float rh = browseRowH(), span = browseBottom() - browseTop();
-            if (rh <= 1) return 0;
-            float vis = Math.max(1, span / rh);
-            int cols = Math.max(1, browseCols());
-            int rows = (items().size() + cols - 1) / cols;
-            return Math.max(0, rows - vis);
+            float step = browseTileW() + browseGap();
+            if (step <= 1) return 0;
+            float vis = Math.max(1, (getWidth() - 2 * browsePad()) / step);
+            return Math.max(0, items().size() - vis);
         }
         float step = tileW() + tileGap();
         if (step <= 1) return 0;
@@ -288,30 +284,25 @@ public class HomeView extends View {
         if ("kthemes".equals(id) || "kwifi".equals(id) || "kparent".equals(id) || "settings".equals(id) || "power".equals(id)) return false;
         return true;
     }
-    /** 0.10.45: a 2-row grid of large tiles under the category tabs (3 wide on a 640x480 handheld). */
-    private float browsePad() { return 16 * s; }
-    private int browseCols() {
-        int w = getWidth();
-        if (w >= 1500) return 5;
-        if (w >= 1100) return 4;
-        return 3;
-    }
-    private float browseGap() { return 10 * s; }
+    /** 0.10.47: one horizontal row of large cover tiles under the category tabs. */
+    private float browsePad() { return 20 * s; }
+    private float browseGap() { return 12 * s; }
     private float browseNameH() { return 22 * s; }
-    private float browseTileW() {
-        int cols = Math.max(1, browseCols());
-        float avail = Math.max(40 * s, getWidth() - 2 * browsePad());
-        return Math.max(40 * s, (avail - (cols - 1) * browseGap()) / cols);
-    }
     private float browseTileH() {
         float span = Math.max(80 * s, browseBottom() - browseTop());
-        float h = span / 2.08f - browseNameH() - browseGap();
-        float w = browseTileW();
-        if (h > w * 1.2f) h = w * 1.2f;
-        if (h < 64 * s) h = 64 * s;
+        float h = span - browseNameH() - 6 * s;
+        if (h < 72 * s) h = 72 * s;
         return h;
     }
-    private float browseRowH() { return browseTileH() + browseNameH() + browseGap(); }
+    private float browseTileW() {
+        // Portrait covers, sized so a small handheld still shows more than one tile.
+        float h = browseTileH();
+        float w = h * 0.72f;
+        float avail = Math.max(40 * s, getWidth() - 2 * browsePad());
+        if (w > avail * 0.52f) w = avail * 0.52f;
+        if (w < 56 * s) w = 56 * s;
+        return w;
+    }
     private float browseTop() { return catsBottom() + 8 * s; }
     private float browseBottom() { return getHeight() - footH(); }
     private float clampScroll(float v) { float m = maxScroll(); return v < 0 ? 0 : v > m ? m : v; }
@@ -337,14 +328,13 @@ public class HomeView extends View {
     public void clearPicks() { picked.clear(); installBtn.setEmpty(); invalidate(); }
     private int hitBrowseItem(float x, float y) {
         if (!browseList() || y < browseTop() || y > browseBottom()) return -1;
-        int cols = Math.max(1, browseCols());
-        float left = browsePad(), tw = browseTileW(), gap = browseGap(), rh = browseRowH();
-        int col = (int) Math.floor((x - left) / (tw + gap));
-        if (col < 0 || col >= cols || x > left + col * (tw + gap) + tw) return -1;
-        int row = (int) Math.floor((y - browseTop()) / rh + scrollAnim);
-        if (row < 0) return -1;
-        int i = row * cols + col;
-        return (i >= 0 && i < items().size()) ? i : -1;
+        float left = browsePad(), tw = browseTileW(), gap = browseGap(), th = browseTileH();
+        if (y > browseTop() + th + browseNameH()) return -1;
+        int i = (int) Math.floor((x - left) / (tw + gap) + scrollAnim);
+        if (i < 0 || i >= items().size()) return -1;
+        float x0 = left + (i - scrollAnim) * (tw + gap);
+        if (x < x0 || x > x0 + tw) return -1;
+        return i;
     }
     private boolean onInstallBtn(float x, float y) { return !picked.isEmpty() && installBtn.contains(x, y); }
 
@@ -377,10 +367,8 @@ public class HomeView extends View {
     private boolean nearBrowseEnd() {
         int n = items().size();
         if (n == 0) return false;
-        int cols = Math.max(1, browseCols());
-        int row = Math.max(tile / cols, (int) Math.ceil(scrollAnim));
-        int pos = (row + 2) * cols;
-        return n - pos <= cols * 2;
+        int pos = Math.max(tile, (int) Math.ceil(scrollAnim));
+        return n - pos <= 4;
     }
 
     /** Seven taps, each within 0.9 s of the last, open the hidden parent menu (only useful while Lock mode is on). */
@@ -451,7 +439,6 @@ public class HomeView extends View {
                     boolean onTiles = downY > tilesTop() && downY < tilesTop() + tileH();
                     boolean onTabs = !boxset && downY >= tabStripTop() && downY <= catsBottom();
                     if (onTabs && horiz) { tabDrag = true; tabFollow = false; }
-                    else if (onList && !horiz) rowDrag = true;
                     else if (!horiz) { /* a vertical rub is not a tap and not a section change */ }
                     else if ((!onTiles && !onList) || maxScroll() < 0.5f) sectionSwipe = true;
                     else {
@@ -467,15 +454,9 @@ public class HomeView extends View {
                     invalidate();
                 } else if (rowDrag) {
                     userScroll = true; flingV = 0;
-                    if (browseList()) {
-                        float step = Math.max(1f, browseRowH());
-                        scrollAnim = clampScroll(scrollAnim + (lastTouchY - y) / step);
-                        lastTouchY = y;
-                    } else {
-                        float step = tileW() + tileGap();
-                        scrollAnim = clampScroll(scrollAnim + (lastTouchX - x) / step);
-                        lastTouchX = x;
-                    }
+                    float step = browseList() ? (browseTileW() + browseGap()) : (tileW() + tileGap());
+                    scrollAnim = clampScroll(scrollAnim + (lastTouchX - x) / Math.max(1f, step));
+                    lastTouchX = x;
                     invalidate();
                 }
                 return true;
@@ -489,13 +470,8 @@ public class HomeView extends View {
                     if (x - downX < -40 * s) setCat(cat + 1);
                     else if (x - downX > 40 * s) setCat(cat - 1);
                 } else if (rowDrag && e.getActionMasked() == MotionEvent.ACTION_UP && velocity != null) {
-                    if (browseList()) {
-                        float step = Math.max(1f, browseRowH());
-                        flingV = -velocity.getYVelocity() / step;   // finger up -> later rows
-                    } else {
-                        float step = Math.max(1f, tileW() + tileGap());
-                        flingV = -velocity.getXVelocity() / step;   // finger left -> later tiles
-                    }
+                    float step = Math.max(1f, browseList() ? (browseTileW() + browseGap()) : (tileW() + tileGap()));
+                    flingV = -velocity.getXVelocity() / step;   // finger left -> later tiles
                     userScroll = Math.abs(flingV) > 0.15f;
                     invalidate();
                 }
@@ -607,16 +583,9 @@ public class HomeView extends View {
         fireTileHold();
         float vis, maxScroll, focusTarget;
         if (browseList()) {
-            int cols = Math.max(1, browseCols());
-            int rows = (items().size() + cols - 1) / cols;
-            float span = Math.max(1f, browseBottom() - browseTop());
-            vis = Math.max(1, span / Math.max(1f, browseRowH()));
-            maxScroll = Math.max(0, rows - vis);
-            int focusRow = Math.max(0, tile / cols);
-            if (focusRow < scrollAnim) focusTarget = focusRow;
-            else if (focusRow > scrollAnim + vis - 1f) focusTarget = focusRow - vis + 1f;
-            else focusTarget = scrollAnim;
-            focusTarget = Math.max(0, Math.min(focusTarget, maxScroll));
+            vis = Math.max(1, (W - 2 * browsePad()) / (browseTileW() + browseGap()));
+            maxScroll = Math.max(0, items().size() - vis);
+            focusTarget = Math.max(0, Math.min(tile - (vis - 1) / 2f, maxScroll));
         } else {
             vis = Math.max(1, (W - 2 * tilesLeft()) / (tileW() + tileGap()));
             maxScroll = Math.max(0, items().size() - vis);
@@ -631,8 +600,7 @@ public class HomeView extends View {
             if (scrollAnim > maxScroll) { scrollAnim = maxScroll; flingV = 0; }
             if (Math.abs(flingV) < 0.08f) {
                 userScroll = false; flingV = 0;
-                if (!browseList())
-                    tile = Math.max(0, Math.min(items().size() - 1, Math.round(scrollAnim + (vis - 1) / 2f)));
+                tile = Math.max(0, Math.min(items().size() - 1, Math.round(scrollAnim + (vis - 1) / 2f)));
             }
         } else {
             float dist = focusTarget - scrollAnim;          // controller focus-follow: always ease, never jump
@@ -978,23 +946,20 @@ public class HomeView extends View {
         c.drawLine(cx - 1.5f * s, cy + 4.5f * s, cx + 6 * s, cy - 4 * s, stroke);
     }
 
-    /** 0.10.45: old Kids-style big cover tiles in a grid (~2 rows on a small landscape screen). */
+    /** 0.10.47: one sleek horizontal row of large covers under the tabs. */
     private void browseList(Canvas c, int W, int H) {
         List<Catalog.Item> its = items();
-        float top = browseTop(), bot = browseBottom(), rh = browseRowH();
+        float top = browseTop(), bot = browseBottom();
         float tw = browseTileW(), th = browseTileH(), gap = browseGap(), left = browsePad();
-        int cols = Math.max(1, browseCols());
         c.save();
-        c.clipRect(0, top - 2 * s, W, bot + 2 * s);
+        c.clipRect(0, top - 8 * s, W, bot + 2 * s);
         for (int i = 0; i < its.size(); i++) {
-            int col = i % cols, row = i / cols;
-            float x = left + col * (tw + gap);
-            float y = top + (row - scrollAnim) * rh;
-            if (y + rh < top || y > bot) continue;
+            float x = left + (i - scrollAnim) * (tw + gap);
+            if (x > W || x + tw < 0) continue;
             boolean sel = i == tile && !inCats;
             Catalog.Item it = its.get(i); badgeItem = it;
             float grow = sel ? 6 * s : 0;
-            r.set(x - grow, y - grow, x + tw + grow, y + th + grow);
+            r.set(x - grow, top - grow, x + tw + grow, top + th + grow);
             if (sel) {
                 p.setShader(new RadialGradient(r.centerX(), r.centerY(), tw * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), tw * 0.85f, p); p.setShader(null);
@@ -1003,7 +968,7 @@ public class HomeView extends View {
             getBadge(c, it);
             tickBadge(c, it);
             updBadge(c);
-            tileName(c, it.label.toUpperCase(Locale.ROOT), x + tw / 2, y + th + browseNameH() - 4 * s, tw - 4 * s, (kids ? 16 : 13) * s, 9 * s);
+            tileName(c, it.label.toUpperCase(Locale.ROOT), x + tw / 2, top + th + browseNameH() - 4 * s, tw - 4 * s, (kids ? 16 : 13) * s, 9 * s);
         }
         c.restore();
         if (its.isEmpty()) text(c, "Nothing in this list yet.", W / 2f, (top + bot) / 2, 16 * s, DIM, Paint.Align.CENTER, false);

@@ -31,6 +31,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.47 (unreleased)
+
+Games on the tabbed home (Kids, Kids 12+, and the adult default) are back on **one horizontal row** of large cover tiles — the sleeker layout from before the 0.10.45 two-row grid. Category tabs, tick-to-install, covers and infinite paging stay. Classic home layout is unchanged.
+
 ## What's new in 0.10.46
 
 **Scrolling category tabs (Android).** Adult mode has many tabs, and on a small landscape screen the old equal-width labels ran into each other ("Puzzle Racing Adventure Learning Roblox-style…"). The tab strip now scrolls sideways. Each tab keeps a fixed minimum gap and is wide enough for its full name, so labels never overlap, clip or merge. The selected tab is always scrolled fully into view, including when you change tabs with L1/R1. You can also drag the strip itself.
