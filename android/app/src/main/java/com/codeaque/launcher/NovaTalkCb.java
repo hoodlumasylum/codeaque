@@ -37,4 +37,15 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
         view.refreshMicLabel();
         view.postDelayed(new NovaListenSoon(view), 300);
     }
+
+    @Override public void onSpeechUsePrompt() {
+        if (view == null) return;
+        view.refreshMicLabel();
+        if (view.host != null) view.host.novaStartSpeechPrompt();
+    }
+
+    @Override public void onSpeechNeedService() {
+        if (view == null) return;
+        view.showSpeechServiceMissing();
+    }
 }

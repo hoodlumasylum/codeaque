@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="158" android:versionName="0.10.58">
+    android:versionCode="159" android:versionName="0.10.59">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -28,6 +28,9 @@
         <package android:name="com.roblox.client" />
         <package android:name="com.mojang.minecraftpe" />
         <package android:name="com.android.vending" />
+        <!-- 0.10.59: SpeechRecognizer.isRecognitionAvailable / Play Store speech pack -->
+        <package android:name="com.google.android.tts" />
+        <package android:name="com.google.android.googlequicksearchbox" />
         <package android:name="com.nvidia.geforcenow" />
         <package android:name="com.android.chrome" />
         <package android:name="com.flycast.emulator" />
@@ -45,6 +48,8 @@
         <intent><action android:name="android.intent.action.DIAL" /><data android:scheme="tel" /></intent>
         <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent>
         <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <!-- 0.10.59: fallback speak-now activity; required or resolveActivity is false on API 30+ -->
+        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
     </queries>
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />

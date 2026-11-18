@@ -9,24 +9,52 @@ static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct NovaTts {
     const SherpaOnnxOfflineTts *tts;
+    int last_rate;
 };
+
+static const char *chars_or_empty(JNIEnv *env, jstring js, const char **held) {
+    if (!js) { *held = NULL; return ""; }
+    const char *s = (*env)->GetStringUTFChars(env, js, NULL);
+    *held = s;
+    return s ? s : "";
+}
 
 JNIEXPORT jlong JNICALL
 Java_com_codeaque_launcher_NovaKokoro_nativeLoad(JNIEnv *env, jclass cls,
-        jstring jmodel, jstring jvoices, jstring jtokens, jstring jlexicon) {
+        jstring jmodel, jstring jvoices, jstring jtokens, jstring jlexicon,
+        jstring jdataDir, jstring jlang) {
     (void)cls;
     if (!jmodel || !jvoices || !jtokens) return 0;
-    const char *model = (*env)->GetStringUTFChars(env, jmodel, NULL);
-    const char *voices = (*env)->GetStringUTFChars(env, jvoices, NULL);
-    const char *tokens = (*env)->GetStringUTFChars(env, jtokens, NULL);
-    const char *lexicon = jlexicon ? (*env)->GetStringUTFChars(env, jlexicon, NULL) : NULL;
+    const char *model, *voices, *tokens, *lexicon, *dataDir, *lang;
+    const char *hmodel = NULL, *hvoices = NULL, *htokens = NULL, *hlex = NULL, *hdata = NULL, *hlang = NULL;
+    model = chars_or_empty(env, jmodel, &hmodel);
+    voices = chars_or_empty(env, jvoices, &hvoices);
+    tokens = chars_or_empty(env, jtokens, &htokens);
+    lexicon = chars_or_empty(env, jlexicon, &hlex);
+    dataDir = chars_or_empty(env, jdataDir, &hdata);
+    lang = chars_or_empty(env, jlang, &hlang);
+    if (!hmodel || !hvoices || !htokens) {
+        if (hmodel) (*env)->ReleaseStringUTFChars(env, jmodel, hmodel);
+        if (hvoices) (*env)->ReleaseStringUTFChars(env, jvoices, hvoices);
+        if (htokens) (*env)->ReleaseStringUTFChars(env, jtokens, htokens);
+        if (hlex && jlexicon) (*env)->ReleaseStringUTFChars(env, jlexicon, hlex);
+        if (hdata && jdataDir) (*env)->ReleaseStringUTFChars(env, jdataDir, hdata);
+        if (hlang && jlang) (*env)->ReleaseStringUTFChars(env, jlang, hlang);
+        return 0;
+    }
 
     SherpaOnnxOfflineTtsConfig config;
     memset(&config, 0, sizeof(config));
     config.model.kokoro.model = model;
     config.model.kokoro.voices = voices;
     config.model.kokoro.tokens = tokens;
-    config.model.kokoro.lexicon = lexicon ? lexicon : "";
+    config.model.kokoro.lexicon = lexicon;
+    /* v2.0 ignores data_dir / lang (espeak removed). Still set them so an
+     * older library would phonemize English; leave dict_dir empty so jieba/zh
+     * is never forced. Language then comes from lexicon-us-en.txt. */
+    config.model.kokoro.data_dir = dataDir;
+    config.model.kokoro.dict_dir = "";
+    config.model.kokoro.lang = (lang && lang[0]) ? lang : "en-us";
     config.model.kokoro.length_scale = 1.0f;
     config.model.num_threads = 2;
     config.model.debug = 0;
@@ -38,10 +66,12 @@ Java_com_codeaque_launcher_NovaKokoro_nativeLoad(JNIEnv *env, jclass cls,
     const SherpaOnnxOfflineTts *tts = SherpaOnnxCreateOfflineTts(&config);
     pthread_mutex_unlock(&g_lock);
 
-    if (model) (*env)->ReleaseStringUTFChars(env, jmodel, model);
-    if (voices) (*env)->ReleaseStringUTFChars(env, jvoices, voices);
-    if (tokens) (*env)->ReleaseStringUTFChars(env, jtokens, tokens);
-    if (lexicon && jlexicon) (*env)->ReleaseStringUTFChars(env, jlexicon, lexicon);
+    if (hmodel) (*env)->ReleaseStringUTFChars(env, jmodel, hmodel);
+    if (hvoices) (*env)->ReleaseStringUTFChars(env, jvoices, hvoices);
+    if (htokens) (*env)->ReleaseStringUTFChars(env, jtokens, htokens);
+    if (hlex && jlexicon) (*env)->ReleaseStringUTFChars(env, jlexicon, hlex);
+    if (hdata && jdataDir) (*env)->ReleaseStringUTFChars(env, jdataDir, hdata);
+    if (hlang && jlang) (*env)->ReleaseStringUTFChars(env, jlang, hlang);
 
     if (!tts) return 0;
     struct NovaTts *h = (struct NovaTts *)calloc(1, sizeof(*h));
@@ -50,6 +80,8 @@ Java_com_codeaque_launcher_NovaKokoro_nativeLoad(JNIEnv *env, jclass cls,
         return 0;
     }
     h->tts = tts;
+    h->last_rate = SherpaOnnxOfflineTtsSampleRate(tts);
+    if (h->last_rate <= 0) h->last_rate = 24000;
     return (jlong)(intptr_t)h;
 }
 
@@ -69,7 +101,9 @@ JNIEXPORT jint JNICALL
 Java_com_codeaque_launcher_NovaKokoro_nativeSampleRate(JNIEnv *env, jclass cls, jlong handle) {
     (void)env; (void)cls;
     struct NovaTts *h = (struct NovaTts *)(intptr_t)handle;
-    if (!h || !h->tts) return 0;
+    if (!h) return 0;
+    if (h->last_rate > 0) return h->last_rate;
+    if (!h->tts) return 0;
     return SherpaOnnxOfflineTtsSampleRate(h->tts);
 }
 
@@ -105,6 +139,7 @@ Java_com_codeaque_launcher_NovaKokoro_nativeSynthesize(JNIEnv *env, jclass cls,
         if (audio) SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);
         return NULL;
     }
+    if (audio->sample_rate > 0) h->last_rate = audio->sample_rate;
     jfloatArray out = (*env)->NewFloatArray(env, audio->n);
     if (out) (*env)->SetFloatArrayRegion(env, out, 0, audio->n, audio->samples);
     SherpaOnnxDestroyOfflineTtsGeneratedAudio(audio);

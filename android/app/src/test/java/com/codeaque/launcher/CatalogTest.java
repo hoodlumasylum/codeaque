@@ -1316,6 +1316,31 @@ public class CatalogTest {
                 "recycle the recognizer after client/busy/no-match/timeout");
         check(NovaListenHidden.TOAST_HIDDEN.contains("Nova tab"), "hide toast points at the Nova tab");
 
+        // 0.10.59: Install stays until the installed version is current; Heart sid/lang;
+        // speech-service copy; English TTS fallback; listen gate can reopen after a dead callback.
+        check(UpdateOffer.shouldShow("0.10.59", "0.10.58") && !UpdateOffer.shouldShow("0.10.59", "0.10.59"), "offer shows only while installed is older");
+        check(!UpdateOffer.shouldShow("", "0.10.58") && !UpdateOffer.shouldShow(null, "0.10.58"), "empty offer hides");
+        check(UpdateOffer.shouldShow("0.10.59", "0.10.59", 159, 158) && !UpdateOffer.shouldShow("0.10.59", "0.10.58", 159, 159), "versionCode wins when known");
+        check(UpdateOffer.bannerLabel("0.10.59").contains("0.10.59") && UpdateOffer.INSTALL.equals("Install"), "banner names the version and Install");
+        check(NovaKokoroSpeakers.AF_HEART == 3 && NovaKokoroSpeakers.idForVoice(NovaVoices.ID_KOKORO_HEART) == 3, "Heart is sid 3 on v1.0");
+        check(NovaKokoroSpeakers.idForVoice(NovaVoices.ID_KOKORO_BELLA) == 2 && NovaKokoroSpeakers.idForVoice(NovaVoices.ID_KOKORO_EMMA) == 21, "Bella 2 Emma 21");
+        check(NovaKokoroSpeakers.safeSid(-1) == 3 && NovaKokoroSpeakers.safeSid(99) == 3, "bad sid falls back to Heart, not a Chinese voice");
+        check(NovaKokoroSpeakers.isEnglishSpeaker(3) && !NovaKokoroSpeakers.isEnglishSpeaker(45), "zf_* is not an English speaker");
+        check(NovaKokoroSpeakers.LANG.equals("en-us") && NovaKokoroSpeakers.SAMPLE_RATE == 24000, "en-us at 24 kHz");
+        check(NovaSpeechAvail.path(true, false) == NovaSpeechAvail.USE_RECOGNIZER, "recognizer wins when available");
+        check(NovaSpeechAvail.path(false, true) == NovaSpeechAvail.USE_PROMPT, "system speak-now is the fallback");
+        check(NovaSpeechAvail.path(false, false) == NovaSpeechAvail.NEED_INSTALL, "no service means install");
+        check(NovaSpeechAvail.NO_SERVICE.contains("Speech Recognition & Synthesis from Google from Play Store"), "exact Play Store wording");
+        check(!NovaSpeechAvail.NO_SERVICE.toLowerCase().contains("iphone") && !NovaSpeechAvail.NO_SERVICE.toLowerCase().contains("apple"), "speech copy has no brand words");
+        check(NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_INSTALL) && !NovaSpeechAvail.showInstallButton(NovaSpeechAvail.USE_RECOGNIZER), "install button only when needed");
+        check(NovaSpeechAvail.status(NovaSpeechAvail.USE_RECOGNIZER, true, null).equals("Listening…"), "status shows Listening");
+        check(NovaTtsVoice.preferredLanguageTag(true, true).equals("en-GB") && NovaTtsVoice.preferredLanguageTag(false, true).equals("en-US"), "UK then US");
+        check(NovaTtsVoice.isEnglish("en") && NovaTtsVoice.isEnglish("EN") && !NovaTtsVoice.isEnglish("zh"), "only English counts as English");
+        check(!NovaTtsVoice.acceptFallbackLocale("zh") && NovaTtsVoice.acceptFallbackLocale("en"), "never fall back to a zh locale");
+        check(NovaVoiceGate.canStartListen(true, true, false, false, false) && !NovaVoiceGate.canStartListen(true, true, true, false, false), "listen waits while she is talking");
+
+
+
 
     }
 

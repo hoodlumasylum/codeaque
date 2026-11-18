@@ -69,6 +69,10 @@ public class HomeView extends View {
         /** 0.10.55: so Back / B can hide the system IME first, without leaving Search. */
         boolean imeVisible();
         void placeKidsSearchField(float left, float top, float right, float bottom, String text, String hint, boolean focused, boolean showField, float textPx, float padH, float padV);
+        /** 0.10.59: Install stays on home and Kids until the update is actually installed. */
+        default boolean updateReady() { return false; }
+        default String updateReadyLabel() { return "Update ready"; }
+        default void onUpdateInstall() {}
     }
 
     private Palette T = Palette.NEON;
@@ -146,6 +150,7 @@ public class HomeView extends View {
     private int logoTaps; private long logoTapAt;
     private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
     private final RectF installBtn = new RectF();
+    private final RectF updateBar = new RectF(), updateBtn = new RectF();
     private final RectF searchQueryBox = new RectF(), searchRetryBox = new RectF(), searchKbBox = new RectF(), searchChipBox = new RectF();
     private final RectF[] searchChipRects = new RectF[KidsPlay.SEARCH_CHIPS.length];
     private String searchQ = "";
@@ -436,6 +441,45 @@ public class HomeView extends View {
         return i;
     }
     private boolean onInstallBtn(float x, float y) { return !picked.isEmpty() && installBtn.contains(x, y); }
+    private boolean onUpdateInstallBtn(float x, float y) {
+        return host.updateReady() && !updateBtn.isEmpty() && updateBtn.contains(x, y);
+    }
+
+    /** Persistent update strip: stays until the installed version is no longer older. No timeout. */
+    private void updateReadyBar(Canvas c, int W, int H) {
+        if (!host.updateReady()) { updateBar.setEmpty(); updateBtn.setEmpty(); return; }
+        float den = getResources().getDisplayMetrics().density;
+        float bh = Math.max(48 * s * (kids ? 1.1f : 1f), 48 * den);
+        float margin = 10 * s;
+        float bot = H - margin;
+        if (!backBtn.isEmpty() && backBtn.top > H * 0.4f) bot = Math.min(bot, backBtn.top - 8 * s);
+        if (!installBtn.isEmpty() && installBtn.top > H * 0.4f) bot = Math.min(bot, installBtn.top - 8 * s);
+        String lab = host.updateReadyLabel();
+        String go = UpdateOffer.INSTALL;
+        p.setShader(null);
+        p.setFakeBoldText(true);
+        p.setTextSize(Math.max(16 * s, 14 * den) * (kids ? 1.1f : 1f));
+        p.setTextAlign(Paint.Align.LEFT);
+        float goW = Math.max(120 * s, p.measureText(go) + 36 * s);
+        float width = Math.min(W - 2 * margin, Math.max(420 * s, p.measureText(lab) + goW + 48 * s));
+        float left = (W - width) / 2f;
+        updateBar.set(left, bot - bh, left + width, bot);
+        updateBtn.set(updateBar.right - goW - 8 * s, updateBar.top + 6 * s, updateBar.right - 8 * s, updateBar.bottom - 6 * s);
+        p.setColor(0xF2161A22);
+        c.drawRoundRect(updateBar, 14 * s, 14 * s, p);
+        stroke.setShader(null); stroke.setStrokeWidth(2.2f * s); stroke.setColor(GOLD);
+        c.drawRoundRect(updateBar, 14 * s, 14 * s, stroke);
+        p.setColor(0xFFFFFFFF);
+        float ty = updateBar.centerY() + p.getTextSize() * 0.35f;
+        c.drawText(lab, updateBar.left + 16 * s, ty, p);
+        p.setColor(0xF2E8C872);
+        c.drawRoundRect(updateBtn, bh / 3, bh / 3, p);
+        p.setColor(0xFF0C0E12);
+        p.setTextAlign(Paint.Align.CENTER);
+        c.drawText(go, updateBtn.centerX(), updateBtn.centerY() + p.getTextSize() * 0.35f, p);
+        p.setFakeBoldText(false);
+        p.setTextAlign(Paint.Align.LEFT);
+    }
 
     private boolean onRobloxRow() {
         if (boxset || cats.isEmpty()) return false;
@@ -480,6 +524,7 @@ public class HomeView extends View {
     }
 
     private void onTap(float x, float y, float H) {
+        if (onUpdateInstallBtn(x, y)) { host.onUpdateInstall(); return; }
         if (kids && host.timeUpScreen()) {
             if (r2.contains(x, y) || (y > getHeight() * 0.60f && y < getHeight() * 0.80f)) host.timeUpAskParent();
             else if (logoTop.contains(x, y) || logoCenter.contains(x, y)) logoHit();
@@ -541,7 +586,7 @@ public class HomeView extends View {
                 row.pointerDown();
                 row.scroll = scrollAnim;
                 row.tile = tile;
-                if (!onInstallBtn(x, y)) {
+                if (!onInstallBtn(x, y) && !onUpdateInstallBtn(x, y)) {
                     int hi = hitBrowseItem(x, y);
                     if (hi >= 0) { holdTile = hi; holdAt = e.getEventTime() + 450; postInvalidateDelayed(450); }
                 }
@@ -626,6 +671,7 @@ public class HomeView extends View {
         if (!boxset && y >= tabStripTop() && y <= catsBottom()) return false;
         if (backBtn.contains(x, y)) return false;
         if (!installBtn.isEmpty() && installBtn.contains(x, y)) return false;
+        if (onUpdateInstallBtn(x, y)) return false;
         if (onSearch() && inSearchUi(x, y)) return false;
         return true;
     }
@@ -773,6 +819,7 @@ public class HomeView extends View {
         if (browseList()) installFab(c, W, H);
         if (prompt != null) prompt(c, W, H);
         if (kids && host.timeUpScreen()) timeUpPanel(c, W, H);
+        updateReadyBar(c, W, H);
         if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
 
         boolean settling = moving || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f

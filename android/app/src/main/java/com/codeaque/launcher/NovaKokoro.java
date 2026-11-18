@@ -58,10 +58,7 @@ public final class NovaKokoro {
     }
 
     public static int speakerId(SharedPreferences p) {
-        String id = selectedId(p);
-        if (NovaVoices.ID_KOKORO_BELLA.equals(id)) return 2;
-        if (NovaVoices.ID_KOKORO_EMMA.equals(id)) return 21;
-        return 3; // Heart, Nova's default voice
+        return NovaKokoroSpeakers.safeSid(NovaKokoroSpeakers.idForVoice(selectedId(p)));
     }
 
     public static boolean usesOnDevice(Context c, SharedPreferences p) {
@@ -101,15 +98,20 @@ public final class NovaKokoro {
         synchronized (LOCK) {
             if (handle != 0) return true;
             File d = dir(c);
-            String lex = new File(d, LEX_US).getAbsolutePath() + ","
-                    + new File(d, LEX_GB).getAbsolutePath();
-            if (!new File(d, LEX_GB).isFile()) lex = new File(d, LEX_US).getAbsolutePath();
+            String lex = new File(d, LEX_US).getAbsolutePath();
+            File gb = new File(d, LEX_GB);
+            if (gb.isFile() && gb.length() > 1000L) lex = lex + "," + gb.getAbsolutePath();
+            // English only: do not append a Chinese lexicon. dict_dir/jieba stay unset.
+            File espeak = new File(d, "espeak-ng-data");
+            String dataDir = espeak.isDirectory() ? espeak.getAbsolutePath() : "";
             try {
                 long h = nativeLoad(
                         new File(d, MODEL).getAbsolutePath(),
                         new File(d, VOICES).getAbsolutePath(),
                         new File(d, TOKENS).getAbsolutePath(),
-                        lex);
+                        lex,
+                        dataDir,
+                        NovaKokoroSpeakers.LANG);
                 if (h == 0) {
                     lastError = "The voice engine did not start.";
                     Log.w(TAG, lastError);
@@ -117,7 +119,7 @@ public final class NovaKokoro {
                 }
                 handle = h;
                 sampleRate = nativeSampleRate(h);
-                if (sampleRate <= 0) sampleRate = 24000;
+                if (sampleRate <= 0) sampleRate = NovaKokoroSpeakers.SAMPLE_RATE;
                 lastError = null;
                 Log.i(TAG, "Kokoro voice loaded, sampleRate=" + sampleRate);
                 return true;
@@ -140,7 +142,7 @@ public final class NovaKokoro {
     }
 
     public static int sampleRate() {
-        synchronized (LOCK) { return sampleRate > 0 ? sampleRate : 24000; }
+        synchronized (LOCK) { return sampleRate > 0 ? sampleRate : NovaKokoroSpeakers.SAMPLE_RATE; }
     }
 
     /**
@@ -156,8 +158,12 @@ public final class NovaKokoro {
         float sp = NovaVoiceStatus.clampSpeed(speed);
         synchronized (LOCK) {
             if (handle == 0) return null;
-            try { return nativeSynthesize(handle, text, sid, sp); }
-            catch (Throwable t) { return null; }
+            try {
+                float[] s = nativeSynthesize(handle, text, NovaKokoroSpeakers.safeSid(sid), sp);
+                int r = nativeSampleRate(handle);
+                if (r > 0) sampleRate = r;
+                return s;
+            } catch (Throwable t) { return null; }
         }
     }
 
@@ -179,7 +185,7 @@ public final class NovaKokoro {
         try { d.delete(); } catch (Exception ignored) { }
     }
 
-    static native long nativeLoad(String model, String voices, String tokens, String lexicon);
+    static native long nativeLoad(String model, String voices, String tokens, String lexicon, String dataDir, String lang);
     static native void nativeUnload(long handle);
     static native int nativeSampleRate(long handle);
     static native int nativeNumSpeakers(long handle);

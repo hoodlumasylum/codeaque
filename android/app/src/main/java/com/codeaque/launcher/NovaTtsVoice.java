@@ -14,6 +14,26 @@ public final class NovaTtsVoice {
     public static final float RATE = 0.90f; // 0.10.58: slightly slower fallback; slider may override
     public static final int PAUSE_MS = 280;
 
+    /** UK first, then US. Never a non-English default (some ROMs ship a zh voice). */
+    public static final String LANG_UK = "en", COUNTRY_UK = "GB", COUNTRY_US = "US";
+
+    /** TAG used when applying a language on TextToSpeech: "en-GB" or "en-US". */
+    public static String preferredLanguageTag(boolean ukAvailable, boolean usAvailable) {
+        if (ukAvailable) return "en-GB";
+        if (usAvailable) return "en-US";
+        return "en-GB";
+    }
+
+    /** True only for English. Used so we never fall back to the phone's default if it is zh. */
+    public static boolean isEnglish(String language) {
+        return language != null && language.equalsIgnoreCase("en");
+    }
+
+    public static boolean acceptFallbackLocale(String language) {
+        return isEnglish(language);
+    }
+
+
     /**
      * Higher is better. Non-English returns a negative score (skip).
      * Prefers on-device en-GB, then en-US, then other English; female-sounding names;

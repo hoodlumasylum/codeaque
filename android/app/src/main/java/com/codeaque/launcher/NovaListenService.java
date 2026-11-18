@@ -141,7 +141,8 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
         if (ttsReady) {
             try {
                 if (tts.isLanguageAvailable(Locale.UK) >= TextToSpeech.LANG_AVAILABLE) tts.setLanguage(Locale.UK);
-                else tts.setLanguage(Locale.getDefault());
+                else if (tts.isLanguageAvailable(Locale.US) >= TextToSpeech.LANG_AVAILABLE) tts.setLanguage(Locale.US);
+                else tts.setLanguage(Locale.UK);
                 tts.setPitch(NovaTtsVoice.PITCH);
                 tts.setSpeechRate(NovaKokoro.systemRateFrom(prefs(this)));
                 tts.setOnUtteranceProgressListener(ttsProg);
@@ -263,6 +264,8 @@ final class NovaListenSpeechCb implements NovaSpeech.Callbacks {
     }
     @Override public void onSpeechState(boolean listening) { }
     @Override public void onSpeechRetry() { svc.onListenRetry(); }
+    @Override public void onSpeechUsePrompt() { svc.onListenRetry(); }
+    @Override public void onSpeechNeedService() { NovaListenService.stopAndClear(svc); }
 }
 
 final class NovaListenTtsProg extends UtteranceProgressListener {

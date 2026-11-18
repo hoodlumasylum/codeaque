@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.59
+
+**The Install button stays until you install.** If a new CodeAque is ready, an Install bar stays on the home screen and in Kids mode until the installed version is no longer older than the one offered. It comes back after a restart. Later or Back only closes the pop-up; the bar does not time out or hide for a few hours.
+
+**Listening works when the phone has no speech service.** Chat always has a Mic button for tap-to-talk. If this phone has no recognition service (common without the Google app, or on a custom ROM), you will see: "No speech service on this phone - install Speech Recognition & Synthesis from Google from Play Store", with a button that opens that Play Store page. If the in-app recognizer is missing but the system speak-now screen is there, Mic uses that instead. The mic asks for permission first. Listening and errors are shown on the Chat screen. After she finishes speaking, listening starts again even if the speech engine never sent a "done" callback (that used to leave the mic stuck off). English (en-GB) is requested so a phone whose language is not English still listens in English.
+
+**Heart sounds like English.** The on-device voice is loaded with the US English lexicon (`lexicon-us-en.txt`) and language `en-us`, and the speaker is the official Heart id (3) for the v1.0 multi-lang model — not a Chinese `zf_*` voice. Playback uses the model's own sample rate (24 kHz), mono 16-bit. The phone's fallback voice is forced to English (UK, then US) and will not switch to the phone's default if that default is not English.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. Heart speech on a real device, SpeechRecognizer on a phone with no Google app, and the system speak-now fallback remain untested.
+
 ## What's new in 0.10.58
 
 **Nova stays in CodeAque.** The over-other-apps bubble is gone, so she no longer blocks the game under her. A leftover overlay from 0.10.57 is stopped when you install this update. (Display over other apps may still be asked for Screen Time Strict mode, which is separate.)

@@ -63,6 +63,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         Catalog.VERSION = myVersion();   // 0.10.28
         super.onCreate(b);
         prefs = getSharedPreferences("codeaque", MODE_PRIVATE);
+        UpdateOfferStore.apply(prefs, myVersion());       // 0.10.59: keep Install visible across restarts
         NovaOverlayService.retire(this);             // 0.10.58: stop any leftover over-apps bubble
         ensurePin();                                  // 0.10.23: default parent PIN 1234 (hashed)
         applyAlwaysKids();                            // 0.10.37: default on — cold start / Home after reboot opens in Kids mode
@@ -145,6 +146,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         kidsDiff();
         lockResume();                 // 0.10.21
         ensureHome();                 // 0.10.28: stop the Home chooser coming back after restarts
+        UpdateOfferStore.apply(prefs, myVersion());
         maybeUpdateCheck();           // 0.10.25
         newAppsCheck();               // 0.10.27: every start / resume, at most every 30 minutes
         installedCache.clear();       // apps may have been installed while we were away
@@ -2080,9 +2082,19 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             try {
                 UpdateInfo u = UpdateInfo.parse(get(UpdateInfo.API));
                 String mine = myVersion();
-                if (u == null || !UpdateInfo.newer(u.version, mine)) { Catalog.updateAvailable = false; if (manual) toast("You're up to date! (CodeAque " + mine + ")"); return; }
-                prefs.edit().putString("updKnown", u.version).apply();
-                Catalog.updateAvailable = true; runOnUiThread(() -> view.invalidate());   // 0.10.28 badge
+                if (u == null) {
+                    UpdateOfferStore.apply(prefs, mine);   // keep a persisted offer if the check could not be parsed
+                    if (manual) toast("Could not check for updates. Is the Wi-Fi on?");
+                    return;
+                }
+                if (!UpdateInfo.newer(u.version, mine)) {
+                    UpdateOfferStore.clear(prefs);
+                    if (manual) toast("You're up to date! (CodeAque " + mine + ")");
+                    runOnUiThread(() -> view.invalidate());
+                    return;
+                }
+                UpdateOfferStore.remember(prefs, u);
+                runOnUiThread(() -> view.invalidate());   // 0.10.28 badge + 0.10.59 Install bar
                 if (!manual) {
                     runOnUiThread(() -> updatePopup(u, mine)); return;
                 }
@@ -3128,6 +3140,38 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 .show();
     }
 
+    @Override public boolean updateReady() { return Catalog.updateAvailable; }
+    @Override public String updateReadyLabel() {
+        return UpdateOffer.bannerLabel(prefs.getString(UpdateOffer.PREF_VER, ""));
+    }
+    @Override public void onUpdateInstall() {
+        UpdateInfo u = UpdateOfferStore.load(prefs, myVersion());
+        if (u == null) { checkUpdate(true); return; }
+        new Thread(() -> install(u)).start();
+    }
+
+    static final int REQ_SPEECH = 65;
+
+    @Override public void novaStartSpeechPrompt() {
+        android.content.Intent i = NovaSpeech.recognizeIntent(false);
+        try { startActivityForResult(i, REQ_SPEECH); }
+        catch (Exception e) { novaOpenSpeechInstall(); }
+    }
+
+    @Override public void novaOpenSpeechInstall() {
+        android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("market://details?id=" + NovaSpeechAvail.TTS_PACKAGE));
+        try { startActivity(i); }
+        catch (Exception e) {
+            try {
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://play.google.com/store/apps/details?id=" + NovaSpeechAvail.TTS_PACKAGE)));
+            } catch (Exception e2) {
+                toast(NovaSpeechAvail.NO_SERVICE);
+            }
+        }
+    }
+
     private void kidsMode(boolean on) {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(on ? "Turn on Kids mode?" : "Turn off Kids mode?")
@@ -3601,17 +3645,18 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         // 0.10.28: if the Home chooser, another dialog or the screen is not ours yet, show it when we get focus back
         if (!hasWindowFocus()) { pendingPopup = u; return; }
         pendingPopup = null;
-        if (UpdateInfo.snoozed(u.version, prefs.getString("updSnoozeVer", ""), prefs.getLong("updSnoozeUntil", 0), System.currentTimeMillis())) return;
+        // 0.10.59: Later / Back only closes the dialog. The Install bar stays until the
+        // installed version is no longer older. No timeout and no snooze hide.
         popupShowing = true;
         String news = UpdateInfo.whatsNew(u.notes);
         AlertDialog d = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("New update ready (v" + u.version + ")")
                 .setMessage((news.isEmpty() ? "" : news + "\n\n") + "You have " + mine + ".")
                 .setPositiveButton("Update now", (x, w) -> new Thread(() -> install(u)).start())
-                .setNegativeButton("Later", (x, w) -> snoozeUpdate(u.version))
-                .setOnCancelListener(x -> snoozeUpdate(u.version))
+                .setNegativeButton("Later", null)
                 .setOnDismissListener(x -> popupShowing = false)
                 .create();
+
         d.show();
         float big = prefs.getBoolean("kidsMode", false) ? 30 : 24;           // big, controller- and touch-friendly
         int minH = (int) (64 * getResources().getDisplayMetrics().density);
@@ -3641,6 +3686,15 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
     @Override protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_SPEECH) {
+            String said = null;
+            if (res == RESULT_OK && data != null) {
+                java.util.ArrayList<String> list = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+                if (list != null && !list.isEmpty()) said = list.get(0);
+            }
+            if (nova != null) nova.onSpeechPromptResult(said);
+            return;
+        }
         if (req == REQ_ROLE) {   // 0.10.22 call screening / redirection role
             if (res == RESULT_OK && roleKey != null) { prefs.edit().putBoolean(roleKey, true).apply(); toast("Turned on."); }
             else toast("Not turned on (the role was not given to CodeAque).");

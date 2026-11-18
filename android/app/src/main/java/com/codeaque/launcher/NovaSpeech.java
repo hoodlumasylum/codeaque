@@ -26,6 +26,10 @@ public final class NovaSpeech {
         void onSpeechState(boolean listening);
         /** Timeout / no-match / busy: keep the hands-free loop going. */
         void onSpeechRetry();
+        /** No in-app recognizer; use ACTION_RECOGNIZE_SPEECH. */
+        void onSpeechUsePrompt();
+        /** No recognition service at all; show the Play Store message and button. */
+        void onSpeechNeedService();
     }
 
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -53,8 +57,17 @@ public final class NovaSpeech {
             return;
         }
         app = ctx.getApplicationContext();
-        if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
-            fail("Voice talk isn't available on this phone. You can type your question instead.");
+        boolean recOk = false;
+        try { recOk = SpeechRecognizer.isRecognitionAvailable(ctx); } catch (Exception ignored) { }
+        boolean promptOk = promptAvailable(ctx);
+        int path = NovaSpeechAvail.path(recOk, promptOk);
+        if (path == NovaSpeechAvail.NEED_INSTALL) {
+            fail(NovaSpeechAvail.NO_SERVICE);
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_SERVICE, NovaSpeechAvail.NO_SERVICE, false));
+            return;
+        }
+        if (path == NovaSpeechAvail.USE_PROMPT) {
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.USE_PROMPT, null, false));
             return;
         }
         try {
@@ -62,7 +75,12 @@ public final class NovaSpeech {
             rec.setRecognitionListener(new NovaSpeechListen(this));
         } catch (Exception e) {
             rec = null;
-            fail("Voice talk isn't available on this phone. You can type your question instead.");
+            if (promptOk) {
+                if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.USE_PROMPT, null, false));
+                return;
+            }
+            fail(NovaSpeechAvail.NO_SERVICE);
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_SERVICE, NovaSpeechAvail.NO_SERVICE, false));
             return;
         }
         listen(true);
@@ -95,11 +113,7 @@ public final class NovaSpeech {
 
     void listen(boolean preferOffline) {
         if (destroyed || rec == null) return;
-        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-        if (preferOffline) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        Intent i = recognizeIntent(preferOffline);
         offlineTried = preferOffline;
         listening = true;
         notifyState(true);
@@ -166,6 +180,27 @@ public final class NovaSpeech {
         if (code == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
             return "The mic is busy. Try again in a moment, or type it.";
         return "I couldn't hear that. You can type your question instead.";
+    }
+
+    public static Intent recognizeIntent(boolean preferOffline) {
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, NovaSpeechAvail.LANGUAGE);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, NovaSpeechAvail.LANGUAGE);
+        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Nova");
+        if (preferOffline) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        return i;
+    }
+
+    public static boolean promptAvailable(Context ctx) {
+        if (ctx == null) return false;
+        try {
+            android.content.pm.ResolveInfo ri = ctx.getPackageManager().resolveActivity(
+                    new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0);
+            return ri != null && ri.activityInfo != null;
+        } catch (Exception e) { return false; }
     }
 
     void fail(String message) {
