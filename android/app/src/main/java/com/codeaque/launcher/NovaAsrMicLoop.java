@@ -12,10 +12,9 @@ public final class NovaAsrMicLoop implements Runnable {
         if (mic == null) return;
         short[] buf = new short[1600];
         float[] fbuf = new float[1600];
-        String lastPartial = "";
+        NovaEndpoint ep = new NovaEndpoint();
         long started = android.os.SystemClock.uptimeMillis();
-        long lastVoice = 0;
-        boolean heard = false;
+        ep.start(started);
         int peakAbs = 0;
         long frames = 0;
         while (mic.running) {
@@ -46,35 +45,27 @@ public final class NovaAsrMicLoop implements Runnable {
             }
             frames += count;
             float rms = count <= 0 ? 0f : (float) Math.sqrt(acc / count);
-            mic.postRms(NovaListenDiag.meterFromPcmRms(rms));
+            long now = android.os.SystemClock.uptimeMillis();
+            ep.onLevel(NovaListenDiag.meterFromPcmRms(rms), now);
+            mic.postRms(ep.meter(NovaListenDiag.meterFromPcmRms(rms)));
             NovaAsr.accept(stream, fbuf, count, NovaAsrMic.SAMPLE_RATE);
             String text = NovaAsr.result(stream);
             if (text == null) text = "";
             text = NovaAsrText.tidy(text);
-            if (!text.isEmpty() && !text.equals(lastPartial)) {
-                lastPartial = text;
-                heard = true;
-                lastVoice = android.os.SystemClock.uptimeMillis();
+            if (!text.isEmpty() && !text.equals(ep.lastPartial())) {
+                ep.onPartial(text, now);
                 mic.postPartial(text);
             }
-            if (!NovaReplyQuick.isSilentRms(rms) || chunkPeak >= 200) {
-                heard = true;
-                lastVoice = android.os.SystemClock.uptimeMillis();
-            }
-            long now = android.os.SystemClock.uptimeMillis();
-            // End on our own trailing silence, not on sherpa's endpoint flag alone
-            // (that was cutting him off around 5 s mid-sentence).
-            boolean speechEnded = heard && lastVoice > 0
-                    && now - lastVoice >= NovaReplyQuick.SPEECH_TAIL_MS;
-            boolean noSpeechTimeout = !heard && now - started >= NovaReplyQuick.LISTEN_WINDOW_MS;
-            boolean tooLong = now - started >= NovaReplyQuick.LISTEN_MAX_MS;
-            if (speechEnded || noSpeechTimeout || tooLong) {
+            int decision = ep.decision(now);
+            if (decision != NovaEndpoint.CONTINUE) {
                 NovaAsr.inputFinished(stream);
                 text = NovaAsr.result(stream);
                 if (text == null) text = "";
                 text = NovaAsrText.tidy(text);
+                if (text.isEmpty()) text = NovaAsrText.tidy(ep.lastPartial());
                 mic.running = false;
-                if (text.isEmpty() && NovaReplyQuick.allZeros(peakAbs, frames, heard))
+                if (text.isEmpty() && ep.reallySilent(now)
+                        && NovaReplyQuick.allZeros(peakAbs, frames, ep.heardSpeech()))
                     mic.postError(NovaReplyQuick.NO_SOUND);
                 else if (text.isEmpty()) mic.postError("I didn't catch that. Try again, or type it.");
                 else mic.postResult(text);

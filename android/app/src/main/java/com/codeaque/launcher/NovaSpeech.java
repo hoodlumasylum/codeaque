@@ -56,6 +56,9 @@ public final class NovaSpeech {
     final NovaListenBeep beep = new NovaListenBeep();
     String language = NovaSpeechAvail.LANGUAGE;
     NovaAsrMic asrMic;
+    final NovaEndpoint endpoint = new NovaEndpoint();
+    NovaSpeechEndWatch endWatch;
+    NovaSpeechResultsWait resultsWait;
 
     public static boolean voiceTalkOn(SharedPreferences p) {
         return p == null || p.getBoolean(PREF_VOICE_TALK, true);
@@ -265,6 +268,7 @@ public final class NovaSpeech {
         offlineTried = false;
         pendingBuiltinLoad = false;
         listenGen = NovaConvo.nextGen(listenGen);
+        cancelEndpointWatches();
         beep.restoreNow();
         usingBuiltin = false;
         NovaListenDiag.setUsingBuiltin(false);
@@ -305,6 +309,8 @@ public final class NovaSpeech {
         offlineTried = preferOffline;
         listenGen = NovaConvo.nextGen(listenGen);
         listening = true;
+        endpoint.start(android.os.SystemClock.uptimeMillis());
+        scheduleEndpointWatch();
         notifyState(true);
         if (app != null) beep.duck(app);
         try { rec.startListening(i); }
@@ -322,18 +328,24 @@ public final class NovaSpeech {
 
     void onRms(float rmsdB) {
         if (destroyed || !listening) return;
-        float level = NovaListenDiag.meterFromRmsDb(rmsdB);
+        long now = android.os.SystemClock.uptimeMillis();
+        float raw = NovaListenDiag.meterFromRmsDb(rmsdB);
+        endpoint.onLevel(raw, now);
+        float level = endpoint.meter(raw);
         NovaListenDiag.setLevel(level);
         if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RMS, null, false, listenGen, 0, level));
+        applyEndpointDecision(endpoint.decision(now));
     }
 
     void onResults(Bundle b) {
         int gen = listenGen;
         if (destroyed || !listening) return;
+        cancelEndpointWatches();
         listening = false;
         beep.restoreNow();
         notifyState(false);
         String text = firstResult(b);
+        if (text == null || text.trim().isEmpty()) text = endpoint.lastPartial();
         if (text == null || text.trim().isEmpty()) {
             fail("I didn't catch that. Try again, or type it.");
             return;
@@ -352,7 +364,84 @@ public final class NovaSpeech {
         if (text == null || text.trim().isEmpty()) return;
         String said = NovaAsrText.tidy(text);
         if (said.isEmpty()) return;
+        endpoint.onPartial(said, android.os.SystemClock.uptimeMillis());
         if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.PARTIAL, said, false, listenGen));
+    }
+
+    void onEndOfSpeech() {
+        if (destroyed || !listening) return;
+        cancelResultsWait();
+        resultsWait = new NovaSpeechResultsWait(this, listenGen);
+        ui.postDelayed(resultsWait, NovaEndpoint.RESULTS_WAIT_MS);
+    }
+
+    void onResultsWait(int gen) {
+        resultsWait = null;
+        if (destroyed || !listening || gen != listenGen) return;
+        // System end-of-speech already fired; if finals are late, use the last partial.
+        finishFromEndpoint(false);
+    }
+
+    void onEndpointWatch(int gen) {
+        endWatch = null;
+        if (destroyed || !listening || gen != listenGen) return;
+        applyEndpointDecision(endpoint.decision(android.os.SystemClock.uptimeMillis()));
+        if (listening) scheduleEndpointWatch();
+    }
+
+    void applyEndpointDecision(int decision) {
+        if (decision == NovaEndpoint.CONTINUE) return;
+        finishFromEndpoint(decision == NovaEndpoint.END_EMPTY);
+    }
+
+    void finishFromEndpoint(boolean emptyWindow) {
+        if (!listening) return;
+        int gen = listenGen;
+        String said = NovaAsrText.tidy(endpoint.lastPartial());
+        cancelEndpointWatches();
+        listening = false;
+        beep.restoreNow();
+        notifyState(false);
+        destroyRecognizerOnly();
+        if (said != null && !said.isEmpty()) {
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false, gen));
+            return;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        if (endpoint.reallySilent(now)) {
+            fail(NovaReplyQuick.NO_SOUND);
+            return;
+        }
+        if (emptyWindow) {
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, NovaVoiceGate.ERR_NO_MATCH));
+            return;
+        }
+        fail("I didn't catch that. Try again, or type it.");
+    }
+
+    void scheduleEndpointWatch() {
+        cancelEndWatch();
+        endWatch = new NovaSpeechEndWatch(this, listenGen);
+        ui.postDelayed(endWatch, NovaEndpoint.WATCH_MS);
+    }
+
+    void cancelEndWatch() {
+        if (endWatch != null) {
+            ui.removeCallbacks(endWatch);
+            endWatch = null;
+        }
+    }
+
+    void cancelResultsWait() {
+        if (resultsWait != null) {
+            ui.removeCallbacks(resultsWait);
+            resultsWait = null;
+        }
+    }
+
+    void cancelEndpointWatches() {
+        cancelEndWatch();
+        cancelResultsWait();
     }
 
     /** Soft errors that should restart listening in a hands-free loop (not a hard failure). */
@@ -375,6 +464,17 @@ public final class NovaSpeech {
         beep.restoreNow();
         notifyState(false);
         if (NovaConvo.isMicBusy(code)) {
+            String partial = NovaAsrText.tidy(endpoint.lastPartial());
+            if (partial != null && !partial.isEmpty()) {
+                if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, partial, false, gen));
+                return;
+            }
+            // A screen recorder may trip BUSY/AUDIO even when the mic still has level.
+            // Only warn when the capture was truly silent.
+            if (!endpoint.reallySilent(android.os.SystemClock.uptimeMillis())) {
+                if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, code));
+                return;
+            }
             if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.MIC_BUSY, NovaConvo.MIC_BUSY_TEXT, false, gen));
             return;
         }

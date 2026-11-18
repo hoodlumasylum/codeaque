@@ -31,7 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.70
+
+**Chat answers what you actually said.** "Uh, how are you?" was heard as "u how were you" and Nova still replied with a hello. Filler words (uh, um, u, so) are stripped first. A greeting match only fires when the whole line is a hello — not because it contains a greeting-ish word. How are you, what's your name, what can you do, thanks, and bye have short kid-safe replies. Anything else goes to the on-device brain; if that brain is not loaded, she gives a helpful fallback that repeats what she heard, not another greeting.
+
+**Listening ends about a second after you stop talking.** The old 1.2 s silence end often never fired because the silence gate sat above the room noise, and the phone's own recognizer was not stopped when it returned a final result. The noise floor is now learned from the room, listening stops 1.2 s after the last speech, and a final result from the system recognizer ends the turn at once.
+
+**Tapping Mic while she is speaking starts listening.** It no longer repeats the previous prompt or the greeting. The Mic meter follows the live input on both listeners. The "Listening..." pill and the status line follow the real state (listening, thinking, or speaking). Contractions such as "I'm" are spoken correctly (curly apostrophes are straightened for Heart and the phone voice). The "another app is using the microphone" warning only appears when the mic is truly silent, not just because a screen recorder is on.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. Please try this install and see that "how are you" gets a real reply, listening ends soon after you stop talking, a Mic tap during a reply starts a new listen, the meter moves, the status pill is honest, and "I'm" is spoken.
+
 ## What's new in 0.10.69
+
 
 **Installing the built-in listening pack no longer resets the app or leaves it stuck on the splash.** After the 75 MB speech pack finished downloading, Chat started the built-in listener straight away and loaded the native model in-process (often on the screen thread). On some phones that load aborted the app (a native crash or a memory kill). The next start could then stick on the splash. The pack is now loaded only when you tap Mic, in the background, with a time limit. A marker file is written before native init and cleared after it, so if the app dies mid-load the next start marks that pack bad and skips it. The launcher falls back to the phone's own listener, and Chat offers "Download again" or the older, smaller 45 MB pack. Model file names are checked (encoder, decoder, joiner, tokens, int8). The download still streams to disk. The model is still never bundled in the APK.
 

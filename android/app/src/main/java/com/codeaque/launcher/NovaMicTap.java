@@ -14,6 +14,16 @@ public final class NovaMicTap {
         return alreadyListening;
     }
 
+    /**
+     * While she is speaking or thinking, a Mic tap must start a fresh listen,
+     * not toggle the recognizer off (which would leave the last prompt in play).
+     */
+    public static boolean restartInsteadOfToggle(boolean alreadyListening,
+            boolean talking, boolean thinking, boolean jobInFlight, boolean pendingSpeak) {
+        if (talking || thinking || jobInFlight || pendingSpeak) return true;
+        return false;
+    }
+
     /** A user tap cancels speech first so startListen is not skipped. */
     public static boolean cancelSpeechFirst(boolean talking, boolean thinking,
             boolean jobInFlight, boolean pendingSpeak, boolean inHangover) {

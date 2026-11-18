@@ -1583,11 +1583,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.69") && NovaAppVer.CODE == 169, "shipping version is 0.10.69");
-        check(NovaAppVer.label().equals("CodeAque 0.10.69")
-                && NovaAppVer.label("0.10.69").equals("CodeAque 0.10.69")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.69")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.69"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.70") && NovaAppVer.CODE == 170, "shipping version is 0.10.70");
+        check(NovaAppVer.label().equals("CodeAque 0.10.70")
+                && NovaAppVer.label("0.10.70").equals("CodeAque 0.10.70")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.70")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.70"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1617,7 +1617,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.69") && NovaAppVer.CODE == 169, "shipping version is 0.10.69");
+        check(NovaAppVer.NAME.equals("0.10.70") && NovaAppVer.CODE == 170, "shipping version is 0.10.70");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1626,8 +1626,52 @@ public class CatalogTest {
                 && NovaReplyQuick.isSimpleGreeting("hello. hello.")
                 && NovaReplyQuick.isSimpleGreeting("Hi")
                 && NovaReplyQuick.isSimpleGreeting("Hey Nova")
+                && NovaReplyQuick.isSimpleGreeting("o hallo")
                 && !NovaReplyQuick.isSimpleGreeting("find a game")
+                && !NovaReplyQuick.isSimpleGreeting("u how were you")
+                && !NovaReplyQuick.isSimpleGreeting("hello how are you")
                 && !NovaReplyQuick.isSimpleGreeting(""), "simple spoken greetings get a canned reply");
+        check(NovaSmallTalk.stripFillers("uh, how are you?").equals("how are you")
+                && NovaSmallTalk.stripFillers("u how were you").equals("how were you")
+                && NovaSmallTalk.tidy("u how were you").equals("how are you")
+                && NovaSmallTalk.reply("Uh, how are you?", true).equals(NovaSmallTalk.HOW_ARE_KIDS)
+                && NovaSmallTalk.reply("what's your name", true).equals(NovaSmallTalk.NAME_KIDS)
+                && NovaSmallTalk.reply("what can you do", true).equals(NovaSmallTalk.CAN_DO_KIDS)
+                && NovaSmallTalk.reply("thanks", true).equals(NovaSmallTalk.THANKS_KIDS)
+                && NovaSmallTalk.reply("bye", true).equals(NovaSmallTalk.BYE_KIDS)
+                && NovaSmallTalk.reply("o hallo", true).equals(NovaSmallTalk.HELLO_KIDS)
+                && NovaSmallTalk.reply("find a racing game", true) == null, "small talk after fillers, not a greeting swallow");
+        check(NovaSmallTalk.brainFallback("u how were you", true).contains("u how were you")
+                && !NovaSmallTalk.brainFallback("u how were you", true).contains("Hello there")
+                && NovaSmallTalk.isBareGreetingReply("Hello there! I'm Nova.")
+                && !NovaSmallTalk.isBareGreetingReply("I'm really well, thank you! How are you?"),
+                "brain fallback reflects what he said and is not the greeting");
+        check(NovaTtsNorm.forSpeak("Hello there! I’m Nova.").contains("I'm")
+                && NovaTtsNorm.keepsIm("Hello there! I’m Nova.")
+                && NovaTtsNorm.forSpeak("don’t").equals("don't"),
+                "curly apostrophes are straightened so I'm is spoken");
+        {
+            NovaEndpoint ep = new NovaEndpoint();
+            ep.start(0);
+            for (int i = 0; i < 8; i++) ep.onLevel(0.05f, i * 50L);
+            check(!ep.isSpeech(0.05f), "room noise at the floor is not speech");
+            ep.onLevel(0.4f, 500);
+            check(ep.heardSpeech(), "a voice peak is speech");
+            check(ep.decision(1000) == NovaEndpoint.CONTINUE, "do not cut 0.5s after speech");
+            check(ep.decision(500 + NovaEndpoint.TAIL_MS) == NovaEndpoint.END_SILENCE, "stop 1.2s after last speech");
+            check(ep.meter(0.05f) < ep.meter(0.4f), "meter moves with live level");
+            NovaEndpoint silent = new NovaEndpoint();
+            silent.start(0);
+            for (int i = 0; i < 20; i++) silent.onLevel(0.02f, i * 100L);
+            check(!silent.reallySilent(800), "do not warn in the first second");
+            check(silent.reallySilent(2000), "all-quiet capture may warn after a real window");
+            silent.onLevel(0.5f, 2100);
+            check(!silent.reallySilent(4000), "a moving level is not a silent mic");
+        }
+        check(NovaMicTap.restartInsteadOfToggle(true, true, false, false, false)
+                && NovaMicTap.restartInsteadOfToggle(false, true, false, false, false)
+                && !NovaMicTap.restartInsteadOfToggle(true, false, false, false, false),
+                "a Mic tap while she is speaking starts listening, it does not toggle off");
         check(NovaReplyQuick.cannedHello(true).startsWith("Hi!")
                 && NovaReplyQuick.cannedHello(false).startsWith("Hi!"), "canned hello is instant and short");
         check(NovaReplyQuick.thinkingText(0).equals("Thinking… 0s")
@@ -1672,7 +1716,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.69") && NovaAppVer.CODE == 169, "shipping version is 0.10.69");
+        check(NovaAppVer.NAME.equals("0.10.70") && NovaAppVer.CODE == 170, "shipping version is 0.10.70");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

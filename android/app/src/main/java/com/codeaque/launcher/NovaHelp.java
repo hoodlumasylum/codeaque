@@ -59,6 +59,7 @@ public final class NovaHelp {
     public static String answer(String question) { return answer(question, false); }
 
     public static String answer(String question, boolean kids) {
+        if (norm(question).isEmpty()) return kids ? KIDS_GREETING : GREETING;
         String a = kids ? kidsAnswer(question) : adultAnswer(question);
         if (a != null) return a;
         return kids ? KIDS_UNSURE : ("I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova. " + LIMITS);
@@ -94,8 +95,7 @@ public final class NovaHelp {
 
     static String kidsAnswer(String question) {
         String q = norm(question);
-        if (q.isEmpty() || has(q, "who are you", "who is nova", "hello", "hi nova", "hey nova", "what can you", "help", "what do you"))
-            return KIDS_GREETING;
+        if (q.isEmpty()) return null;
         if (looksLikeJoke(question))
             return "Tap Tell me a joke and I'll tell you one.";
         if (NovaKidsTalk.mentionsFavouriteShow(question))
@@ -116,9 +116,7 @@ public final class NovaHelp {
 
     static String adultAnswer(String question) {
         String q = norm(question);
-        if (q.isEmpty()) return GREETING;
-        if (has(q, "who are you", "who is nova", "hello", "hi nova", "hey nova", "what can you", "help", "what do you"))
-            return GREETING + " " + LIMITS;
+        if (q.isEmpty()) return null;
         if (has(q, "update", "upgrade", "new version", "install apk", "latest"))
             return "To update CodeAque: open Settings and tap Update, or use Wi-Fi & Update in Kids mode. From 0.10.54, CodeAque's own Update in Kids mode does not need the parent PIN. Leaving Kids mode, Settings, installing other apps, and a device still on 0.10.53 (which needs the PIN once to install 0.10.54) still follow their usual PIN rules. CodeAque checks for a new APK and Android will ask you to confirm the install.";
         if (has(q, "kids mode", "kidsmode", "turn off kids", "leave kids", "grown up", "adult mode", "kid mode"))

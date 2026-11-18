@@ -169,6 +169,7 @@ public final class NovaKokoro {
     }
 
     public static float[] synthesize(String text, int sid, float speed) {
+        text = NovaTtsNorm.forSpeak(text);
         if (text == null || text.trim().isEmpty()) return null;
         float sp = NovaVoiceStatus.clampSpeed(speed);
         synchronized (LOCK) {

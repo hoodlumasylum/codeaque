@@ -24,20 +24,11 @@ public final class NovaReplyQuick {
     public static final String HELLO_ADULT = "Hi! How can I help?";
 
     public static boolean isSimpleGreeting(String q) {
-        if (q == null) return false;
-        String n = NovaSpeakGate.norm(q);
-        if (n.isEmpty()) return false;
-        if (n.equals("hello") || n.equals("hello hello") || n.equals("hellohello")
-                || n.equals("hi") || n.equals("hi hi") || n.equals("hey")
-                || n.equals("hello there") || n.equals("hi there")
-                || n.equals("hey nova") || n.equals("hi nova") || n.equals("hello nova")
-                || n.equals("good morning") || n.equals("good afternoon")
-                || n.equals("good evening") || n.equals("yo")) return true;
-        return n.startsWith("hello hello") || n.startsWith("hi hi");
+        return NovaSmallTalk.isBareGreeting(q);
     }
 
     public static String cannedHello(boolean kids) {
-        return kids ? HELLO_KIDS : HELLO_ADULT;
+        return kids ? NovaSmallTalk.HELLO_KIDS : NovaSmallTalk.HELLO_ADULT;
     }
 
     /** "Thinking… 3s" — elapsed seconds, never empty. */
