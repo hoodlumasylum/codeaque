@@ -10,7 +10,7 @@ public final class NovaReplyQuick {
     /** Listen up to this long when no speech is heard, then stop or switch engine. */
     public static final long LISTEN_WINDOW_MS = 15000L;
     /** After speech, wait this long for end-of-speech (trailing silence). */
-    public static final long SPEECH_TAIL_MS = 1200L;
+    public static final long SPEECH_TAIL_MS = 1800L;
     /** Hard cap once the user has started speaking. */
     public static final long LISTEN_MAX_MS = 15000L;
     /** On-device LLM cap — short spoken answers, not essays. */
@@ -21,6 +21,9 @@ public final class NovaReplyQuick {
     public static final String SPEAKING_TEXT = "Speaking…";
     public static final String NO_SOUND =
             "Mic is getting no sound. Another app may be using it";
+    public static final String MISSED_TEXT = "Sorry, I missed that. Say it again?";
+    public static final String MISSED_AGAIN = "I still didn't catch that. Please say it once more.";
+    public static final int SPEAK_AS_ONE_CHARS = 180;
 
     public static final String HELLO_KIDS = "Hi! I'm happy to help. What would you like to do?";
     public static final String HELLO_ADULT = "Hi! How can I help?";
@@ -38,6 +41,40 @@ public final class NovaReplyQuick {
         long s = elapsedMs / 1000L;
         if (s < 0) s = 0;
         return NovaConvo.THINKING_TEXT + " " + s + "s";
+    }
+
+    /** Short replies are synthesized in one go so Heart does not pause between sentences. */
+    public static boolean speakAsOne(String text) {
+        if (text == null) return true;
+        String t = text.trim();
+        if (t.length() <= SPEAK_AS_ONE_CHARS) return true;
+        return afterFirst(t).isEmpty();
+    }
+
+    /** Open questions may use the on-device brain; chit-chat and short/unclear lines must not. */
+    public static boolean looksOpenQuestion(String q) {
+        if (q == null) return false;
+        String n = NovaSmallTalk.tidy(q);
+        if (n.isEmpty() || isUnclear(n)) return false;
+        if (n.equals("how are you") || n.startsWith("how are you ")) return false;
+        if (n.startsWith("what") || n.startsWith("why") || n.startsWith("how")
+                || n.startsWith("who") || n.startsWith("where") || n.startsWith("when")
+                || n.startsWith("which") || n.startsWith("tell me") || n.startsWith("explain")
+                || n.startsWith("can you") || n.startsWith("could you")
+                || n.startsWith("do you know") || n.startsWith("whats") || n.startsWith("who's"))
+            return true;
+        return n.length() >= 24;
+    }
+
+    public static boolean isUnclear(String q) {
+        String n = q == null ? "" : NovaSmallTalk.tidy(q);
+        if (n.isEmpty()) return true;
+        if (n.length() <= 2) return true;
+        if (n.equals("you") || n.equals("the") || n.equals("and") || n.equals("a")
+                || n.equals("uh") || n.equals("um") || n.equals("u") || n.equals("ah")
+                || n.equals("eh") || n.equals("mm") || n.equals("hmm") || n.equals("er"))
+            return true;
+        return false;
     }
 
     public static String firstSentence(String text) {

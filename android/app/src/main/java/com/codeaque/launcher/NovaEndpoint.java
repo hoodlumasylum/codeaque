@@ -1,8 +1,9 @@
 package com.codeaque.launcher;
 
 /**
- * Adaptive end-of-speech: stop about 1.0–1.2 s after the last real speech,
- * using a noise floor learned from the room, not a fixed silence gate.
+ * Adaptive end-of-speech: stop about 1.8 s after the last real speech
+ * (a little longer for a single short word), using a noise floor learned
+ * from the room, not a fixed silence gate.
  * Plain Java for CatalogTest.
  */
 public final class NovaEndpoint {
@@ -11,7 +12,10 @@ public final class NovaEndpoint {
     public static final int END_EMPTY = 2;
     public static final int END_MAX = 3;
 
-    public static final long TAIL_MS = 1200L;
+    public static final long TAIL_MS = 1800L;
+    /** A single short word such as "you" must not end the turn after a brief pause. */
+    public static final long SHORT_TAIL_MS = 2200L;
+    public static final long MIN_UTTERANCE_MS = 800L;
     public static final long NO_SPEECH_MS = NovaReplyQuick.LISTEN_WINDOW_MS;
     public static final long MAX_MS = NovaReplyQuick.LISTEN_MAX_MS;
     public static final long WATCH_MS = 200L;
@@ -88,10 +92,24 @@ public final class NovaEndpoint {
     }
 
     public int decision(long now) {
-        if (heard && lastSpeechAt > 0 && now - lastSpeechAt >= TAIL_MS) return END_SILENCE;
+        if (heard && lastSpeechAt > 0) {
+            long tail = shortUtterance(lastPartial) ? SHORT_TAIL_MS : TAIL_MS;
+            if (now - startAt < MIN_UTTERANCE_MS) return CONTINUE;
+            if (now - lastSpeechAt >= tail) return END_SILENCE;
+        }
         if (!heard && now - startAt >= NO_SPEECH_MS) return END_EMPTY;
         if (now - startAt >= MAX_MS) return END_SILENCE;
         return CONTINUE;
+    }
+
+    /** One or two very short tokens, e.g. "u", "you", "ok". */
+    public static boolean shortUtterance(String text) {
+        if (text == null) return false;
+        String t = text.trim().toLowerCase();
+        if (t.isEmpty()) return false;
+        int words = 1;
+        for (int i = 0; i < t.length(); i++) if (t.charAt(i) == ' ') words++;
+        return words <= 2 && t.length() <= 16;
     }
 
     public boolean heardSpeech() { return heard; }

@@ -18,6 +18,9 @@ public final class NovaHelp {
     public static final String KIDS_FOOT = "I can help with games, words, numbers, or a joke. For anything else, ask a grown-up.";
 
     public static final String KIDS_UNSURE = "I'm not sure. Let's ask a grown-up.";
+    /** Generic chit-chat fallback in Kids mode — never used as the answer to "I'm fine". */
+    public static final String KIDS_UNSURE_GENERIC = NovaSmallTalk.BEST_EFFORT_KIDS;
+    public static final String ADULT_UNSURE = NovaSmallTalk.BEST_EFFORT_ADULT;
 
     /** Clean, silly jokes for about age 6. No insults, toilet humour, scares or religion. */
     public static final String[] JOKES = {
@@ -59,10 +62,18 @@ public final class NovaHelp {
     public static String answer(String question) { return answer(question, false); }
 
     public static String answer(String question, boolean kids) {
-        if (norm(question).isEmpty()) return kids ? KIDS_GREETING : GREETING;
+        // An empty or clipped line is not a first-time hello. Mid-chat
+        // callers should use missed-that, not the onboarding greeting.
+        if (norm(question).isEmpty() || NovaReplyQuick.isUnclear(question))
+            return NovaReplyQuick.MISSED_TEXT;
         String a = kids ? kidsAnswer(question) : adultAnswer(question);
         if (a != null) return a;
-        return kids ? KIDS_UNSURE : ("I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova. " + LIMITS);
+        return kids ? KIDS_UNSURE_GENERIC : ADULT_UNSURE;
+    }
+
+    /** Only for clearly grown-up / unsafe topics in Kids mode. */
+    public static String grownUpOnly(boolean kids) {
+        return kids ? KIDS_UNSURE : ADULT_UNSURE;
     }
 
     /** A confident canned reply, or null so the caller can send the question to the LLM. */
@@ -72,12 +83,17 @@ public final class NovaHelp {
 
     /** Instant local reply when the on-device brain is missing or too slow. */
     public static String bestEffort(String question, boolean kids) {
+        if (NovaReplyQuick.isUnclear(question)) return NovaReplyQuick.MISSED_TEXT;
         String a = answer(question, kids);
         if (a == null || a.isEmpty() || NovaSmallTalk.isUnreadyPhrase(a)
+                || a.equals(KIDS_GREETING) || a.equals(GREETING)
                 || (NovaSmallTalk.isBareGreetingReply(a) && !NovaSmallTalk.isBareGreeting(question))) {
             return NovaSmallTalk.brainFallback(question, kids);
         }
-        if (kids && kidsUnsafe(a)) return NovaSmallTalk.brainFallback(question, kids);
+        if (kids && kidsUnsafe(a)) return grownUpOnly(true);
+        if (!kids && a != null && a.toLowerCase().contains("ask a grown-up")) {
+            return NovaSmallTalk.brainFallback(question, false);
+        }
         return a;
     }
 

@@ -310,6 +310,7 @@ final class NovaVoicePreviewJob implements Runnable, NovaVoicePlay.Listener {
     @Override public void onVoiceStart() { }
     @Override public void onVoiceAmp(float amp) { }
     @Override public void onVoiceEnd() { }
+    @Override public void onVoiceSoonEnd() { }
 }
 
 final class NovaVoiceTestResult implements Runnable {

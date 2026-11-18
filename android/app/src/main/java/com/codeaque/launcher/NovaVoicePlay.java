@@ -15,7 +15,10 @@ public final class NovaVoicePlay {
         void onVoiceStart();
         void onVoiceAmp(float amp);
         void onVoiceEnd();
+        void onVoiceSoonEnd();
     }
+
+    public static final long PREROLL_MS = 500L;
 
     static AudioTrack track;
     static boolean stopFlag;
@@ -78,6 +81,7 @@ public final class NovaVoicePlay {
         NovaMouth.Ring ring = new NovaMouth.Ring(64);
         int written = 0;
         int i = 0;
+        boolean soonEnd = false;
         int stuck = 0;
         int lastHead = -1;
         while (i < samples.length && !stopFlag && wantSession == currentSession()) {
@@ -94,6 +98,7 @@ public final class NovaVoicePlay {
             written += n;
             int head = playbackHead(t);
             if (cb != null) post(cb, 1, NovaMouth.mouthFromRms(ring.atHead(head)));
+            soonEnd = maybeSoon(cb, soonEnd, head, written, sampleRate);
             i += n;
         }
         // Drain until the playback head has actually reached the last sample,
@@ -101,6 +106,7 @@ public final class NovaVoicePlay {
         while (!stopFlag && wantSession == currentSession()) {
             int head = playbackHead(t);
             if (cb != null) post(cb, 1, NovaMouth.mouthFromRms(ring.atHead(head)));
+            soonEnd = maybeSoon(cb, soonEnd, head, written, sampleRate);
             if (NovaMouth.drained(head, written, false)) break;
             if (head == lastHead) {
                 stuck++;
@@ -115,6 +121,23 @@ public final class NovaVoicePlay {
         try { t.release(); } catch (Exception ignored) { }
         if (track == t) track = null;
         if (cb != null) post(cb, 2, 0);
+    }
+
+    static boolean maybeSoon(Listener cb, boolean already, int head, int written, int sampleRate) {
+        if (already || cb == null || sampleRate <= 0) return already;
+        long rem = remainingMs(head, written, sampleRate);
+        if (rem <= PREROLL_MS) {
+            post(cb, 3, 0);
+            return true;
+        }
+        return false;
+    }
+
+    public static long remainingMs(int head, int written, int sampleRate) {
+        if (sampleRate <= 0) return 0;
+        int left = written - head;
+        if (left < 0) left = 0;
+        return left * 1000L / sampleRate;
     }
 
     static int playbackHead(AudioTrack t) {

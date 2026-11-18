@@ -55,4 +55,7 @@ public final class NovaVoiceSpeakJob implements Runnable, NovaVoicePlay.Listener
     @Override public void onVoiceEnd() {
         if (!stale()) view.onDeviceVoiceEnd();
     }
+    @Override public void onVoiceSoonEnd() {
+        if (!stale()) view.onDeviceVoiceSoonEnd();
+    }
 }

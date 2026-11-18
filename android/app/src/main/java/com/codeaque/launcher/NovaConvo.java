@@ -14,13 +14,14 @@ public final class NovaConvo {
     public static final int SPEAKING = 4;
     public static final int MIC_BUSY = 5;
 
-    public static final long SILENCE_COMPLETE_MS = 1200L;
-    public static final long SILENCE_POSSIBLY_MS = 1200L;
-    public static final long SILENCE_MIN_MS = 400L;
+    public static final long SILENCE_COMPLETE_MS = 1800L;
+    public static final long SILENCE_POSSIBLY_MS = 1800L;
+    public static final long SILENCE_MIN_MS = 800L;
     public static final long REPLY_TIMEOUT_MS = 12000L;
 
     public static final String LISTENING_TEXT = "Listening…";
     public static final String THINKING_TEXT = "Thinking…";
+    public static final String YOUR_TURN_TEXT = "Your turn";
     public static final String BRAIN_READY_TEXT = "Getting my brain ready…";
     public static final String BRAIN_OFFER =
             "A grown-up can download the on-device brain in the Nova tab (about 800 MB).";

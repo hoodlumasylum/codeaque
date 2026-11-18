@@ -31,6 +31,22 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.73
+
+**Listening keeps the first words.** The mic now opens about half a second before she finishes speaking, so the start of a line such as "I'm fine" or "let's play" is not clipped. A clear "Your turn" cue is shown only when it is truly his turn.
+
+**She waits longer after he pauses.** A turn no longer ends about a second after a short word such as "You…". The silence window is about 1.8 seconds (a little longer for a single short word), and a minimum utterance length is required.
+
+**Replies match the conversation.** "I'm fine thank you" (even heard as "on fine thank you") and "let's play with me" are small talk, answered at once. A very short or unclear line such as "u" gets "Sorry, I missed that. Say it again?" — not the first-time onboarding greeting mid-chat. Adult mode never says "ask a grown-up". The same fallback is not repeated twice in a row. Chat keeps the last few turns so she knows this is mid-conversation.
+
+**Simple lines do not wait on the brain.** Built-in intents answer immediately. The on-device brain is only used for open questions, still with a short budget.
+
+**No long pause in the middle of a short reply.** Short answers are spoken as one utterance, so Heart does not leave a multi-second gap between "I'm not sure." and the next sentence. The reply bubble can scroll so the full text is visible.
+
+0.10.71–0.10.72 fixes (Roblox fuzzy match, identical speech and bubble, Heart pre-warm, no "brain isn't ready" line) are unchanged.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. Please try this install and see that the first words are kept, she does not cut him off after a short "you", simple lines such as "I'm fine thank you" are answered at once without "ask a grown-up" or a long Thinking… pause, and speech has no long gap in the middle of a short reply.
+
 ## What's new in 0.10.72
 
 **She never says "my thinking brain isn't ready yet".** If the on-device brain is missing or still loading, she answers at once from built-in game knowledge, small talk, or a short friendly best-effort line. If the brain is already loaded, it has about two and a half seconds to answer; after that she falls back. The model is preloaded when the app starts and is kept in memory. Chat shows "Thinking…" only briefly — never a long stall.

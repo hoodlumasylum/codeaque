@@ -1037,7 +1037,7 @@ public class CatalogTest {
         check(NovaHelp.answer("search").toLowerCase().contains("search"), "Nova help: search");
         String inst = NovaHelp.answer("Ask PIN to install games");
         check(inst.toLowerCase().contains("get") && inst.toLowerCase().contains("pin"), "Nova help: GET / install PIN");
-        check(NovaHelp.answer("").equals(NovaHelp.GREETING), "empty question is a greeting");
+        check(NovaHelp.answer("").equals(NovaReplyQuick.MISSED_TEXT), "empty question is missed-that, not a greeting");
         check(!NovaHelp.answer("who are you").toLowerCase().contains("api key"), "no API key pitch in the greeting path");
 
         NovaAnim.State anim = new NovaAnim.State();
@@ -1080,7 +1080,7 @@ public class CatalogTest {
                 "her greeting must not look like a joke request");
 
         String kg = NovaHelp.answer("", true);
-        check(kg.equals(NovaHelp.KIDS_GREETING) && !NovaHelp.kidsUnsafe(kg), "kids greeting");
+        check(kg.equals(NovaReplyQuick.MISSED_TEXT) && !NovaHelp.kidsUnsafe(kg), "empty kids question is missed-that, not the onboarding greeting");
         for (String q : new String[]{"Find a game", "How do I play?", "Learning", "search", "How do I update?", "parent PIN", "leave Kids mode", "Screen Time", "Nova", "sideload"}) {
             String ka = NovaHelp.answer(q, true);
             check(!NovaHelp.kidsUnsafe(ka), "kids answer is safe for: " + q + " -> " + ka);
@@ -1392,8 +1392,9 @@ public class CatalogTest {
         check(NovaConvo.FALLBACK_TEXT.equals(loop.lastSpoken) && !loop.locksHeld(), "a reply timeout speaks the canned fallback and releases locks");
         check(NovaHelp.KIDS_GREETING.contains("find a game") && !NovaHelp.KIDS_GREETING.contains("find a games"), "greeting says find a game");
         check(!NovaHelp.KIDS_GREETING.contains("find a game,"), "game is its own sentence so Heart does not say games");
-        check(NovaConvo.SILENCE_COMPLETE_MS == 1200L
-                && NovaConvo.SILENCE_POSSIBLY_MS == 1200L, "recognizer silence is 1.2s after speech");
+        check(NovaConvo.SILENCE_COMPLETE_MS == 1800L
+                && NovaConvo.SILENCE_POSSIBLY_MS == 1800L
+                && NovaConvo.SILENCE_MIN_MS == 800L, "recognizer silence is 1.8s after speech, with a minimum utterance");
         NovaMouth.Ring ring = new NovaMouth.Ring(8);
         ring.add(0, 0.08f);
         ring.add(2000, 0.01f);
@@ -1588,11 +1589,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.72") && NovaAppVer.CODE == 172, "shipping version is 0.10.72");
-        check(NovaAppVer.label().equals("CodeAque 0.10.72")
-                && NovaAppVer.label("0.10.72").equals("CodeAque 0.10.72")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.72")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.72"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.73") && NovaAppVer.CODE == 173, "shipping version is 0.10.73");
+        check(NovaAppVer.label().equals("CodeAque 0.10.73")
+                && NovaAppVer.label("0.10.73").equals("CodeAque 0.10.73")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.73")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.73"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1623,7 +1624,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.72") && NovaAppVer.CODE == 172, "shipping version is 0.10.72");
+        check(NovaAppVer.NAME.equals("0.10.73") && NovaAppVer.CODE == 173, "shipping version is 0.10.73");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1689,6 +1690,54 @@ public class CatalogTest {
         check(NovaReplyQuick.firstSentence("I heard you say \"o tell me about roe box\". Next.").equals("I heard you say \"o tell me about roe box\".")
                 && NovaReplyQuick.afterFirst("I heard you say \"o tell me about roe box\". Next.").equals("Next."),
                 "first sentence does not split on a period inside quotes");
+        check(NovaSmallTalk.repairClips("on fine thank you").equals("im fine thank you")
+                && NovaSmallTalk.reply("on fine thank you", true).equals(NovaSmallTalk.FINE_KIDS)
+                && NovaSmallTalk.reply("I'm fine thanks", false).equals(NovaSmallTalk.FINE_ADULT)
+                && NovaSmallTalk.reply("whats up", false).equals(NovaSmallTalk.WHATS_UP_ADULT)
+                && NovaSmallTalk.reply("s play with me", true).equals(NovaSmallTalk.PLAY_KIDS)
+                && NovaSmallTalk.reply("play with me", true).equals(NovaSmallTalk.PLAY_KIDS),
+                "clipped I'm fine and let's play are small talk, not a grown-up fallback");
+        check(NovaReplyQuick.isUnclear("u") && NovaReplyQuick.isUnclear("")
+                && NovaReplyQuick.isUnclear("you") && !NovaReplyQuick.isUnclear("on fine thank you")
+                && NovaHelp.answer("u", true).equals(NovaReplyQuick.MISSED_TEXT)
+                && !NovaHelp.bestEffort("on fine thank you", true).toLowerCase().contains("grown-up")
+                && !NovaHelp.bestEffort("tell me something odd", false).toLowerCase().contains("grown-up"),
+                "short or unclear input is missed-that; adult mode never asks a grown-up");
+        check(!NovaReplyQuick.looksOpenQuestion("on fine thank you")
+                && !NovaReplyQuick.looksOpenQuestion("u")
+                && !NovaReplyQuick.looksOpenQuestion("how are you")
+                && NovaReplyQuick.looksOpenQuestion("why is the sky blue"),
+                "chit-chat and short lines do not use the brain; open questions may");
+        check(NovaReplyQuick.speakAsOne("I'm not sure. Let's ask a grown-up.")
+                && NovaReplyQuick.speakAsOne("Sorry, I missed that. Say it again?")
+                && !NovaReplyQuick.speakAsOne(NovaHelp.KIDS_GREETING + " " + NovaHelp.KIDS_GREETING),
+                "short replies are spoken as one utterance so Heart does not pause");
+        check(NovaEndpoint.TAIL_MS == 1800L && NovaEndpoint.SHORT_TAIL_MS == 2200L
+                && NovaEndpoint.shortUtterance("u") && NovaEndpoint.shortUtterance("you")
+                && !NovaEndpoint.shortUtterance("tell me about roblox"),
+                "a single short word waits longer before the turn ends");
+        {
+            NovaEndpoint ep = new NovaEndpoint();
+            ep.start(0);
+            ep.onPartial("you", 200);
+            check(ep.decision(200 + NovaEndpoint.TAIL_MS) == NovaEndpoint.CONTINUE, "a short you does not end at the normal tail");
+            check(ep.decision(200 + NovaEndpoint.SHORT_TAIL_MS) == NovaEndpoint.END_SILENCE, "a short you ends after the long tail");
+        }
+        {
+            NovaChatTurns mem = new NovaChatTurns();
+            check(!mem.midConversation(), "no mid-conversation before any turns");
+            mem.addUser("hello");
+            mem.addBot(NovaHelp.KIDS_GREETING);
+            mem.addUser("on fine thank you");
+            mem.addBot(NovaHelp.KIDS_UNSURE);
+            check(mem.midConversation() && mem.sameAsLastBot(NovaHelp.KIDS_UNSURE), "memory keeps the last reply");
+            check(mem.avoidRepeat(NovaHelp.KIDS_UNSURE, NovaReplyQuick.MISSED_TEXT).equals(NovaReplyQuick.MISSED_TEXT),
+                    "the same fallback is not repeated twice in a row");
+            check(NovaSmallTalk.reply("hello", true, true).equals(NovaSmallTalk.HOW_ARE_KIDS),
+                    "mid-conversation hello is not the onboarding greeting");
+        }
+        check(!NovaHelp.bestEffort("hello there", false).toLowerCase().contains("grown-up"),
+                "adult best-effort never says ask a grown-up");
         check(NovaTtsNorm.forSpeak("Hello there! I’m Nova.").contains("I'm")
                 && NovaTtsNorm.keepsIm("Hello there! I’m Nova.")
                 && NovaTtsNorm.forSpeak("don’t").equals("don't"),
@@ -1701,7 +1750,7 @@ public class CatalogTest {
             ep.onLevel(0.4f, 500);
             check(ep.heardSpeech(), "a voice peak is speech");
             check(ep.decision(1000) == NovaEndpoint.CONTINUE, "do not cut 0.5s after speech");
-            check(ep.decision(500 + NovaEndpoint.TAIL_MS) == NovaEndpoint.END_SILENCE, "stop 1.2s after last speech");
+            check(ep.decision(500 + NovaEndpoint.TAIL_MS) == NovaEndpoint.END_SILENCE, "stop 1.8s after last speech");
             check(ep.meter(0.05f) < ep.meter(0.4f), "meter moves with live level");
             NovaEndpoint silent = new NovaEndpoint();
             silent.start(0);
@@ -1724,8 +1773,8 @@ public class CatalogTest {
                 && NovaReplyQuick.afterFirst("Just one line!").isEmpty(), "the first sentence streams to TTS first");
         check(NovaReplyQuick.MAX_TOKENS <= 40 && NovaReplyQuick.MAX_TOKENS >= 20, "on-device replies stay short");
         check(NovaReplyQuick.LISTEN_WINDOW_MS == 15000L
-                && NovaReplyQuick.SPEECH_TAIL_MS == 1200L
-                && NovaReplyQuick.LISTEN_MAX_MS == 15000L, "listen while he talks, stop 1.2s after speech, max 15s");
+                && NovaReplyQuick.SPEECH_TAIL_MS == 1800L
+                && NovaReplyQuick.LISTEN_MAX_MS == 15000L, "listen while he talks, stop 1.8s after speech, max 15s");
         check(NovaReplyQuick.isSilentRms(0.001f) && !NovaReplyQuick.isSilentRms(0.05f)
                 && NovaReplyQuick.allZeros(0, 16000) && NovaReplyQuick.allZeros(3, 8000)
                 && !NovaReplyQuick.allZeros(200, 8000)
@@ -1759,7 +1808,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.72") && NovaAppVer.CODE == 172, "shipping version is 0.10.72");
+        check(NovaAppVer.NAME.equals("0.10.73") && NovaAppVer.CODE == 173, "shipping version is 0.10.73");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

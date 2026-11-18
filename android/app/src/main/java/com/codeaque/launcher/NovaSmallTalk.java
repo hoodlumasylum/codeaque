@@ -20,6 +20,12 @@ public final class NovaSmallTalk {
     public static final String BYE_ADULT = "Goodbye. I'm here if you need me.";
     public static final String HELLO_KIDS = "Hi! I'm Nova. How are you?";
     public static final String HELLO_ADULT = "Hi! I'm Nova. How can I help?";
+    public static final String FINE_KIDS = "That's good to hear! What would you like to do?";
+    public static final String FINE_ADULT = "Good to hear. What can I help with?";
+    public static final String WHATS_UP_KIDS = "I'm doing well! We can find a game, or I can help with words and numbers.";
+    public static final String WHATS_UP_ADULT = "I'm well, thanks. What can I help with?";
+    public static final String PLAY_KIDS = "I can help you find a game. Search at the top, or look along the rows.";
+    public static final String PLAY_ADULT = "Search at the top, or browse the rows, and I can help you pick a game.";
 
     /** Leading/trailing fillers only: uh, um, u, so, oh, and the like. */
     static final String[] FILLERS = {
@@ -28,7 +34,25 @@ public final class NovaSmallTalk {
     };
 
     public static String tidy(String raw) {
-        return normalize(stripFillers(NovaAsrText.tidy(raw)));
+        return normalize(repairClips(stripFillers(NovaAsrText.tidy(raw))));
+    }
+
+    /**
+     * Repair common ASR clips: "I'm fine" heard as "on fine",
+     * and a leading "s" before "play" from a clipped "let's".
+     */
+    public static String repairClips(String s) {
+        if (s == null || s.isEmpty()) return "";
+        String t = s;
+        if (t.startsWith("on fine") || t.startsWith("on good") || t.startsWith("on ok")
+                || t.startsWith("on okay") || t.startsWith("on great") || t.startsWith("on well")
+                || t.startsWith("on alright") || t.startsWith("on all right"))
+            t = "im " + t.substring(3);
+        if (t.startsWith("i fine") || t.startsWith("i good") || t.startsWith("i ok")
+                || t.startsWith("i okay") || t.startsWith("i great") || t.startsWith("i well"))
+            t = "im " + t.substring(2);
+        if (t.equals("s play") || t.startsWith("s play ")) t = "lets" + t.substring(1);
+        return t;
     }
 
     public static String stripFillers(String s) {
@@ -110,12 +134,49 @@ public final class NovaSmallTalk {
         String n = tidy(q);
         if (n.isEmpty()) return null;
         if (isHowAreYou(n)) return kids ? HOW_ARE_KIDS : HOW_ARE_ADULT;
+        if (isImFine(n)) return kids ? FINE_KIDS : FINE_ADULT;
+        if (isWhatsUp(n)) return kids ? WHATS_UP_KIDS : WHATS_UP_ADULT;
         if (isName(n)) return kids ? NAME_KIDS : NAME_ADULT;
         if (isCanDo(n)) return kids ? CAN_DO_KIDS : CAN_DO_ADULT;
+        if (isPlayWithMe(n)) return kids ? PLAY_KIDS : PLAY_ADULT;
         if (isThanks(n)) return kids ? THANKS_KIDS : THANKS_ADULT;
         if (isBye(n)) return kids ? BYE_KIDS : BYE_ADULT;
         if (isBareGreeting(n)) return kids ? HELLO_KIDS : HELLO_ADULT;
         return null;
+    }
+
+    public static String reply(String q, boolean kids, boolean midConversation) {
+        String n = tidy(q);
+        if (n.isEmpty()) return null;
+        // Mid-conversation, a bare hello is not the first-time onboarding greeting.
+        if (midConversation && isBareGreeting(n)) return kids ? HOW_ARE_KIDS : HOW_ARE_ADULT;
+        return reply(q, kids);
+    }
+
+    static boolean isImFine(String n) {
+        return n.equals("im fine") || n.equals("im fine thank you") || n.equals("im fine thanks")
+                || n.equals("im good") || n.equals("im good thank you") || n.equals("im good thanks")
+                || n.equals("im ok") || n.equals("im okay") || n.equals("im okay thank you")
+                || n.equals("im alright") || n.equals("im all right") || n.equals("im great")
+                || n.equals("im well") || n.equals("im well thank you") || n.equals("im well thanks")
+                || n.equals("im doing well") || n.equals("im doing good") || n.equals("im doing ok")
+                || n.equals("im doing okay") || n.equals("fine thank you") || n.equals("fine thanks")
+                || n.equals("good thank you") || n.equals("good thanks") || n.equals("im fine thankyou")
+                || n.equals("not bad") || n.equals("pretty good") || n.equals("doing fine")
+                || n.equals("doing good") || n.equals("doing well") || n.equals("im fine thanks how are you");
+    }
+
+    static boolean isWhatsUp(String n) {
+        return n.equals("whats up") || n.equals("whats up nova") || n.equals("what is up")
+                || n.equals("sup") || n.equals("wassup") || n.equals("what up")
+                || n.equals("hows things") || n.equals("how are things");
+    }
+
+    static boolean isPlayWithMe(String n) {
+        return n.equals("play with me") || n.equals("lets play") || n.equals("lets play with me")
+                || n.equals("play") || n.equals("can we play") || n.equals("i want to play")
+                || n.equals("lets play a game") || n.equals("want to play")
+                || n.equals("play a game") || n.equals("can you play with me");
     }
 
     static boolean isHowAreYou(String n) {
