@@ -756,26 +756,37 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     boolean startListen(boolean fromUser, boolean preroll) {
         long now = android.os.SystemClock.uptimeMillis();
-        if (preroll) {
-            if (!voiceLoop || !expanded || listenGiveUp || thinking()) return false;
-            if (speech != null && speech.isListening()) return true;
-        } else if (!NovaMicTap.allowStart(fromUser, expanded, voiceLoop, listenGiveUp, talking, thinking(),
+        // 0.10.74: never open the mic while Heart/TTS is pending or playing.
+        // The old pre-roll used written-so-far remaining time and fired at the
+        // first AudioTrack chunk, so she transcribed her own voice.
+        if (!fromUser && (talking || speakJobInFlight || pendingSpeak != null || deviceVoice))
+            return false;
+        preroll = false;
+        if (speech != null && speech.isListening()) {
+            acceptHeard = !thinking();
+            listenPreroll = false;
+            if (acceptHeard) {
+                convoState = NovaConvo.LISTENING;
+                showListenStatus(NovaConvo.YOUR_TURN_TEXT);
+            }
+            refreshMicLabel();
+            return true;
+        }
+        if (!NovaMicTap.allowStart(fromUser, expanded, voiceLoop, listenGiveUp, talking, thinking(),
                 speakJobInFlight, pendingSpeak != null, now < silentUntil)) return false;
         try { NovaAsr.requestLoad(getContext()); } catch (Throwable ignored) { }
         preferBuiltin = NovaListenPick.preferBuiltinWhenReady(NovaAsr.isLoaded()) || preferBuiltin;
-        if (!preroll) heardThisListen = false;
+        heardThisListen = false;
         lastRmsAt = 0;
-        if (micMeter != null && !preroll) micMeter.setLevel(0f);
+        if (micMeter != null) micMeter.setLevel(0f);
+        clearHeardUi();
         if (speech == null) speech = new NovaSpeech();
         boolean ok = speech.start(getContext(), new NovaTalkCb(this), preferBuiltin);
         if (ok || (speech != null && speech.isListening())) {
             listenStarted = true;
-            listenPreroll = preroll;
-            if (preroll) {
-                acceptHeard = false;
-            } else if (!thinking()) {
+            listenPreroll = false;
+            if (!thinking()) {
                 acceptHeard = true;
-                listenPreroll = false;
                 convoState = NovaConvo.LISTENING;
                 showListenStatus(NovaConvo.YOUR_TURN_TEXT);
             }
@@ -956,6 +967,17 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (msg != null && !msg.isEmpty()) NovaListenDiag.setReason(msg);
     }
 
+    /** Drop leftover "You said …" text when a new listen turn starts. */
+    void clearHeardUi() {
+        pendingEarlyHeard = null;
+        setLiveCaption("");
+        if (listenStatus == null) return;
+        CharSequence cur = listenStatus.getText();
+        String s = cur == null ? "" : cur.toString();
+        if (s.startsWith("You said:") || s.startsWith("you said:"))
+            showListenStatus(NovaConvo.YOUR_TURN_TEXT);
+    }
+
     void setLiveCaption(String text) {
         if (liveCaption == null) return;
         liveCaption.setVisibility(VISIBLE);
@@ -963,8 +985,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onPartialHeard(String text) {
-        text = NovaAsrText.tidy(text);
+        text = NovaAsrText.cleanHeardLive(text);
         if (text == null || text.isEmpty()) return;
+        if (NovaSpeakGate.isEcho(text, lastSpoken)) return;
         if ((!acceptHeard || listenPreroll) && NovaSpeakGate.sameLine(text, lastSpoken)) return;
         heardThisListen = true;
         if (!acceptHeard || listenPreroll) {
@@ -977,6 +1000,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (answerView != null) answerView.setText(text);
         showListenStatus(NovaConvo.youSaid(text));
     }
+
 
     public void onMicNoSound(String message) {
         listenGiveUp = false;
@@ -1481,6 +1505,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         silentUntil = 0;
         heartWaitExtended = false;
         beginTalk(s);
+        ensureTts();
         boolean heartReady = NovaKokoro.isLoaded();
         // Greeting must start at once. If Heart is still warming, use the phone voice for this line only.
         if (instantOk && NovaSpeakGate.allowInstantPhone(NovaKokoro.filesReady(getContext()), heartReady)) {
@@ -1514,34 +1539,20 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         }
     }
 
-    /** Heart (or a wiki job) took too long: drop the locks and speak a canned fallback. */
+    /** Heart took too long to start audio: speak the same line on the phone voice now. */
     public void onReplyTimeout(int gen) {
         replyWait = null;
         if (NovaSpeakGate.stale(gen, speakGen) && gen != 0) return;
         if (deviceVoice && talking) return;   // Heart audio already started — never cut over to the phone.
-        boolean keep = NovaSpeakGate.keepHeart(NovaKokoro.filesReady(getContext()));
-        if (NovaSpeakGate.extendHeartWait(keep, deviceVoice, speakJobInFlight, heartWaitExtended)) {
-            heartWaitExtended = true;
-            startReplyTimeout(gen);
-            return;
-        }
-        String fallback = NovaConvo.FALLBACK_TEXT;
-        lastAnswer = fallback;
-        if (answerView != null) answerView.setText(fallback);
-        showListenStatus(fallback);
-        if (keep) {
-            // Keep Heart for the fallback line. Do not start the phone's voice.
-            speakJobInFlight = false;
-            pendingSpeak = null;
-            speak(fallback);
-            return;
-        }
+        String line = lastSpoken;
+        if (line == null || line.isEmpty()) line = lastAnswer;
+        if (line == null || line.isEmpty()) return;
         speakJobInFlight = false;
         pendingSpeak = null;
         speakGen = NovaSpeakGate.nextGen(speakGen);
         NovaVoicePlay.stop();
         setVoiceTag(NovaSpeakGate.TAG_PHONE);
-        speakSystem(fallback);
+        speakSystem(line, true);
     }
 
     void releaseSpeakLocks() {
@@ -1626,16 +1637,20 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     /** Drop recognizer results that are her own echo or that arrived while she is speaking. */
     public void onHeard(String text) {
-        text = NovaAsrText.tidy(text);
+        text = NovaAsrText.cleanHeardLive(text);
         long now = android.os.SystemClock.uptimeMillis();
-        boolean echo = NovaSpeakGate.sameLine(text, lastSpoken)
-                || NovaSpeakGate.shouldDropHeard(text, lastSpoken, talking && !listenPreroll,
-                        speakJobInFlight && !listenPreroll, now, silentUntil);
+        boolean echo = NovaSpeakGate.isEcho(text, lastSpoken)
+                || NovaSpeakGate.shouldDropHeard(text, lastSpoken, talking || deviceVoice,
+                        speakJobInFlight, now, silentUntil);
         if (echo) {
             setLiveCaption("");
             refreshMicLabel();
-            if (voiceLoop && !listenPreroll) postDelayed(new NovaListenSoon(this), 200);
-            else if (voiceLoop && listenPreroll) startListen(false, true);
+            if (voiceLoop && !talking && !speakJobInFlight && !deviceVoice)
+                postDelayed(new NovaListenSoon(this), 200);
+            return;
+        }
+        if (talking || speakJobInFlight || deviceVoice || pendingSpeak != null) {
+            setLiveCaption("");
             return;
         }
         if (!acceptHeard || listenPreroll) {
@@ -1678,9 +1693,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onDeviceVoiceSoonEnd() {
-        if (!voiceLoop || !expanded || listenGiveUp || thinking()) return;
-        if (speech != null && speech.isListening()) return;
-        startListen(false, true);
+        // 0.10.74: do not start the recognizer from an estimated remaining time.
+        // Listening starts only from onDeviceVoiceEnd / onTtsEnd.
     }
 
     public void onDeviceVoiceEnd() {

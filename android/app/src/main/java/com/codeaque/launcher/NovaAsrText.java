@@ -29,6 +29,11 @@ public final class NovaAsrText {
         return fixCommonNumberSlips(b.toString());
     }
 
+    /** Tidy plus drop a stray leading "s" / clipped token for display and matching. */
+    public static String cleanHeardLive(String raw) {
+        return NovaGameTalk.stripLeadingNoise(tidy(raw));
+    }
+
     /** Cheap repairs next to arithmetic words, e.g. trailing "eh" for "eight". */
     static String fixCommonNumberSlips(String t) {
         if (t == null || t.isEmpty()) return "";
@@ -48,7 +53,7 @@ public final class NovaAsrText {
     }
 
     static boolean isOp(String w) {
-        return "times".equals(w) || "plus".equals(w) || "minus".equals(w)
+        return "times".equals(w) || "time".equals(w) || "plus".equals(w) || "minus".equals(w)
                 || "x".equals(w) || "+".equals(w) || "-".equals(w)
                 || "multiplied".equals(w) || "divided".equals(w);
     }
@@ -62,6 +67,9 @@ public final class NovaAsrText {
         if (w.equals("tree")) return "three";
         if (w.equals("sicks") || w.equals("sax")) return "six";
         if (w.equals("niner")) return "nine";
+        if (w.equals("sever") || w.equals("sevin") || w.equals("sevem")
+                || w.equals("sevn") || w.equals("siven")) return "seven";
+        if (w.equals("time")) return "times";
         return w;
     }
 }

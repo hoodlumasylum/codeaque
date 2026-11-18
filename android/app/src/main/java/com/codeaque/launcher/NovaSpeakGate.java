@@ -72,6 +72,85 @@ public final class NovaSpeakGate {
     }
 
     /**
+     * True if the heard line is her last reply, even when ASR clips the start
+     * or typo-alters a word ("s sure about that you can ask me…").
+     */
+    public static boolean isEcho(String heard, String spoken) {
+        if (sameLine(heard, spoken)) return true;
+        String a = NovaGameTalk.stripLeadingNoise(norm(heard));
+        String b = norm(spoken);
+        if (a.isEmpty() || b.isEmpty()) return false;
+        if (a.equals(b)) return true;
+        if (a.length() >= 6 && b.contains(a)) return true;
+        if (b.length() >= 6 && a.contains(b)) return true;
+        String[] aw = a.split(" ");
+        String[] bw = b.split(" ");
+        int meaningful = 0, hits = 0, j = 0;
+        for (int i = 0; i < aw.length; i++) {
+            String w = aw[i];
+            if (w.length() <= 1) continue;
+            meaningful++;
+            for (int k = j; k < bw.length; k++) {
+                if (bw[k].equals(w) || closeWord(bw[k], w)) {
+                    hits++;
+                    j = k + 1;
+                    break;
+                }
+            }
+        }
+        if (meaningful >= 4 && hits >= meaningful - 1) return true;
+        if (meaningful >= 6 && hits * 10 >= meaningful * 7) return true;
+        // A leftover syllable of her last line ("is", "s is") is not a new question.
+        if (meaningful > 0 && meaningful <= 2 && a.length() <= 10 && hits == meaningful) return true;
+        if (meaningful <= 2 && a.length() <= 10 && heardIsTailOf(a, b)) return true;
+        return false;
+    }
+
+    static boolean heardIsTailOf(String a, String b) {
+        if (a == null || b == null || a.isEmpty()) return false;
+        if (b.equals(a) || b.endsWith(" " + a)) return true;
+        String[] aw = a.split(" ");
+        String[] bw = b.split(" ");
+        if (aw.length == 0 || aw.length > bw.length) return false;
+        for (int i = 0; i < aw.length; i++) {
+            if (!aw[i].equals(bw[bw.length - aw.length + i]) && !closeWord(aw[i], bw[bw.length - aw.length + i]))
+                return false;
+        }
+        return true;
+    }
+
+    static boolean closeWord(String a, String b) {
+        if (a == null || b == null) return false;
+        if (a.equals(b)) return true;
+        if (Math.abs(a.length() - b.length()) > 2) return false;
+        if (a.length() < 4 || b.length() < 4) return false;
+        int d = editDist(a, b);
+        if (d <= 1) return true;
+        // Longer typos such as "numbus" / "number".
+        return d <= 2 && a.length() >= 6 && b.length() >= 6;
+    }
+
+    static int editDist(String a, String b) {
+        int n = a.length(), m = b.length();
+        int[] prev = new int[m + 1];
+        int[] cur = new int[m + 1];
+        for (int j = 0; j <= m; j++) prev[j] = j;
+        for (int i = 1; i <= n; i++) {
+            cur[0] = i;
+            char ca = a.charAt(i - 1);
+            for (int j = 1; j <= m; j++) {
+                int cost = ca == b.charAt(j - 1) ? 0 : 1;
+                int v = prev[j] + 1;
+                if (cur[j - 1] + 1 < v) v = cur[j - 1] + 1;
+                if (prev[j - 1] + cost < v) v = prev[j - 1] + cost;
+                cur[j] = v;
+            }
+            int[] tmp = prev; prev = cur; cur = tmp;
+        }
+        return prev[m];
+    }
+
+    /**
      * Drop a result that arrived while she is still speaking, or that repeats
      * the line she just said (her echo). Do not drop a new question just
      * because it arrived in the short hangover — that clips his first words
@@ -80,7 +159,7 @@ public final class NovaSpeakGate {
     public static boolean shouldDropHeard(String heard, String lastSpoken, boolean speaking,
                                           boolean jobInFlight, long now, long silentUntil) {
         if (speaking || jobInFlight) return true;
-        return sameLine(heard, lastSpoken);
+        return isEcho(heard, lastSpoken);
     }
 
     public static final String TAG_HEART = "Heart";
@@ -91,38 +170,36 @@ public final class NovaSpeakGate {
     }
 
     /**
-     * First Heart load/synth can take longer than a reply timeout. Wait this
-     * long before considering a Heart line stuck. Never cut it over to the
-     * phone's voice just because the 12 s reply timer fired.
+     * How long to wait for Heart's first audio. After this, the phone voice
+     * speaks the same line so a slow synth does not leave a multi-second gap.
      */
-    public static final long HEART_WAIT_MS = 30000L;
+    public static final long HEART_FIRST_AUDIO_MS = 400L;
+    public static final long HEART_WAIT_MS = HEART_FIRST_AUDIO_MS;
 
-    /** Once the Heart files are on the phone, every line must use Heart. */
+    /** True when Heart files are on the phone (prefer Heart when it starts quickly). */
     public static boolean keepHeart(boolean filesReady) {
         return filesReady;
     }
 
     /**
-     * If Heart is still loading or synthesising, extend the wait once instead
-     * of switching to the phone's voice.
+     * Do not extend a slow Heart wait. Prefer the phone voice after
+     * {@link #HEART_FIRST_AUDIO_MS} if playback has not started.
      */
     public static boolean extendHeartWait(boolean keepHeart, boolean audioStarted,
             boolean jobInFlight, boolean alreadyExtended) {
-        if (!keepHeart) return false;
-        if (audioStarted) return false;
-        return jobInFlight && !alreadyExtended;
+        return false;
     }
 
     /**
-     * A timeout or a failed synth must not start system TTS while Heart is
-     * the chosen voice.
+     * The phone voice may speak a line when Heart is missing or too slow.
+     * Once Heart audio has actually started, do not cut over.
      */
     public static boolean allowSystemTts(boolean keepHeart) {
-        return !keepHeart;
+        return true;
     }
 
     public static long speakWaitMs(boolean keepHeart) {
-        return keepHeart ? HEART_WAIT_MS : 12000L;
+        return HEART_FIRST_AUDIO_MS;
     }
 
     /**

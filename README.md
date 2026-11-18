@@ -31,6 +31,22 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.74
+
+**She no longer listens to herself.** 0.10.73 opened the mic about half a second before Heart was *estimated* to finish. That estimate used how much audio had been written so far, so it fired on the first AudioTrack chunk — often four to eight seconds before any sound played. The status went back to Listening, and she transcribed her own reply ("s is", then "s sure about that you can ask me…") on top of his words. The mic now opens only after real playback-completion (AudioTrack / system TTS onDone). Transcripts that fuzzy-match her last reply are discarded.
+
+**Replies start speaking quickly.** Heart (Kokoro) was taking four to eight seconds to synthesise a line on his phone. If Heart has not started audio within about 400 ms, the same line is spoken at once with the phone's TextToSpeech. Heart is still used when it starts in time. A short tail of silence is written at the end of playback so the last syllable is not cut off.
+
+**Only one thing may hold the mic.** Starting the recognizer a second time, or leaving the hidden-listen service's AudioRecord running, could raise the system toast "Another app is using the microphone." Chat now releases that service's mic immediately, will not cancel-and-restart a recognizer that is already listening, and only one SpeechRecognizer or AudioRecord is allowed at a time.
+
+**A stray leading "s" is dropped.** "What's eight times eight" and "I'm not sure" were coming through as "s eight times eight" and "s sure about that" — the first word was clipped, and leftover echo was kept. Leading one-letter ASR junk is stripped, and "You said …" is cleared at the start of each new turn.
+
+**"seven time sever" is 49.** The maths intent now treats "time" as "times" and number-word slips such as "sever" as "seven".
+
+0.10.71–0.10.73 fixes (first-word buffer after she *has* finished, longer endpoint, adult-safe small talk, no mid-conversation onboarding, no "brain isn't ready" line, Roblox fuzzy match, identical speech and bubble) are unchanged.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. Please try this install and see that she does not transcribe her own replies, speech starts within about half a second, "what's eight times eight" and "seven times seven" are answered in full, and the "another app is using the microphone" toast does not appear from Nova herself.
+
 ## What's new in 0.10.73
 
 **Listening keeps the first words.** The mic now opens about half a second before she finishes speaking, so the start of a line such as "I'm fine" or "let's play" is not clipped. A clear "Your turn" cue is shown only when it is truly his turn.

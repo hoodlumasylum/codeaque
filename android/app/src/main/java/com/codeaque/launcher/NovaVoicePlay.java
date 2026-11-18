@@ -81,7 +81,6 @@ public final class NovaVoicePlay {
         NovaMouth.Ring ring = new NovaMouth.Ring(64);
         int written = 0;
         int i = 0;
-        boolean soonEnd = false;
         int stuck = 0;
         int lastHead = -1;
         while (i < samples.length && !stopFlag && wantSession == currentSession()) {
@@ -98,19 +97,28 @@ public final class NovaVoicePlay {
             written += n;
             int head = playbackHead(t);
             if (cb != null) post(cb, 1, NovaMouth.mouthFromRms(ring.atHead(head)));
-            soonEnd = maybeSoon(cb, soonEnd, head, written, sampleRate);
             i += n;
         }
-        // Drain until the playback head has actually reached the last sample,
+        // A short tail of silence so AudioTrack.stop() does not clip the last syllable.
+        int pad = Math.max(sampleRate / 5, 800);
+        java.util.Arrays.fill(pcm, (short) 0);
+        int padded = 0;
+        while (padded < pad && !stopFlag && wantSession == currentSession()) {
+            int n = Math.min(pcm.length, pad - padded);
+            try { t.write(pcm, 0, n); } catch (Exception e) { break; }
+            written += n;
+            padded += n;
+        }
+        // Drain until the playback head has actually reached the last real sample,
         // so the mouth stays in time and the last syllable is not cut off.
+        int lastReal = Math.max(0, written - pad);
         while (!stopFlag && wantSession == currentSession()) {
             int head = playbackHead(t);
             if (cb != null) post(cb, 1, NovaMouth.mouthFromRms(ring.atHead(head)));
-            soonEnd = maybeSoon(cb, soonEnd, head, written, sampleRate);
-            if (NovaMouth.drained(head, written, false)) break;
+            if (NovaMouth.drained(head, lastReal, false)) break;
             if (head == lastHead) {
                 stuck++;
-                if (stuck > 15) break;
+                if (stuck > 50) break;
             } else {
                 stuck = 0;
                 lastHead = head;

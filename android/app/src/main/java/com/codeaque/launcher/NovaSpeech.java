@@ -58,6 +58,8 @@ public final class NovaSpeech {
     NovaAsrMic asrMic;
     final NovaEndpoint endpoint = new NovaEndpoint();
     NovaSpeechEndWatch endWatch;
+    /** Only one SpeechRecognizer or AudioRecord may hold the mic at a time. */
+    static volatile NovaSpeech activeMic;
     NovaSpeechResultsWait resultsWait;
 
     public static boolean voiceTalkOn(SharedPreferences p) {
@@ -77,8 +79,13 @@ public final class NovaSpeech {
             ui.post(new NovaSpeechStart(this, ctx, callbacks, forceBuiltin));
             return true;
         }
-        pauseListening();
         destroyed = false;
+        if (callbacks != null) cb = callbacks;
+        // Already holding the mic: do not cancel and restart, which races and
+        // can raise the system "Another app is using the microphone" toast.
+        if (listening && !forceBuiltin && rec != null && !usingBuiltin) return true;
+        if (listening && usingBuiltin && asrMic != null) return true;
+        pauseListening();
         cb = callbacks;
         usedUsLang = false;
         language = NovaListenPick.firstLanguage();
@@ -235,6 +242,7 @@ public final class NovaSpeech {
             return;
         }
         listenGen = NovaConvo.nextGen(listenGen);
+        claimMic();
         listening = true;
         notifyState(true);
     }
@@ -289,7 +297,20 @@ public final class NovaSpeech {
             try { rec.stopListening(); } catch (Exception ignored) { }
             try { rec.cancel(); } catch (Exception ignored) { }
         }
+        releaseMic();
         notifyState(false);
+    }
+
+    void claimMic() {
+        NovaSpeech other = activeMic;
+        if (other != null && other != this) {
+            try { other.pauseListening(); } catch (Exception ignored) { }
+        }
+        activeMic = this;
+    }
+
+    void releaseMic() {
+        if (activeMic == this) activeMic = null;
     }
 
     public void stop() {
@@ -329,6 +350,7 @@ public final class NovaSpeech {
         Intent i = recognizeIntent(preferOffline, lang);
         offlineTried = preferOffline;
         listenGen = NovaConvo.nextGen(listenGen);
+        claimMic();
         listening = true;
         endpoint.start(android.os.SystemClock.uptimeMillis());
         scheduleEndpointWatch();

@@ -32,6 +32,7 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
 
     /** Set by MainActivity. Starting the service is only allowed while this is true. */
     public static volatile boolean appInForeground;
+    static volatile NovaListenService instance;
 
     final Handler ui = new Handler(Looper.getMainLooper());
     final NovaListenSpeechCb speechCb = new NovaListenSpeechCb(this);
@@ -88,6 +89,11 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
 
     /** Chat is about to use the mic. Release this service without clearing the hidden-listen pref. */
     public static void pauseForChat(Context c) {
+        NovaListenService s = instance;
+        if (s != null) {
+            s.running = false;
+            s.stopMic();
+        }
         stopOnly(c);
     }
 
@@ -99,6 +105,7 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             NovaNotifyQuiet.install(nm, CH, "Nova listening", "Nova is listening while hidden");
         }
+        instance = this;
         startFg(note());
         tts = new TextToSpeech(this, this);
         kids = prefs(this).getBoolean("kidsMode", false);
@@ -131,6 +138,7 @@ public class NovaListenService extends Service implements TextToSpeech.OnInitLis
 
     @Override public void onDestroy() {
         running = false;
+        if (instance == this) instance = null;
         stopMic();
         if (tts != null) {
             try { tts.stop(); tts.shutdown(); } catch (Exception ignored) { }

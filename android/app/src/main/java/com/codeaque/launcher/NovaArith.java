@@ -50,7 +50,7 @@ public final class NovaArith {
 
     static int opOf(String w) {
         if (w == null) return -1;
-        if (w.equals("times") || w.equals("x") || w.equals("multiplied")) return 0;
+        if (w.equals("times") || w.equals("time") || w.equals("x") || w.equals("multiplied")) return 0;
         if (w.equals("plus") || w.equals("add")) return 1;
         if (w.equals("divided") || w.equals("divide")) return 2;
         if (w.equals("minus") || w.equals("subtract") || w.equals("less")) return 3;
@@ -93,6 +93,40 @@ public final class NovaArith {
         if (w.equals("eighty")) return 80L;
         if (w.equals("ninety")) return 90L;
         if (w.equals("hundred")) return 100L;
-        return null;
+        // Common ASR slips next to an operator: "sever" → seven.
+        if (w.equals("sever") || w.equals("sevin") || w.equals("sevem")
+                || w.equals("sevn") || w.equals("siven")) return 7L;
+        if (w.equals("ate") || w.equals("ait") || w.equals("eh")) return 8L;
+        return fuzzyWordNum(w);
+    }
+
+    static Long fuzzyWordNum(String w) {
+        if (w == null || w.length() < 4) return null;
+        String[] names = {
+                "zero", "one", "two", "three", "four", "five", "six", "seven",
+                "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+                "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+                "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+                "eighty", "ninety", "hundred"
+        };
+        long[] vals = {
+                0, 1, 2, 3, 4, 5, 6, 7,
+                8, 9, 10, 11, 12, 13, 14,
+                15, 16, 17, 18, 19,
+                20, 30, 40, 50, 60, 70,
+                80, 90, 100
+        };
+        Long best = null;
+        int bestD = 3;
+        for (int i = 0; i < names.length; i++) {
+            if (Math.abs(names[i].length() - w.length()) > 1) continue;
+            if (names[i].length() < 4) continue;
+            int d = NovaSpeakGate.editDist(w, names[i]);
+            if (d > 0 && d <= 1 && d < bestD) {
+                bestD = d;
+                best = vals[i];
+            }
+        }
+        return best;
     }
 }

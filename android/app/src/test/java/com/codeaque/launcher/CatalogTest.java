@@ -1589,11 +1589,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.73") && NovaAppVer.CODE == 173, "shipping version is 0.10.73");
-        check(NovaAppVer.label().equals("CodeAque 0.10.73")
-                && NovaAppVer.label("0.10.73").equals("CodeAque 0.10.73")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.73")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.73"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.74") && NovaAppVer.CODE == 174, "shipping version is 0.10.74");
+        check(NovaAppVer.label().equals("CodeAque 0.10.74")
+                && NovaAppVer.label("0.10.74").equals("CodeAque 0.10.74")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.74")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.74"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1613,18 +1613,18 @@ public class CatalogTest {
         check(NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN, false)
                 && !NovaSpeechAvail.showInstallButton(NovaSpeechAvail.NEED_BUILTIN, true)
                 && !NovaSpeechAvail.showInstallButton(NovaSpeechAvail.USE_RECOGNIZER, false), "hide Get speech service when the Google service is already on the phone");
-        check(NovaSpeakGate.keepHeart(true) && !NovaSpeakGate.keepHeart(false), "once Heart is downloaded, keep it");
-        check(!NovaSpeakGate.allowSystemTts(true) && NovaSpeakGate.allowSystemTts(false), "never mix in the phone's voice after Heart is on the phone");
-        check(NovaSpeakGate.speakWaitMs(true) == NovaSpeakGate.HEART_WAIT_MS
-                && NovaSpeakGate.HEART_WAIT_MS >= 30000L
-                && NovaSpeakGate.speakWaitMs(false) == 12000L, "Heart gets a longer wait than the 12 s reply timer");
-        check(NovaSpeakGate.extendHeartWait(true, false, true, false)
+        check(NovaSpeakGate.keepHeart(true) && !NovaSpeakGate.keepHeart(false), "Heart files on the phone still prefer Heart when it starts quickly");
+        check(NovaSpeakGate.allowSystemTts(true) && NovaSpeakGate.allowSystemTts(false), "the phone voice may speak when Heart is missing or too slow");
+        check(NovaSpeakGate.speakWaitMs(true) == NovaSpeakGate.HEART_FIRST_AUDIO_MS
+                && NovaSpeakGate.HEART_FIRST_AUDIO_MS == 400L
+                && NovaSpeakGate.speakWaitMs(false) == NovaSpeakGate.HEART_FIRST_AUDIO_MS, "Heart has 400 ms to start audio before the phone voice speaks the same line");
+        check(!NovaSpeakGate.extendHeartWait(true, false, true, false)
                 && !NovaSpeakGate.extendHeartWait(true, true, true, false)
                 && !NovaSpeakGate.extendHeartWait(true, false, true, true)
-                && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
+                && !NovaSpeakGate.extendHeartWait(false, false, true, false), "a slow Heart synth does not get an extra wait");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.73") && NovaAppVer.CODE == 173, "shipping version is 0.10.73");
+        check(NovaAppVer.NAME.equals("0.10.74") && NovaAppVer.CODE == 174, "shipping version is 0.10.74");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1801,14 +1801,28 @@ public class CatalogTest {
                 && NovaArith.answer("what is eight times eight").contains("64")
                 && NovaArith.answer("S EIGHT TIMES EH").contains("64")
                 && NovaArith.answer("what's 5 plus 3").contains("8")
-                && !NovaArith.looksLike("tell me a joke"), "spoken arithmetic answers 64");
+                && NovaArith.answer("seven time sever").contains("49")
+                && NovaArith.answer("s seven time sever").contains("49")
+                && NovaArith.answer("what's seven times seven").contains("49")
+                && !NovaArith.looksLike("tell me a joke")
+                && !NovaArith.looksLike("what time is it"), "spoken arithmetic answers 64 and is tolerant of time/sever slips");
+        check(NovaGameTalk.stripLeadingNoise("s eight times eight").equals("eight times eight")
+                && NovaGameTalk.stripLeadingNoise("s is seven time sever").equals("is seven time sever")
+                && NovaAsrText.cleanHeardLive("s eight times eight").equals("eight times eight"),
+                "a stray leading s from a clipped what's or I'm is dropped");
+        String last = "I'm not sure about that. You can ask me about a game, a word, or a number.";
+        check(NovaSpeakGate.isEcho("s sure about that you can ask me about a game a word or a numbus", last)
+                && NovaSpeakGate.isEcho("s is", "8 times 8 is 64.")
+                && !NovaSpeakGate.isEcho("seven time sever", "8 times 8 is 64.")
+                && !NovaSpeakGate.isEcho("what's eight times eight", last),
+                "her own last reply is dropped as echo; a new sums question is kept");
 
         check(NovaSpeakGate.allowInstantPhone(true, false)
                 && !NovaSpeakGate.allowInstantPhone(true, true)
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.73") && NovaAppVer.CODE == 173, "shipping version is 0.10.73");
+        check(NovaAppVer.NAME.equals("0.10.74") && NovaAppVer.CODE == 174, "shipping version is 0.10.74");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)
