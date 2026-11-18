@@ -1,6 +1,9 @@
 package com.codeaque.launcher;
 
-/** Offline CodeAque helper answers. No network, no accounts, no data collection. */
+/**
+ * Offline CodeAque helper answers. No network, no accounts, no data collection.
+ * In Kids mode the only topics are games help, learning help, and clean jokes.
+ */
 public final class NovaHelp {
     private NovaHelp() {}
 
@@ -8,7 +11,98 @@ public final class NovaHelp {
 
     public static final String LIMITS = "I only know simple CodeAque help stored on this phone. I don't use an account or an internet assistant. Nova over other games needs a parent PIN and Android's Display over other apps permission — some phones, full-screen games, or Kids lock may still hide or block me.";
 
-    public static String answer(String question) {
+    public static final String KIDS_GREETING = "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.";
+
+    public static final String KIDS_FOOT = "I can help with games, learning, or a joke. For anything else, ask a grown-up.";
+
+    /** Clean, silly jokes for about age 6. No insults, toilet humour, scares or religion. */
+    public static final String[] JOKES = {
+            "Why did the banana go to the doctor? It wasn't peeling well.",
+            "What do you call a bear with no teeth? A gummy bear.",
+            "Why do bees have sticky hair? They use honeycombs.",
+            "What do you call cheese that isn't yours? Nacho cheese.",
+            "Why did the cookie go to the doctor? It felt crummy.",
+            "What's a cat's favourite colour? Purr-ple.",
+            "Why did the bicycle fall over? It was two-tired.",
+            "What do you call a pig that does karate? A pork chop.",
+            "What do you call a dinosaur that loves to sleep? A dino-snore.",
+            "Why did the scarecrow win an award? He was outstanding in his field.",
+            "Why did the tomato turn red? It saw the salad dressing.",
+            "What's orange and sounds like a parrot? A carrot.",
+            "Why did the cow look at the sky? To see the moo-n.",
+            "What has ears but cannot hear? A field of corn.",
+            "What do you call a fish with no eyes? A fsh.",
+            "What kind of room has no doors or windows? A mushroom.",
+            "Why did the frog take the bus? His car was toad away.",
+            "Why did the stadium get so warm? Because of all the fans.",
+            "What do you call an alligator in a vest? An investigator.",
+            "Why was the broom late? It overswept.",
+            "How does a scientist freshen her breath? With experi-mints.",
+            "What do you call a dog magician? A labracadabrador.",
+            "Why did the grape stop in the middle of the road? It ran out of juice.",
+            "Why did the chicken cross the playground? To get to the other slide.",
+            "What do cows play at parties? Moosical chairs.",
+            "What's a snake's favourite subject? Hiss-tory.",
+            "Why did the teddy bear say no to dessert? It was stuffed.",
+            "What do you call a pony with a sore throat? A little hoarse.",
+            "Why did the music teacher need a ladder? To reach the high notes.",
+            "What kind of tree fits in your hand? A palm tree.",
+            "Why did the calendar look so popular? It had lots of dates.",
+            "What's a pirate's favourite letter? People think it's R, but it's the C.",
+            "Why did the banana open a bakery? It had great a-peel."
+    };
+
+    public static String answer(String question) { return answer(question, false); }
+
+    public static String answer(String question, boolean kids) {
+        if (kids) return kidsAnswer(question);
+        return adultAnswer(question);
+    }
+
+    public static String[] chips() {
+        return new String[] { "How do I update?", "Kids mode", "Search", "Screen Time", "Parent PIN", "Nova over games" };
+    }
+
+    /** Learning + games help only (jokes have their own button). */
+    public static String[] kidsChips() {
+        return new String[] { "Find a game", "How do I play?", "Learning" };
+    }
+
+    public static int jokeCount() { return JOKES.length; }
+
+    public static String jokeAt(int i) {
+        int n = JOKES.length;
+        if (n == 0) return "";
+        int k = i % n;
+        if (k < 0) k += n;
+        return JOKES[k];
+    }
+
+    public static boolean looksLikeJoke(String question) {
+        String q = norm(question);
+        return has(q, "joke", "jokes", "funny", "make me laugh", "tell me something funny");
+    }
+
+    static String kidsAnswer(String question) {
+        String q = norm(question);
+        if (q.isEmpty() || has(q, "who are you", "who is nova", "hello", "hi nova", "hey nova", "what can you", "help", "what do you"))
+            return KIDS_GREETING;
+        if (looksLikeJoke(question))
+            return "Tap Tell me a joke and I'll tell you one.";
+        if (has(q, "learn", "learning", "school", "puzzle", "read", "maths", "math", "spell", "count"))
+            return "The Learning tab has learning games and puzzles. Scroll the row and tap a game to play it. If it isn't on the phone yet, tap GET. You can also type a name in Search at the top.";
+        if (has(q, "search", "find", "look up", "where is", "how do i play", "how to play", "start a game", "open a game", "play a game", "get a game", "install", "game"))
+            return "To find a game, look along the rows or use Search at the top. Tap a game to play it. If you see GET, tap it to put that game on the phone. Then come back to CodeAque and tap it to play.";
+        if (has(q, "theme", "colour", "color", "wallpaper", "looks"))
+            return "You can change how CodeAque looks with the Themes tile. Pick a look you like. If you want help with something else, ask a grown-up.";
+        if (has(q, "wifi", "wi-fi", "internet", "network"))
+            return "If the internet isn't working, ask a grown-up to help with Wi-Fi.";
+        if (has(q, "time", "times up", "time's up", "finished", "limit"))
+            return "If play time is finished, ask a grown-up whether you can play more.";
+        return KIDS_FOOT;
+    }
+
+    static String adultAnswer(String question) {
         String q = norm(question);
         if (q.isEmpty()) return GREETING;
         if (has(q, "who are you", "who is nova", "hello", "hi nova", "hey nova", "what can you", "help", "what do you"))
@@ -30,7 +124,7 @@ public final class NovaHelp {
         if (has(q, "overlay", "over other", "over games", "display over", "bubble over", "float", "system_alert", "draw over"))
             return "Nova can sit in the CodeAque corner without any extra permission. Showing her over other games is optional and off by default. A parent turns it on in Settings > Nova (PIN), then grants Android's Display over other apps permission. It stays off while Kids mode is on. Some phones, full-screen or lock-task games, or OEM game modes may still cover or block the bubble. You can revoke the permission in Android Settings at any time.";
         if (has(q, "hide nova", "turn off nova", "remove nova", "show nova", "where is nova"))
-            return "Nova is the circle in the corner of CodeAque. Tap her to open this help, tap again or Back to close. Show or hide her in Settings > Nova. That does not need a PIN. Showing her over other games does, and is off in Kids mode.";
+            return "Nova is the circle in the corner of CodeAque, including in Kids mode. Tap her to open this help, tap again or Back to close. Show or hide her in Settings > Nova. That does not need a PIN. Showing her over other games does, and is off in Kids mode.";
         if (has(q, "cover", "box art", "boxart", "poster", "artwork", "screenshot"))
             return "Game tiles fill the cover edge-to-edge. Art comes from the game's icon, a saved screenshot, or downloaded box art for some retro files. If a cover looks wrong, try Rescan for games in Settings, or add a game folder for retro files.";
         if (has(q, "wifi", "wi-fi", "internet", "network"))
@@ -48,10 +142,6 @@ public final class NovaHelp {
         return "I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova over games. " + LIMITS;
     }
 
-    public static String[] chips() {
-        return new String[] { "How do I update?", "Kids mode", "Search", "Screen Time", "Parent PIN", "Nova over games" };
-    }
-
     static String norm(String s) {
         if (s == null) return "";
         String t = s.trim().toLowerCase();
@@ -65,6 +155,18 @@ public final class NovaHelp {
 
     static boolean has(String q, String... keys) {
         for (String k : keys) if (q.contains(k)) return true;
+        return false;
+    }
+
+    /** True if the text looks unsafe to show a child (links or admin/PIN wording). */
+    public static boolean kidsUnsafe(String text) {
+        if (text == null) return false;
+        String t = text.toLowerCase();
+        if (t.contains("http://") || t.contains("https://") || t.contains("www.")) return true;
+        if (t.contains("1234")) return true;
+        if (t.contains("parent pin") || t.contains("the pin") || t.contains("enter the pin")) return true;
+        if (t.contains("sideload") || t.contains("overlay") || t.contains("display over")) return true;
+        if (t.contains("leave kids") || t.contains("turn off kids") || t.contains("exit codeaque")) return true;
         return false;
     }
 }

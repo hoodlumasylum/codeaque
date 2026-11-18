@@ -17,6 +17,8 @@ public final class NovaAnim {
         public float blink;     // 0 open … 1 closed
         public float gazeX, gazeY;
         public float bob;       // fraction of the face height
+        public float mouth;     // 0 closed … 1 open (lip-sync while talking)
+        public boolean talking;
         public boolean doublePending;
         long blinkAt, nextBlink, nextGaze, doubleAt;
         float gazeTx, gazeTy;
@@ -29,6 +31,8 @@ public final class NovaAnim {
         s.blink = 0;
         s.gazeX = s.gazeY = s.gazeTx = s.gazeTy = 0;
         s.bob = 0;
+        s.mouth = 0;
+        s.talking = false;
         s.doublePending = false;
         s.blinkAt = 0;
         s.nextBlink = now + 1800;
@@ -98,4 +102,19 @@ public final class NovaAnim {
     }
 
     static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+    /** Flap the mouth while talking; ease shut when idle. Rest (photo) lids/lips stay closed. */
+    public static void tickTalk(State s, long now, boolean talking) {
+        if (s == null) return;
+        s.talking = talking;
+        if (!talking) {
+            s.mouth += (0f - s.mouth) * 0.4f;
+            if (s.mouth < 0.02f) s.mouth = 0f;
+            return;
+        }
+        float a = (float) (0.55 + 0.45 * Math.sin(now / 90.0 * 2.0 * Math.PI));
+        float b = (float) (0.5 + 0.5 * Math.sin(now / 145.0 * 2.0 * Math.PI + 0.8));
+        float target = clamp(a * b, 0.08f, 1f);
+        s.mouth += (target - s.mouth) * 0.45f;
+    }
 }

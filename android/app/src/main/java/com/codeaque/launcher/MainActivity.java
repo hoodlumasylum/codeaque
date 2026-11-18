@@ -165,7 +165,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             syncDeviceOwnerKiosk();
             syncKidsPinning();
         } else if (deviceOwner()) syncDeviceOwnerKiosk();
-        if (nova != null) nova.applyPref();
+        if (nova != null) {
+            nova.setKids(prefs.getBoolean("kidsMode", false));
+            nova.applyPref();
+            nova.bringToFront();
+        }
         NovaOverlayService.setHostVisible(this, true);
         NovaOverlayService.sync(this);
         view.invalidate();
@@ -284,6 +288,11 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         view.setProjector(proj);
         boolean kidsOn = prefs.getBoolean("kidsMode", false);
         view.setKids(kidsOn);
+        if (nova != null) {   // 0.10.53: same corner bubble in Kids mode, kid-safe panel
+            nova.setKids(kidsOn);
+            nova.applyPref();
+            nova.bringToFront();
+        }
         List<Catalog.Item> allRoms = new ArrayList<>(roms); allRoms.addAll(dcFiles);
         List<Catalog.Item> kidsNew = new ArrayList<>();   // 0.10.6: games installed during Kids mode
         java.util.Set<String> kidsSet = prefs.getStringSet("kidsAdded", Collections.<String>emptySet());

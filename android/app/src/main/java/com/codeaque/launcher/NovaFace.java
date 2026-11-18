@@ -25,10 +25,14 @@ public final class NovaFace {
     public static final float LEX = 0.352f, LEY = 0.370f, LEW = 0.108f, LEH = 0.052f;
     public static final float REX = 0.518f, REY = 0.344f, REW = 0.124f, REH = 0.054f;
     public static final float FX = 0.18f, FY = 0.02f, FW = 0.66f, FH = 0.78f;
+    // Closed-lips box on the 1024 portrait (face_layout.MOUTH), used to lip-sync.
+    public static final float MX = 0.418f, MY = 0.488f, MW = 0.195f, MH = 0.070f;
     static final int FALLBACK_LID = 0xFFB08978;
+    static final int LIP_UPPER = 0xFFC38A72, LIP_LOWER = 0xFFA86B55, LIP_INNER = 0xFF2A0E0A, TEETH = 0xFFE8D4C8;
 
     final Paint bmp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     final Paint lid = new Paint(Paint.ANTI_ALIAS_FLAG);
+    final Paint lip = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
     final Paint clip = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -94,6 +98,8 @@ public final class NovaFace {
                 drawLids(c, LEX, LEY, LEW, LEH, blink);
                 drawLids(c, REX, REY, REW, REH, blink);
             }
+            float mouth = st == null ? 0 : st.mouth;
+            if (mouth > 0.04f) drawMouth(c, mouth);
         } else {
             Paint p = clip;
             p.setColor(0xFF3A2A28);
@@ -158,6 +164,30 @@ public final class NovaFace {
         c.drawRect(eye.left - 2, eye.top - 2, eye.right + 2, up, lid);
         c.drawRect(eye.left - 2, lo, eye.right + 2, eye.bottom + 2, lid);
         c.restoreToCount(s);
+    }
+
+    void drawMouth(Canvas c, float open) {
+        mapEye(MX, MY, MW, MH, eye);
+        if (eye.width() < 4) return;
+        float o = open < 0 ? 0 : (open > 1 ? 1 : open);
+        float h = Math.max(2, eye.height() * (0.28f + 0.85f * o));
+        float cx = eye.centerX(), midY = eye.centerY() + eye.height() * 0.08f;
+        RectF hole = new RectF(eye.left + eye.width() * 0.12f, midY - h * 0.45f,
+                eye.right - eye.width() * 0.12f, midY + h * 0.55f);
+        lip.setStyle(Paint.Style.FILL);
+        lip.setColor(LIP_INNER);
+        c.drawOval(hole, lip);
+        if (o > 0.25f) {
+            lip.setColor(TEETH);
+            float th = Math.max(1, hole.height() * 0.22f);
+            c.drawOval(new RectF(hole.left + 2, hole.top + 1, hole.right - 2, hole.top + th + 1), lip);
+        }
+        lip.setStyle(Paint.Style.STROKE);
+        lip.setStrokeWidth(Math.max(2, eye.height() * 0.22f));
+        lip.setColor(LIP_LOWER);
+        c.drawArc(hole, 10, 160, false, lip);
+        lip.setColor(LIP_UPPER);
+        c.drawArc(hole, 190, 160, false, lip);
     }
 
     int sampleLid() {

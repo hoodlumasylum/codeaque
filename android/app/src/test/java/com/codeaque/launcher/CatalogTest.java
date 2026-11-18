@@ -1054,6 +1054,45 @@ public class CatalogTest {
         check(anim.gazeX >= -NovaAnim.GAZE_MAX_X && anim.gazeX <= NovaAnim.GAZE_MAX_X
                 && anim.gazeY >= -NovaAnim.GAZE_MAX_Y && anim.gazeY <= NovaAnim.GAZE_MAX_Y, "gaze stays in the socket");
         check(Math.abs(anim.bob) <= NovaAnim.BOB_AMP + 1e-6, "breath amplitude is small");
+        NovaAnim.tickTalk(anim, 2000, true);
+        check(anim.talking && anim.mouth > 0f, "mouth opens while talking");
+        for (int i = 0; i < 20; i++) NovaAnim.tickTalk(anim, 2000 + i * 40, false);
+        check(!anim.talking && anim.mouth < 0.05f, "mouth closes when speech ends");
+
+        check(NovaHelp.jokeCount() >= 20, "enough offline jokes");
+        java.util.HashSet<String> unique = new java.util.HashSet<>();
+        String[] bad = {"http", "www.", "pin", "1234", "poo", "pee", "toilet", "kill", "dead", "hell", "damn", "stupid", "idiot", "god", "jesus", "blood"};
+        for (int i = 0; i < NovaHelp.jokeCount(); i++) {
+            String j = NovaHelp.jokeAt(i);
+            check(j != null && j.length() > 10, "joke " + i);
+            check(!unique.contains(j), "duplicate joke: " + j);
+            unique.add(j);
+            String low = " " + j.toLowerCase().replaceAll("[^a-z]+", " ") + " ";
+            check(!NovaHelp.kidsUnsafe(j), "joke must be kid-safe: " + j);
+            for (String w : bad) check(!low.contains(" " + w + " "), "joke wording: " + w + " in " + j);
+        }
+        check(NovaHelp.jokeAt(NovaHelp.jokeCount()).equals(NovaHelp.jokeAt(0)), "jokes wrap");
+        check(NovaHelp.looksLikeJoke("Tell me a joke") && NovaHelp.looksLikeJoke("something funny"), "joke intent");
+
+        String kg = NovaHelp.answer("", true);
+        check(kg.equals(NovaHelp.KIDS_GREETING) && !NovaHelp.kidsUnsafe(kg), "kids greeting");
+        for (String q : new String[]{"Find a game", "How do I play?", "Learning", "search", "How do I update?", "parent PIN", "leave Kids mode", "Screen Time", "Nova over games", "sideload"}) {
+            String ka = NovaHelp.answer(q, true);
+            check(!NovaHelp.kidsUnsafe(ka), "kids answer is safe for: " + q + " -> " + ka);
+            check(!ka.toLowerCase().contains("http") && !ka.contains("1234"), "no links or default PIN in kids answer: " + q);
+        }
+        String games = NovaHelp.answer("Find a game", true).toLowerCase();
+        check(games.contains("search") && games.contains("get"), "kids games help");
+        String learn = NovaHelp.answer("Learning", true).toLowerCase();
+        check(learn.contains("learning"), "kids learning help");
+        check(NovaHelp.answer("Tell me a joke", true).toLowerCase().contains("joke"), "typed joke points at the button");
+        String[] chips = NovaHelp.kidsChips();
+        check(chips.length == 3 && chips[0].contains("game") && chips[2].toLowerCase().contains("learn"), "kids chips are games + learning");
+        for (String c : chips) check(!c.toLowerCase().contains("pin") && !c.toLowerCase().contains("settings"), "no admin chips");
+        check(NovaHelp.kidsUnsafe("See https://example.com") && NovaHelp.kidsUnsafe("The PIN is 1234") && !NovaHelp.kidsUnsafe(NovaHelp.KIDS_FOOT), "kidsUnsafe detector");
+        // Adult help is unchanged and still explains the PIN
+        check(NovaHelp.answer("Kids mode", false).toLowerCase().contains("pin"), "adult help still mentions the PIN");
+        check(!KidsPlay.kidsStoreNeedsPin(candy, false, false, false), "0.10.53 does not change no-PIN age-filtered GET");
     }
 
 }

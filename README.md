@@ -31,7 +31,20 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.53
+
+**Nova in Kids mode.** The corner bubble is shown on the Kids home as well as in Adult mode (tap to open or close). In Kids mode she only talks about finding and playing games, the Learning tab, and clean jokes. She does not give Settings, PIN, or how-to-leave-Kids help, and she does not send anyone to a link. A parent can still hide the bubble in Settings > Nova. The optional overlay over other games stays off in Kids mode.
+
+**She talks.** In Kids mode, opening Nova greets the child out loud (system text-to-speech) and she speaks her replies, with a simple talking-mouth animation. Sound is on by default; mute is on the bubble and in her panel.
+
+**Tell me a joke.** A button tells a pre-written, offline, age-6-friendly joke (no insults, toilet humour, scares or religion) and speaks it aloud.
+
+These changes have not been tried on a real phone, a K56, or a Win600.
+
+Devices already on 0.10.48 cannot update through Kids-mode Update: use the parent PIN to leave Kids mode, then Update, then turn Kids back on.
+
 ## What's new in 0.10.52
+
 
 **Nova on the Android home.** A corner bubble uses Nova's original portrait, with a light Canvas blink, gaze and breathing animation that is not on the game-row scroller. Tap to expand or collapse an offline helper that can answer simple CodeAque questions (updates, Kids mode, search, Screen Time, the PIN). No account, no API keys, no data collection. System text-to-speech only, if you use Hear it.
 
