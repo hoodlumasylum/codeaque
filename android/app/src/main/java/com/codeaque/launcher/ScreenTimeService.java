@@ -27,6 +27,7 @@ public class ScreenTimeService extends Service {
     static final int NOTE_ID = 37, WARN_ID = 38, UP_ID = 39;
     final Handler h = new Handler(Looper.getMainLooper());
     boolean warned5;
+    boolean hoursPosted;
 
     public static SharedPreferences prefs(Context c) { return c.getSharedPreferences("codeaque", MODE_PRIVATE); }
 
@@ -44,11 +45,32 @@ public class ScreenTimeService extends Service {
                 .putString("stDay", s.day).putLong("stStartedAt", s.startedAt).apply();
     }
 
+    public static ScreenTime.Hours loadHours(SharedPreferences p) {
+        return new ScreenTime.Hours(
+                p.getBoolean("stHoursOn", false),
+                p.getInt("stWeekStart", ScreenTime.DEFAULT_WEEK_START),
+                p.getInt("stWeekEnd", ScreenTime.DEFAULT_WEEK_END),
+                p.getBoolean("stWeekendOn", false),
+                p.getInt("stWeStart", ScreenTime.DEFAULT_WEEKEND_START),
+                p.getInt("stWeEnd", ScreenTime.DEFAULT_WEEKEND_END),
+                p.getLong("stHoursUntil", 0));
+    }
+
+    public static void saveHours(SharedPreferences p, ScreenTime.Hours h) {
+        if (h == null) return;
+        p.edit().putBoolean("stHoursOn", h.enabled)
+                .putInt("stWeekStart", h.weekStart).putInt("stWeekEnd", h.weekEnd)
+                .putBoolean("stWeekendOn", h.weekendSeparate)
+                .putInt("stWeStart", h.weekendStart).putInt("stWeEnd", h.weekendEnd)
+                .putLong("stHoursUntil", h.overrideUntil).apply();
+    }
+
     public static void sync(Context c) {
         SharedPreferences p = prefs(c);
         boolean kids = p.getBoolean("kidsMode", false);
         ScreenTime.State s = load(p, System.currentTimeMillis());
-        boolean need = kids && (s.strict || s.limitMin > 0 || p.getBoolean("kidsLock", false));
+        ScreenTime.Hours hours = loadHours(p);
+        boolean need = kids && (s.strict || s.limitMin > 0 || p.getBoolean("kidsLock", false) || hours.enabled);
         Intent i = new Intent(c, ScreenTimeService.class).setAction(ACTION_START);
         try {
             if (need) {
@@ -200,7 +222,8 @@ final class ScreenTimeTick implements Runnable {
         long now = System.currentTimeMillis();
         ScreenTime.State s = ScreenTimeService.load(p, now);
         boolean kidsLock = p.getBoolean("kidsLock", false);
-        if (s.limitMin <= 0 && !s.strict && !kidsLock) { svc.stopSelf(); return; }
+        ScreenTime.Hours hours = ScreenTimeService.loadHours(p);
+        if (s.limitMin <= 0 && !s.strict && !kidsLock && (hours == null || !hours.enabled)) { svc.stopSelf(); return; }
         if (kidsLock && s.limitMin <= 0)
             svc.startForeground(ScreenTimeService.NOTE_ID, svc.note("Kids mode is on", "Keeping CodeAque in front. Games you open from here can stay open."));
         if (s.limitMin > 0 && !s.unlocked) {
@@ -223,6 +246,17 @@ final class ScreenTimeTick implements Runnable {
                 svc.timeUp();
             }
         }
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+        if (hours.enabled && ScreenTime.outsideHours(hours, s, now, tz)) {
+            if ((s.strict || kidsLock) && !svc.hoursPosted) {
+                svc.hoursPosted = true;
+                if (s.startedAt > 0) {
+                    s = ScreenTime.pausePlay(s, now, tz);
+                    ScreenTimeService.save(p, s);
+                }
+                ScreenTimeService.bringKidsHome(svc, true);   // once per closed window; lock screen has the hours copy
+            }
+        } else svc.hoursPosted = false;
         String fg = (s.strict || kidsLock) ? svc.foregroundPkg() : null;
         if (fg != null && !fg.equals(svc.getPackageName())) {
             String allow = p.getString("kidsFgPkg", null);

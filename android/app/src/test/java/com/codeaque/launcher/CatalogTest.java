@@ -64,9 +64,10 @@ public class CatalogTest {
             kw = Catalog.indexOf(km, "kwifi"), kp = Catalog.indexOf(km, "kparent"), kst = Catalog.indexOf(km, "kstore"),
             kg = Catalog.indexOf(km, "kgames"), kr = Catalog.indexOf(km, "kroblox");
         check(kp == km.size() - 1 && kth > 0 && kdc < 0 && kpsp < 0 && kg < 0
-                && Catalog.indexOf(km, "kpuzzle") == 0 && Catalog.indexOf(km, "kracing") == 1
-                && Catalog.indexOf(km, "kadventure") == 2 && Catalog.indexOf(km, "klearning") == 3
-                && Catalog.indexOf(km, "kstyle") == 4 && kr == 5 && Catalog.indexOf(km, "kcloud") < 0
+                && Catalog.indexOf(km, "ksearch") == 0
+                && Catalog.indexOf(km, "kpuzzle") == 1 && Catalog.indexOf(km, "kracing") == 2
+                && Catalog.indexOf(km, "kadventure") == 3 && Catalog.indexOf(km, "klearning") == 4
+                && Catalog.indexOf(km, "kstyle") == 5 && kr == 6 && Catalog.indexOf(km, "kcloud") < 0
                 && km.get(kw).items.size() == 2 && km.get(kw).items.get(0) == Catalog.KIDS_WIFI
                 && km.get(kw).items.get(1) == Catalog.KIDS_UPDATE && "update".equals(Catalog.KIDS_UPDATE.action)
                 && "wifi".equals(Catalog.KIDS_WIFI.action) && km.get(kr).items.get(0) == Catalog.ROBLOX
@@ -350,7 +351,7 @@ public class CatalogTest {
                         }
                     }
                     check(!ids.contains("streams") && !ids.contains("media") && !ids.contains("allapps") && !ids.contains("settings"), "kids rows " + ids);
-                    check(ids.containsAll(java.util.List.of("kpuzzle", "kracing", "kadventure", "klearning", "kstyle", "kroblox", "kadded", "kthemes", "kwifi", "kparent"))
+                    check(ids.containsAll(java.util.List.of("ksearch", "kpuzzle", "kracing", "kadventure", "klearning", "kstyle", "kroblox", "kadded", "kthemes", "kwifi", "kparent"))
                             && !ids.contains("kcloud") && !ids.contains("kplay") && !ids.contains("kgames") && !ids.contains("retro") && !ids.contains("dreamcast") && !ids.contains("psp"), "kids rows exact " + ids);
                     Catalog.Category added = kk.get(Catalog.indexOf(kk, "kadded"));
                     check(added.items.size() == 1 && added.items.get(0) == game, "only the game stays in My New Games");
@@ -677,6 +678,90 @@ public class CatalogTest {
                 && !ScreenTime.parentStoreAllowed("com.android.settings", until, until - 1)
                 && !ScreenTime.parentStoreAllowed("com.android.vending", 0, 1), "parent-store window is time-limited and Play-only");
         check(ScreenTime.PARENT_STORE_MS == 10 * 60_000L, "parent-store window is 10 minutes");
+        ScreenTime.Hours win = new ScreenTime.Hours(true, 16 * 60, 19 * 60, false, 10 * 60, 18 * 60, 0);
+        java.util.Calendar hc = java.util.Calendar.getInstance(tz);
+        hc.set(2026, java.util.Calendar.NOVEMBER, 16, 15, 0, 0); hc.set(java.util.Calendar.MILLISECOND, 0);
+        long mon15 = hc.getTimeInMillis();
+        hc.set(2026, java.util.Calendar.NOVEMBER, 16, 17, 0, 0);
+        long mon17 = hc.getTimeInMillis();
+        hc.set(2026, java.util.Calendar.NOVEMBER, 16, 19, 0, 0);
+        long mon19 = hc.getTimeInMillis();
+        ScreenTime.State free = ScreenTime.normalize(off, mon15, tz);
+        check(ScreenTime.outsideHours(win, free, mon15, tz) && !ScreenTime.outsideHours(win, free, mon17, tz)
+                && ScreenTime.outsideHours(win, free, mon19, tz), "weekday 16:00–19:00 window");
+        check(!ScreenTime.playBlocked(free, win, mon17, tz) && ScreenTime.playBlocked(free, win, mon15, tz), "hours block play");
+        check("4pm".equals(ScreenTime.formatClock(16 * 60)) && "4:30pm".equals(ScreenTime.formatClock(16 * 60 + 30))
+                && "12am".equals(ScreenTime.formatClock(0)) && "12pm".equals(ScreenTime.formatClock(12 * 60))
+                && "7pm".equals(ScreenTime.formatClock(19 * 60)), "12-hour clock labels");
+        check("16:00".equals(ScreenTime.format24(16 * 60)) && ScreenTime.hoursSummary(win).contains("16:00–19:00"), "24-hour settings labels");
+        check("4pm".equals(ScreenTime.backAtLabel(win, mon15, tz)), "back at 4pm later today");
+        check("4pm tomorrow".equals(ScreenTime.backAtLabel(win, mon19, tz)), "back at 4pm tomorrow");
+        check(!ScreenTime.outsideHours(win, ScreenTime.unlockToday(free, mon15, tz), mon15, tz), "unlock today bypasses hours");
+        ScreenTime.Hours over = ScreenTime.overrideHours(win, mon15 + 15 * 60_000L);
+        check(!ScreenTime.outsideHours(over, free, mon15 + 5 * 60_000L, tz)
+                && ScreenTime.outsideHours(over, free, mon15 + 16 * 60_000L, tz), "PIN override lasts the added minutes");
+        ScreenTime.Hours we = new ScreenTime.Hours(true, 16 * 60, 19 * 60, true, 10 * 60, 18 * 60, 0);
+        hc.set(2026, java.util.Calendar.NOVEMBER, 21, 9, 0, 0);
+        long sat9 = hc.getTimeInMillis();
+        hc.set(2026, java.util.Calendar.NOVEMBER, 21, 11, 0, 0);
+        long sat11 = hc.getTimeInMillis();
+        ScreenTime.State sat = ScreenTime.normalize(off, sat9, tz);
+        check(ScreenTime.isWeekend(sat9, tz) && !ScreenTime.isWeekend(mon15, tz)
+                && ScreenTime.outsideHours(we, sat, sat9, tz) && !ScreenTime.outsideHours(we, sat, sat11, tz)
+                && "10am".equals(ScreenTime.backAtLabel(we, sat9, tz)), "separate weekend window");
+        ScreenTime.Hours offH = new ScreenTime.Hours(false, 16 * 60, 19 * 60, false, 10 * 60, 18 * 60, 0);
+        check(!ScreenTime.outsideHours(offH, free, mon15, tz) && ScreenTime.inHours(offH, mon15, tz), "hours off never blocks");
+        ScreenTime.Hours wrap = new ScreenTime.Hours(true, 20 * 60, 7 * 60, false, 20 * 60, 7 * 60, 0);
+        hc.set(2026, java.util.Calendar.NOVEMBER, 16, 21, 0, 0);
+        long mon21 = hc.getTimeInMillis();
+        hc.set(2026, java.util.Calendar.NOVEMBER, 16, 8, 0, 0);
+        long mon8 = hc.getTimeInMillis();
+        check(ScreenTime.inHours(wrap, mon21, tz) && !ScreenTime.inHours(wrap, mon8, tz), "window wrapping midnight");
+        // 0.10.49 Kids search: Play HTML parse, age filter, installed-first merge, catalogue fallback
+        String playHtml = "<a href=\"/store/apps/details?id=com.mojang.minecraftpe\" aria-label=\"Minecraft: Dream it, Build it!\"></a>"
+                + "<span itemprop=\"contentRating\"><span>PEGI 7</span></span>"
+                + "<a class=\"Si6A0c Gy4nib\" href=\"/store/apps/details?id=com.mojang.minecraftedu\">"
+                + "<span class=\"DdYX5\">Minecraft Education</span></a>"
+                + "<a class=\"Si6A0c Gy4nib\" href=\"/store/apps/details?id=com.teen.shooter\">"
+                + "<span class=\"DdYX5\">Teen Shooter</span></a>"
+                + "<a class=\"Si6A0c Gy4nib\" href=\"/store/apps/details?id=com.mature.game\">"
+                + "<span class=\"DdYX5\">Mature Game</span></a>";
+        java.util.List<PlaySearch.Hit> parsed = PlaySearch.parseResults(playHtml);
+        check(parsed.size() >= 3 && "com.mojang.minecraftpe".equals(parsed.get(0).pkg), "search parse featured package first");
+        check(parsed.get(0).title.toLowerCase(java.util.Locale.ROOT).contains("minecraft"), "search parse featured title");
+        boolean hasEdu = false;
+        for (PlaySearch.Hit h : parsed) if ("com.mojang.minecraftedu".equals(h.pkg) && h.title.toLowerCase(java.util.Locale.ROOT).contains("education")) hasEdu = true;
+        check(hasEdu, "search parse list-card title");
+        check(PlaySearch.parseContentRating("<span itemprop=\"contentRating\"><span>PEGI 7</span></span>") == 7, "listing PEGI 7");
+        check(PlaySearch.parseContentRating("PEGI 3") == 3 && PlaySearch.parseContentRating("PEGI 12") == 12
+                && PlaySearch.parseContentRating("PEGI 16") == 16 && PlaySearch.parseContentRating("Mature 17+") == 18
+                && PlaySearch.parseContentRating("Everyone") == 3 && PlaySearch.parseContentRating("Everyone 10+") == 12
+                && PlaySearch.parseContentRating("Teen") == 16 && PlaySearch.parseContentRating("") == 0, "rating map");
+        java.util.List<PlaySearch.Hit> rawHits = new java.util.ArrayList<>();
+        rawHits.add(new PlaySearch.Hit("com.mojang.minecraftpe", "Minecraft", 7));
+        rawHits.add(new PlaySearch.Hit("com.teen.shooter", "Teen Shooter", 16));
+        rawHits.add(new PlaySearch.Hit("com.mature.game", "Mature Game", 18));
+        rawHits.add(new PlaySearch.Hit("com.unknown.app", "Unknown", 0));
+        java.util.List<PlaySearch.Hit> kidsHits = PlaySearch.filterAllowed(rawHits, KidsPlay.maxPegi(false));
+        java.util.List<PlaySearch.Hit> k12Hits = PlaySearch.filterAllowed(rawHits, KidsPlay.maxPegi(true));
+        check(kidsHits.size() == 1 && "com.mojang.minecraftpe".equals(kidsHits.get(0).pkg), "Kids search drops 12+/16+/17+ and unrated");
+        check(k12Hits.size() == 1, "Kids 12+ still drops 16/17+ and unrated");
+        java.util.List<KidsPlay.Game> mc = KidsPlay.search("minecraft", KidsPlay.maxPegi(false));
+        check(!mc.isEmpty() && mc.get(0).title.toLowerCase(java.util.Locale.ROOT).contains("minecraft"), "catalogue search finds minecraft");
+        java.util.List<KidsPlay.Game> lego = KidsPlay.search("lego", KidsPlay.maxPegi(false));
+        check(!lego.isEmpty(), "catalogue search finds lego");
+        for (KidsPlay.Game g : lego) check(KidsPlay.allowed(g.pegi, 7), "lego results are Kids-safe");
+        java.util.List<KidsPlay.Game> racing = KidsPlay.search("racing", KidsPlay.maxPegi(false));
+        check(!racing.isEmpty(), "catalogue search finds racing");
+        for (KidsPlay.Game g : KidsPlay.search("x", 7)) check(g.pegi != 16 && g.pegi != 18, "catalogue search never returns 16/18 for Kids");
+        Catalog.Item instMc = Catalog.app("Minecraft", "cube", "com.mojang.minecraftpe");
+        Catalog.Item instOther = Catalog.app("On device", "cube", "com.device.only");
+        java.util.List<Catalog.Item> installed = java.util.Arrays.asList(instOther);
+        java.util.List<PlaySearch.Hit> playPart = java.util.Arrays.asList(new PlaySearch.Hit("com.mojang.minecraftpe", "Minecraft", 7));
+        java.util.List<Catalog.Item> merged = PlaySearch.merge(installed, playPart, KidsPlay.searchItems("minecraft", 7));
+        check(!merged.isEmpty() && "com.device.only".equals(merged.get(0).storePackage()), "installed games are listed first");
+        check(PlaySearch.searchUrl(PlayArt.PLAY, "lego world").contains("/store/search?q=lego%20world")
+                && PlaySearch.searchUrl(PlayArt.PLAY, "lego world").contains("c=apps"), "search url is Play search, not opened to kids");
         check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && LockPin.needsPin("exitcodeaque") && LockPin.needsPin("phonesettings") && LockPin.needsPin("phoneaccounts") && LockPin.needsPin("homeapp") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock, device owner, Exit and Phone Settings when locked; Update is gated in Kids mode instead");
         java.util.List<String> settingsActs = new java.util.ArrayList<>();
         java.util.List<Catalog.Category> cats39 = Catalog.categories();
@@ -770,7 +855,7 @@ public class CatalogTest {
         java.util.List<Catalog.Category> adult = Catalog.adultBrowse(java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(), false, false, null);
         check(Catalog.indexOf(adult, "kpuzzle") == 0 && Catalog.indexOf(adult, "kroblox") >= 0 && Catalog.indexOf(adult, "kcloud") >= 0, "adult browse tabs");
         check(adult.get(Catalog.indexOf(adult, "kcloud")).items.contains(Catalog.MARVEL_RIVALS), "adult cloud includes rivals");
-        check(Catalog.kidsBrowseId("kpuzzle") && Catalog.kidsBrowseId("kroblox") && !Catalog.kidsBrowseId("kthemes"), "browse ids");
+        check(Catalog.kidsBrowseId("ksearch") && Catalog.kidsBrowseId("kpuzzle") && Catalog.kidsBrowseId("kroblox") && !Catalog.kidsBrowseId("kthemes"), "browse ids");
         // BootAnim: backup names, short errors, extract original animation from a tiny module-shaped zip
         check("system-media-bootanimation.zip".equals(BootAnim.backupName("/system/media/bootanimation.zip"))
                 && "/system/media/bootanimation.zip".equals(BootAnim.targetFromBackupName("system-media-bootanimation.zip")), "backup name");

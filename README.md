@@ -35,6 +35,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 **Kids mode can install from the Play Store after the parent PIN.** On 0.10.48 the Kids lock (and, if CodeAque is the device owner, the kiosk allow-list and the "no installing apps" rule) bounced or blocked the Play Store even after the PIN was entered, so ticked or tapped games never installed. After a correct parent PIN, 0.10.49 opens the game's Play Store page and lets Play Store stay open for 10 minutes, or until you return to CodeAque, then locks again. Kids still cannot open the Play Store without the PIN. Nothing is sideloaded.
 
+**Allowed hours in Screen Time.** In the PIN-protected Screen Time settings a parent can set allowed play hours (for example 16:00–19:00) in this device's local time, with optional different hours at the weekend. Outside the window, Kids mode shows a friendly lock screen: "Play time is over – back at 4pm." A parent PIN can add time or unlock for today. This works alongside the daily limit and Strict mode.
+
+**Covers that fit, and a caption under the art.** The one-row home still uses the same tile size as Wi-Fi / Update, but tiles prefer the square Play / app icon so a wide feature banner (with the name already in the picture) is not cropped and then labelled again. The whole picture is fitted in the tile, with a dark fill of the same art behind it; the big bold title sits in a solid caption strip at the bottom.
+
+**Smoother game-row scrolling.** D-pad and stick moves ease the focused tile into the centre; a fling coasts and snaps to a tile. You can drag or fling the row from anywhere on the home screen except the tab bar and buttons (the logo and the background count). The focused tile has a slight scale-up. Off-screen tiles are skipped, and covers still load in the background and are cached — this home is drawn on one canvas, not a RecyclerView.
+
+**Kids search, inside CodeAque.** Kids mode has a Search tab with a controller- and touch-friendly on-screen keyboard. Typing a name (for example minecraft, lego or racing) searches Google Play in the background — the same public Play listings the catalogue already uses — and shows age-filtered games as the usual big tiles with covers. Installed games allowed in this Kids profile are listed first and marked PLAY (they launch straight away, no PIN). Games not on the device are marked GET: a parent PIN opens that game's Play Store page and the 10-minute install window, never the raw Play Store search. After an install, the game appears on the Kids home (in its category, or under My New Games). If Play cannot be reached, CodeAque falls back to its bundled kid-safe catalogue and a last-good cache, and shows "Couldn't load more games, tap to retry." Game tabs also keep their last good list so they are not left empty. 17+ / PEGI 16 titles never appear in Kids; Kids 12+ stops at 12+ / Mild.
+
 ## What's new in 0.10.48
 
 

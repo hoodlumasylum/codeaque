@@ -2396,4 +2396,43 @@ public final class KidsPlay {
     public static boolean knownPkg(String pkg) { return byPkg(pkg) != null; }
 
     public static int count(String cat, int maxPegi) { return list(cat, maxPegi).size(); }
+
+    /** Free-text search over the bundled Play-backed catalogue, age-filtered, best matches first. */
+    public static List<Game> search(String query, int maxPegi) {
+        String q = PlaySearch.norm(query);
+        List<Game> start = new ArrayList<>();
+        List<Game> word = new ArrayList<>();
+        List<Game> contain = new ArrayList<>();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        if (q.isEmpty()) return start;
+        for (Game g : ALL) {
+            if (!allowed(g.pegi, maxPegi) || !seen.add(g.pkg)) continue;
+            String title = g.title == null ? "" : g.title.toLowerCase(java.util.Locale.ROOT);
+            String pkg = g.pkg == null ? "" : g.pkg.toLowerCase(java.util.Locale.ROOT);
+            String blurb = g.blurb == null ? "" : g.blurb.toLowerCase(java.util.Locale.ROOT);
+            if (title.equals(q) || title.startsWith(q)) start.add(g);
+            else if (hasWord(title, q) || pkg.contains(q.replace(" ", ""))) word.add(g);
+            else if (title.contains(q) || blurb.contains(q)) contain.add(g);
+        }
+        start.addAll(word);
+        start.addAll(contain);
+        return start;
+    }
+
+    public static List<Catalog.Item> searchItems(String query, int maxPegi) {
+        List<Catalog.Item> out = new ArrayList<>();
+        for (Game g : search(query, maxPegi)) out.add(g.item());
+        return out;
+    }
+
+    static boolean hasWord(String title, String q) {
+        int at = 0;
+        while (at < title.length()) {
+            int sp = title.indexOf(q, at);
+            if (sp < 0) return false;
+            if (sp == 0 || !Character.isLetterOrDigit(title.charAt(sp - 1))) return true;
+            at = sp + 1;
+        }
+        return false;
+    }
 }

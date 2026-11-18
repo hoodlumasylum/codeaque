@@ -41,6 +41,14 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private final java.util.ArrayList<String> storeQueue = new java.util.ArrayList<>();
     private int storeQueueAt;
     private final java.util.HashMap<String, Integer> kidsBrowseAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, java.util.List<Catalog.Item>> lastGoodBrowse = new java.util.HashMap<>();
+    private final java.util.HashSet<String> browseRetry = new java.util.HashSet<>();
+    private final java.util.ArrayList<Catalog.Item> installedLaunchers = new java.util.ArrayList<>();
+    private final java.util.ArrayList<Catalog.Item> lastSearchItems = new java.util.ArrayList<>();
+    private final java.util.LinkedHashMap<String, java.util.List<PlaySearch.Hit>> searchCache = new java.util.LinkedHashMap<>();
+    private String searchStatus = "", searchQuery = "";
+    private int searchGen;
+    private boolean searchPlayFailed;
     private String pendingAnimPath;
     private String robloxSession = "", robloxToken = "";
     private boolean robloxOn, robloxLoading, robloxRatingsOk, timeUpScreen;
@@ -249,6 +257,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         }
         java.util.Comparator<Catalog.Item> az = (x, y) -> x.label.compareToIgnoreCase(y.label);
         Collections.sort(apps, az); Collections.sort(games, az);
+        installedLaunchers.clear();
+        installedLaunchers.addAll(games);
+        installedLaunchers.addAll(apps);
         List<Catalog.Item> emus = new ArrayList<>();
         for (Catalog.Item e : Catalog.emulators()) if (launchIntent(e) != null) emus.add(e);
         boolean proj = prefs.getBoolean("projector", false);
@@ -286,9 +297,25 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             cs = Catalog.replaceItems(cs, row, withRobloxApp(robloxItems));
         }
         syncAliases();                                  // 0.10.30: Adult / Settings home-screen icons off while locked
+        // 0.10.49: never leave a game tab empty — reuse the last good row if a rebuild comes back blank.
+        if (kidsOn) {
+            for (int i = 0; i < cs.size(); i++) {
+                Catalog.Category row = cs.get(i);
+                if (row.items != null && !row.items.isEmpty() && Catalog.kidsBrowseId(row.id) && !"ksearch".equals(row.id))
+                    lastGoodBrowse.put(row.id, new java.util.ArrayList<>(row.items));
+                else if ((row.items == null || row.items.isEmpty()) && lastGoodBrowse.containsKey(row.id) && !"ksearch".equals(row.id)) {
+                    cs = Catalog.replaceItems(cs, row.id, lastGoodBrowse.get(row.id));
+                    browseRetry.add(row.id);
+                }
+            }
+        }
         view.setCategories(cs);
         if (view.boxSet() && !kidsOn) view.setBoxSet(true, java.util.Arrays.asList(Catalog.boxSetItems()));
         else if (kidsOn) view.setBoxSet(false, java.util.Collections.emptyList());
+        if (kidsOn) {
+            if (!lastSearchItems.isEmpty()) view.replaceRow("ksearch", lastSearchItems);
+            else runKidsSearch(searchQuery == null ? "" : searchQuery);
+        }
         if (!romsScanned) { romsScanned = true; scanRoms(); }
         if (!boxsetBootApplied) {
             boxsetBootApplied = true;
@@ -1992,6 +2019,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
     /** 0.10.9: grown-up note under an empty Dreamcast / PSP section (never in Kids mode). */
     @Override public String scanNote(String catId) {
+        if ("ksearch".equals(catId) && searchStatus != null && !searchStatus.isEmpty()) return searchStatus;
+        if (catId != null && browseRetry.contains(catId)) return "Couldn't load more games, tap to retry";
         if (prefs.getBoolean("kidsMode", false)) return null;
         if (!canReadFiles()) return "CodeAque can't read your files yet - Settings > Find Dreamcast games to allow All files access";
         return scanNotes.get(catId);
@@ -3290,19 +3319,50 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
     private ScreenTime.State stLoad() { return ScreenTimeService.load(prefs, System.currentTimeMillis()); }
     private void stSave(ScreenTime.State s) { ScreenTimeService.save(prefs, s); }
-    private boolean stTimeUp() { return ScreenTime.timeUp(stLoad(), System.currentTimeMillis(), java.util.TimeZone.getDefault()); }
+    private ScreenTime.Hours stHours() { return ScreenTimeService.loadHours(prefs); }
+    private void stSaveHours(ScreenTime.Hours h) { ScreenTimeService.saveHours(prefs, h); }
+    private boolean playBlockedNow() {
+        long now = System.currentTimeMillis();
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+        return ScreenTime.playBlocked(stLoad(), stHours(), now, tz);
+    }
+    private boolean stTimeUp() { return playBlockedNow(); }
 
     @Override public String kidsBanner() {
         if (!prefs.getBoolean("kidsMode", false)) return "";
         String who = kids12() ? "Kids 12+" : "Kids";
-        String time = ScreenTime.label(stLoad(), System.currentTimeMillis(), java.util.TimeZone.getDefault());
+        long now = System.currentTimeMillis();
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+        ScreenTime.State s = stLoad();
+        ScreenTime.Hours h = stHours();
+        if (ScreenTime.outsideHours(h, s, now, tz) && !ScreenTime.timeUp(s, now, tz))
+            return who + "  ·  back at " + ScreenTime.backAtLabel(h, now, tz);
+        String time = ScreenTime.label(s, now, tz);
+        if (h.enabled && ScreenTime.inHours(h, now, tz) && !s.unlocked)
+            time = (time.isEmpty() ? "" : time + "  ·  ") + "until " + ScreenTime.formatClock(ScreenTime.windowEnd(h, now, tz));
         return time.isEmpty() ? who : who + "  ·  " + time;
     }
     @Override public boolean timeUpTile(Catalog.Item it) {
         return prefs.getBoolean("kidsMode", false) && ScreenTime.isPlayLaunch(it) && stTimeUp();
     }
-    @Override public boolean timeUpScreen() { return prefs.getBoolean("kidsMode", false) && timeUpScreen; }
+    @Override public boolean timeUpScreen() { return prefs.getBoolean("kidsMode", false) && (timeUpScreen || playBlockedNow()); }
     @Override public void timeUpAskParent() { askPin("Parent PIN: time's up", () -> screenTimeExtend(null)); }
+    @Override public String timeUpHeadline() {
+        long now = System.currentTimeMillis();
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+        ScreenTime.State s = stLoad();
+        if (ScreenTime.outsideHours(stHours(), s, now, tz) && !ScreenTime.timeUp(s, now, tz)) return "PLAY TIME IS OVER";
+        return "TIME'S UP";
+    }
+    @Override public String timeUpMessage() {
+        long now = System.currentTimeMillis();
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+        ScreenTime.State s = stLoad();
+        ScreenTime.Hours h = stHours();
+        if (ScreenTime.outsideHours(h, s, now, tz) && !ScreenTime.timeUp(s, now, tz))
+            return "Play time is over – back at " + ScreenTime.backAtLabel(h, now, tz);
+        return "Play time is used up for today.";
+    }
     @Override public boolean pinDialogOpen() { return pinDialogOpen; }
     @Override public boolean browseLayout() {
         if (prefs.getBoolean("kidsMode", false)) return true;
@@ -3331,6 +3391,86 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             startStoreQueue(copy);
             if (view != null) view.clearPicks();
         });
+    }
+
+    @Override public String kidsSearchStatus() { return searchStatus == null ? "" : searchStatus; }
+
+    @Override public void kidsSearchRetry() { searchPlayFailed = false; runKidsSearch(searchQuery); }
+
+    /** 0.10.49: search Play (and the bundled catalogue) inside CodeAque; never opens Play search. */
+    @Override public void runKidsSearch(String query) {
+        if (!prefs.getBoolean("kidsMode", false)) return;
+        searchQuery = query == null ? "" : query;
+        final String q = searchQuery;
+        final int max = KidsPlay.maxPegi(kids12());
+        final int gen = ++searchGen;
+        final java.util.List<Catalog.Item> installed = kidsInstalledMatches(q);
+        if (q.trim().isEmpty()) {
+            lastSearchItems.clear();
+            lastSearchItems.addAll(installed);
+            searchStatus = "";
+            searchPlayFailed = false;
+            if (view != null) view.replaceRow("ksearch", lastSearchItems);
+            return;
+        }
+        searchStatus = "Searching…";
+        // Show installed + catalogue matches immediately, then fill in live Play hits.
+        java.util.List<Catalog.Item> quick = PlaySearch.merge(installed, searchCache.get(PlaySearch.norm(q)), KidsPlay.searchItems(q, max));
+        lastSearchItems.clear();
+        lastSearchItems.addAll(quick);
+        if (view != null) { view.replaceRow("ksearch", lastSearchItems); view.invalidate(); }
+        new Thread(() -> {
+            java.util.List<PlaySearch.Hit> play = null;
+            boolean failed = false;
+            try { play = PlaySearch.fetch(PlayArt.PLAY, q, max); }
+            catch (Exception e) { failed = true; }
+            if (play != null) {
+                String key = PlaySearch.norm(q);
+                searchCache.put(key, play);
+                while (searchCache.size() > 20) searchCache.remove(searchCache.keySet().iterator().next());
+            } else if (searchCache.containsKey(PlaySearch.norm(q))) {
+                play = searchCache.get(PlaySearch.norm(q));
+            }
+            final java.util.List<PlaySearch.Hit> hits = play;
+            final boolean netFail = failed && (hits == null || hits.isEmpty());
+            final boolean playFail = failed;
+            runOnUiThread(() -> {
+                if (gen != searchGen) return;
+                java.util.List<Catalog.Item> merged = PlaySearch.merge(kidsInstalledMatches(q), hits, KidsPlay.searchItems(q, max));
+                lastSearchItems.clear();
+                lastSearchItems.addAll(merged);
+                searchPlayFailed = playFail;
+                if (netFail && merged.isEmpty()) searchStatus = "Couldn't load more games, tap to retry";
+                else if (playFail) searchStatus = "Couldn't load more games, tap to retry";
+                else if (merged.isEmpty()) searchStatus = "No games found.";
+                else searchStatus = "";
+                if (view != null) { view.replaceRow("ksearch", lastSearchItems); view.invalidate(); }
+            });
+        }, "kids-search").start();
+    }
+
+    /** Installed games allowed in the current Kids / Kids 12+ profile, matching the query (empty query = all of them). */
+    private java.util.List<Catalog.Item> kidsInstalledMatches(String query) {
+        int max = KidsPlay.maxPegi(kids12());
+        java.util.Set<String> approved = prefs.getStringSet("kidsApproved", java.util.Collections.<String>emptySet());
+        java.util.Set<String> added = prefs.getStringSet("kidsAdded", java.util.Collections.<String>emptySet());
+        java.util.ArrayList<Catalog.Item> out = new java.util.ArrayList<>();
+        java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+        for (Catalog.Item a : installedLaunchers) {
+            if (a == null) continue;
+            String pkg = a.storePackage() != null ? a.storePackage() : a.pkg;
+            if (pkg == null || !pkgInstalled(pkg)) continue;
+            if (ScreenTime.blockedKidPackage(pkg) || Catalog.emulatorPkg(pkg)) continue;
+            KidsPlay.Game g = KidsPlay.byPkg(pkg);
+            boolean ok;
+            if (g != null) ok = KidsPlay.allowed(g.pegi, max);
+            else ok = approved.contains(pkg) || added.contains(pkg);
+            if (!ok) continue;
+            if (!PlaySearch.matches(query, a.label, pkg)) continue;
+            if (!seen.add(pkg)) continue;
+            out.add(g != null ? g.item() : a);
+        }
+        return out;
     }
     private java.util.Set<String> allowedEmus() {
         String key = kids12() ? "kidsEmu12" : "kidsEmu";
@@ -3388,11 +3528,13 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                     long now = System.currentTimeMillis();
                     java.util.TimeZone tz = java.util.TimeZone.getDefault();
                     ScreenTime.State s = stLoad();
-                    if (w == 0) s = ScreenTime.addMinutes(s, 15, now, tz);
-                    else if (w == 1) s = ScreenTime.addMinutes(s, 30, now, tz);
+                    ScreenTime.Hours h = stHours();
+                    if (w == 0) { s = ScreenTime.addMinutes(s, 15, now, tz); h = ScreenTime.overrideHours(h, now + 15 * 60_000L); }
+                    else if (w == 1) { s = ScreenTime.addMinutes(s, 30, now, tz); h = ScreenTime.overrideHours(h, now + 30 * 60_000L); }
                     else if (w == 2) s = ScreenTime.unlockToday(s, now, tz);
                     else { view.invalidate(); return; }
                     stSave(s);
+                    stSaveHours(h);
                     timeUpScreen = false;
                     ScreenTimeService.sync(this);
                     toast(w == 2 ? "Unlocked for today." : "Added play time.");
@@ -3426,9 +3568,14 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void screenTimePicker() {
         ScreenTime.State s = stLoad();
         java.util.List<String> labels = new java.util.ArrayList<>();
+        ScreenTime.Hours hours = stHours();
         labels.add("Off");
         for (int m : new int[]{15, 30, 45, 60, 90, 120}) labels.add(m + " minutes");
         labels.add("Custom…");
+        labels.add(ScreenTime.hoursSummary(hours));
+        labels.add(!hours.enabled ? "Weekend hours: turn on allowed hours first"
+                : hours.weekendSeparate ? "Weekend hours: " + ScreenTime.format24(hours.weekendStart) + "–" + ScreenTime.format24(hours.weekendEnd)
+                : "Weekend hours: same as weekdays");
         labels.add(s.strict ? "Strict: on (tap to turn off)" : "Strict: off (tap to turn on)");
         labels.add(ScreenTimeService.canOverlay(this) ? "Display over other apps: allowed" : "Allow display over other apps");
         labels.add(ScreenTimeService.canUsage(this) ? "Usage access: allowed" : "Allow usage access (to bounce Settings / Play Store)");
@@ -3438,8 +3585,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             int[] ps = {0, 15, 30, 45, 60, 90, 120};
             for (int i = 0; i < ps.length; i++) if (ps[i] == s.limitMin) pre = i;
         }
-        String msg = "Daily play limit (resets at midnight on this device). "
-                + (s.strict ? "Strict mode tries to bring CodeAque back when time runs out, or when Settings, Play Store or the package installer opens."
+        String msg = "Daily play limit (resets at midnight on this device) and optional allowed hours in this device's local time. "
+                + (s.strict ? "Strict mode tries to bring CodeAque back when time or hours run out, or when Settings, Play Store or the package installer opens."
                             : "Without Strict mode, time is counted when the child comes back, and the next game is blocked.")
                 + " Android cannot force-close another app without device-owner rights.";
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -3451,13 +3598,17 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                     if (w <= 6) {
                         int min = w == 0 ? 0 : new int[]{0, 15, 30, 45, 60, 90, 120}[w];
                         stSave(ScreenTime.setLimit(stLoad(), min, now, tz));
-                        toast(min == 0 ? "Screen time is off." : "Daily limit: " + min + " minutes.");
+                        toast(min == 0 ? "Daily limit is off." : "Daily limit: " + min + " minutes.");
                         d.dismiss();
                     } else if (w == 7) {
                         d.dismiss();
                         screenTimeCustom();
                         return;
-                    } else if (w == 8) {
+                    } else if (w == 8 || w == 9) {
+                        d.dismiss();
+                        screenTimeHours();
+                        return;
+                    } else if (w == 10) {
                         boolean on = !stLoad().strict;
                         stSave(ScreenTime.setStrict(stLoad(), on, now, tz));
                         if (on && !ScreenTimeService.canOverlay(this) && android.os.Build.VERSION.SDK_INT >= 29) {
@@ -3469,7 +3620,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                         }
                         toast(on ? "Strict mode is on." : "Strict mode is off.");
                         d.dismiss();
-                    } else if (w == 9) {
+                    } else if (w == 11) {
                         ScreenTimeService.openOverlaySettings(this);
                         d.dismiss();
                     } else {
@@ -3503,7 +3654,85 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 .setNegativeButton("Cancel", null).show();
     }
 
+    /** 0.10.49: PIN already required (Screen Time is a parent setting). Local-time windows, optional weekend. */
+    private void screenTimeHours() {
+        final ScreenTime.Hours cur = stHours();
+        final boolean[] on = { cur.enabled };
+        final boolean[] weekend = { cur.weekendSeparate };
+        final int[] week = { cur.weekStart, cur.weekEnd };
+        final int[] we = { cur.weekendStart, cur.weekendEnd };
+        if (week[0] == 0 && week[1] == 0) { week[0] = ScreenTime.DEFAULT_WEEK_START; week[1] = ScreenTime.DEFAULT_WEEK_END; }
+        if (we[0] == 0 && we[1] == 0) { we[0] = ScreenTime.DEFAULT_WEEKEND_START; we[1] = ScreenTime.DEFAULT_WEEKEND_END; }
+        final android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int) (12 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, 0);
+        final android.widget.TextView summary = new android.widget.TextView(this);
+        android.widget.Button weekFrom = new android.widget.Button(this);
+        android.widget.Button weekUntil = new android.widget.Button(this);
+        android.widget.Button weFrom = new android.widget.Button(this);
+        android.widget.Button weUntil = new android.widget.Button(this);
+        android.widget.CheckBox useHours = new android.widget.CheckBox(this);
+        android.widget.CheckBox useWeekend = new android.widget.CheckBox(this);
+        Runnable relabel = () -> {
+            useHours.setText("Allowed hours");
+            useHours.setChecked(on[0]);
+            weekFrom.setText("Weekdays from  " + ScreenTime.format24(week[0]));
+            weekUntil.setText("Weekdays until  " + ScreenTime.format24(week[1]));
+            useWeekend.setText("Different hours at the weekend");
+            useWeekend.setChecked(weekend[0]);
+            weFrom.setText("Weekend from  " + ScreenTime.format24(we[0]));
+            weUntil.setText("Weekend until  " + ScreenTime.format24(we[1]));
+            weekFrom.setEnabled(on[0]); weekUntil.setEnabled(on[0]);
+            useWeekend.setEnabled(on[0]);
+            weFrom.setEnabled(on[0] && weekend[0]); weUntil.setEnabled(on[0] && weekend[0]);
+            ScreenTime.Hours preview = new ScreenTime.Hours(on[0], week[0], week[1], weekend[0], we[0], we[1], cur.overrideUntil);
+            summary.setText(ScreenTime.hoursSummary(preview) + ". Times are this device's local clock. Outside the window, Kids mode shows a lock screen a parent PIN can override.");
+        };
+        useHours.setOnCheckedChangeListener((b, v) -> { on[0] = v; relabel.run(); });
+        useWeekend.setOnCheckedChangeListener((b, v) -> { weekend[0] = v; relabel.run(); });
+        weekFrom.setOnClickListener(v -> pickClock("Weekdays from", week[0], m -> { week[0] = m; relabel.run(); }));
+        weekUntil.setOnClickListener(v -> pickClock("Weekdays until", week[1], m -> { week[1] = m; relabel.run(); }));
+        weFrom.setOnClickListener(v -> pickClock("Weekend from", we[0], m -> { we[0] = m; relabel.run(); }));
+        weUntil.setOnClickListener(v -> pickClock("Weekend until", we[1], m -> { we[1] = m; relabel.run(); }));
+        box.addView(summary);
+        box.addView(useHours);
+        box.addView(weekFrom);
+        box.addView(weekUntil);
+        box.addView(useWeekend);
+        box.addView(weFrom);
+        box.addView(weUntil);
+        relabel.run();
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Allowed hours")
+                .setView(box)
+                .setPositiveButton("Save", (d, w) -> {
+                    ScreenTime.Hours next = new ScreenTime.Hours(on[0], week[0], week[1], weekend[0], we[0], we[1], cur.overrideUntil);
+                    stSaveHours(next);
+                    ScreenTimeService.sync(this);
+                    toast(ScreenTime.hoursSummary(next) + ".");
+                    view.invalidate();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
 
+    private void pickClock(String title, int current, MinutePick ok) {
+        android.widget.TimePicker tp = new android.widget.TimePicker(this);
+        tp.setIs24HourView(true);
+        int h = ScreenTime.clampMin(current) / 60, m = ScreenTime.clampMin(current) % 60;
+        if (android.os.Build.VERSION.SDK_INT >= 23) { tp.setHour(h); tp.setMinute(m); }
+        else { tp.setCurrentHour(h); tp.setCurrentMinute(m); }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(title)
+                .setView(tp)
+                .setPositiveButton("Set", (d, w) -> {
+                    int hour, min;
+                    if (android.os.Build.VERSION.SDK_INT >= 23) { hour = tp.getHour(); min = tp.getMinute(); }
+                    else { hour = tp.getCurrentHour(); min = tp.getCurrentMinute(); }
+                    ok.ok(hour * 60 + min);
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
 
     private boolean pkgInstalled(String pkg) {
         if (pkg == null || pkg.isEmpty()) return false;
@@ -3682,3 +3911,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
 
 }
+
+/** Package-level so the older D8 dexer can compile the Screen Time clock picker. */
+interface MinutePick { void ok(int minutes); }
+

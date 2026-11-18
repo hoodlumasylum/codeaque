@@ -311,7 +311,7 @@ public final class Catalog {
     /** Tabs that use the vertical Kids-style list (game catalogues, Roblox, Cloud, allowed emulators). */
     public static boolean kidsBrowseId(String id) {
         if (id == null) return false;
-        if (id.equals("kroblox") || id.equals("kcloud") || id.equals("kadded") || id.equals("kemu") || id.equals("roblox")) return true;
+        if (id.equals("ksearch") || id.equals("kroblox") || id.equals("kcloud") || id.equals("kadded") || id.equals("kemu") || id.equals("roblox")) return true;
         return KidsPlay.catFromId(id) != null;
     }
 
@@ -533,6 +533,7 @@ public final class Catalog {
                                          boolean kids12, java.util.Set<String> allowedEmus) {
         int max = KidsPlay.maxPegi(kids12);
         List<Category> c = new ArrayList<>();
+        c.add(new Category("ksearch", "Search", "cube"));
         addGameTabs(c, max, ROBLOX_ITEMS, false);
         List<Item> newGames = new ArrayList<>();
         if (allowedEmus == null) allowedEmus = java.util.Collections.emptySet();

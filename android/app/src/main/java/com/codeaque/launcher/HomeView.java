@@ -43,6 +43,9 @@ public class HomeView extends View {
         boolean timeUpTile(Catalog.Item item);
         boolean timeUpScreen();
         void timeUpAskParent();
+        /** 0.10.49: lock-screen copy (daily limit vs allowed hours). */
+        String timeUpHeadline();
+        String timeUpMessage();
         /** 0.10.37: while a parent PIN dialog is open, tiles must not activate (wrong PIN / A / Enter must not launch). */
         boolean pinDialogOpen();
         /** 0.10.42 / 0.10.48: tabbed home with one row of Wi-Fi-sized tiles (Kids always; adult default unless Classic home is on). */
@@ -53,6 +56,10 @@ public class HomeView extends View {
         void kidsBrowseMore(String catId);
         /** 0.10.45: parent-PIN, then open Play Store pages for the ticked games (skip installed). */
         void installPicked(java.util.List<String> pkgs);
+        /** 0.10.49: Kids search stays inside CodeAque. Never opens the raw Play Store search. */
+        void runKidsSearch(String query);
+        String kidsSearchStatus();
+        void kidsSearchRetry();
     }
 
     private Palette T = Palette.NEON;
@@ -68,6 +75,7 @@ public class HomeView extends View {
     public void replaceRow(String id, List<Catalog.Item> items) {
         cats = Catalog.replaceItems(cats, id, items);
         tile = Math.max(0, Math.min(tile, Math.max(0, items().size() - 1)));
+        if (scrollAnim > Math.max(0, items().size())) { scrollAnim = 0; tile = 0; }
         invalidate();
     }
 
@@ -103,10 +111,16 @@ public class HomeView extends View {
      *  (focus-follow waits) until the fling slows down. */
     private float flingV;
     private boolean userScroll;
+    /** 0.10.49: animated scale of the focused browse tile (1 = rest, 1.05 = subtle lift). */
+    private float focusScale = 1f;
     private VelocityTracker velocity;
     private int logoTaps; private long logoTapAt;
     private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
     private final RectF installBtn = new RectF();
+    private final RectF searchQueryBox = new RectF(), searchRetryBox = new RectF(), searchKbBox = new RectF();
+    private String searchQ = "";
+    private boolean searchKb = true, searchShift, searchSym;
+    private int kbRow, kbCol;
     private final java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
     private long holdAt; private int holdTile = -1; private boolean longPressFired, activateHeld;
     private final RectF promptOpen = new RectF(), promptBack = new RectF(), pill = new RectF();
@@ -140,7 +154,9 @@ public class HomeView extends View {
 
     private void setCat(int c) {
         c = (c + cats.size()) % cats.size();
-        if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; host.sound("hhcat"); }
+        if (c != cat) { cat = c; tile = 0; userScroll = false; flingV = 0; scrollAnim = 0; host.sound("hhcat");
+            if (onSearch()) { searchKb = true; kbRow = 0; kbCol = 0; }
+        }
         tabFollow = true;
         invalidate();
         notifyRoblox(false);
@@ -180,6 +196,7 @@ public class HomeView extends View {
             else if (code == KeyEvent.KEYCODE_BUTTON_B || code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE) { prompt = null; host.sound("hhback"); }
             invalidate(); return true;
         }
+        if (onSearch() && handleSearchKey(code, e)) return true;
         switch (code) {
             case KeyEvent.KEYCODE_BUTTON_L1: case KeyEvent.KEYCODE_PAGE_UP: case KeyEvent.KEYCODE_Q:
                 if (boxset) { setTile(tile - 1); return true; }
@@ -260,6 +277,8 @@ public class HomeView extends View {
         if (kids && host.timeUpScreen()) return;   // stays up until a parent PIN
         if (prompt != null) { prompt = null; host.sound("hhback"); invalidate(); return; }
         if (boxset) { host.leaveBoxSet(); return; }
+        if (onSearch() && !inCats && !searchKb) { searchKb = true; host.sound("hhback"); invalidate(); return; }
+        if (onSearch() && !inCats && searchKb) { inCats = true; host.sound("hhback"); invalidate(); return; }
         if (!inCats) inCats = true; else setCat(0);
         host.sound("hhback"); invalidate();
     }
@@ -378,6 +397,9 @@ public class HomeView extends View {
         }
         if (onInstallBtn(x, y)) { confirmInstall(); return; }
         if (backBtn.contains(x, y)) { goBack(); return; }
+        if (onSearch() && !searchRetryBox.isEmpty() && searchRetryBox.contains(x, y)) { host.kidsSearchRetry(); return; }
+        if (onSearch() && tapSearchKey(x, y)) return;
+        if (onSearch() && searchQueryBox.contains(x, y)) { searchKb = true; inCats = false; invalidate(); return; }
         if (logoTop.contains(x, y) || logoCenter.contains(x, y)) { logoHit(); return; }
         if (!boxset && y <= catsBottom() && y >= tabStripTop()) {
             int i = hitTab(x, y);
@@ -424,12 +446,14 @@ public class HomeView extends View {
                     boolean onList = browseList() && downY >= browseTop() && downY <= browseBottom();
                     boolean onTiles = downY > tilesTop() && downY < tilesTop() + tileH();
                     boolean onTabs = !boxset && downY >= tabStripTop() && downY <= catsBottom();
+                    boolean rowZone = browseRowScrollZone(downX, downY);
                     if (onTabs && horiz) { tabDrag = true; tabFollow = false; }
                     else if (!horiz) { /* a vertical rub is not a tap and not a section change */ }
+                    else if (rowZone && maxScroll() >= 0.5f) rowDrag = true;   // 0.10.49: swipe anywhere except tabs / buttons
                     else if ((!onTiles && !onList) || maxScroll() < 0.5f) sectionSwipe = true;
                     else {
                         float vx = Math.abs(dx) / Math.max(1f, e.getEventTime() - downTime);   // px per ms
-                        if (vx > 1.15f) sectionSwipe = true;   // a flick changes section
+                        if (vx > 1.15f) sectionSwipe = true;   // a flick changes section (classic / utility rows)
                         else rowDrag = true;
                     }
                 }
@@ -466,6 +490,16 @@ public class HomeView extends View {
                 return true;
         }
         return super.onTouchEvent(e);
+    }
+
+    /** 0.10.49: the game row can be dragged from the logo, the background, or below the tiles — not only on the tiles themselves. */
+    private boolean browseRowScrollZone(float x, float y) {
+        if (!browseList() || boxset) return false;
+        if (!boxset && y >= tabStripTop() && y <= catsBottom()) return false;
+        if (backBtn.contains(x, y)) return false;
+        if (!installBtn.isEmpty() && installBtn.contains(x, y)) return false;
+        if (onSearch() && inSearchUi(x, y)) return false;
+        return true;
     }
 
     public void showCloud() { setCat(Catalog.indexOf(cats, "cloud")); tile = 0; inCats = false; tabFollow = true; invalidate(); }
@@ -579,20 +613,26 @@ public class HomeView extends View {
         }
         boolean coast = userScroll;
         if (userScroll) {
-            // Natural deceleration: speed falls off smoothly instead of stopping in one step.
+            // 0.10.49: longer, smoother fling; when it dies, snap to the nearest centred tile by easing, never jumping.
             scrollAnim += flingV * dt;
-            flingV *= (float) Math.exp(-3.2 * dt);
+            flingV *= (float) Math.exp(-2.4 * dt);
             if (scrollAnim < 0) { scrollAnim = 0; flingV = 0; }
             if (scrollAnim > maxScroll) { scrollAnim = maxScroll; flingV = 0; }
-            if (Math.abs(flingV) < 0.08f) {
+            if (Math.abs(flingV) < 0.12f) {
                 userScroll = false; flingV = 0;
                 tile = Math.max(0, Math.min(items().size() - 1, Math.round(scrollAnim + (vis - 1) / 2f)));
             }
         } else {
-            float dist = focusTarget - scrollAnim;          // controller focus-follow: always ease, never jump
-            scrollAnim += dist * Math.min(1f, dt * (Math.abs(dist) > 1.5f ? 7f : 12f));
-            if (Math.abs(focusTarget - scrollAnim) < 0.002f) scrollAnim = focusTarget;
+            float dist = focusTarget - scrollAnim;          // controller / snap: critically-damped ease, never a jump
+            float settle = 1f - (float) Math.exp(-9.0 * dt);
+            if (settle > 1f) settle = 1f;
+            scrollAnim += dist * settle;
+            if (Math.abs(focusTarget - scrollAnim) < 0.0015f) scrollAnim = focusTarget;
         }
+        float wantScale = (!inCats && !searchKeysFocused() && browseList() && !items().isEmpty()) ? 1.05f : 1f;
+        float sk = 1f - (float) Math.exp(-12.0 * dt);
+        focusScale += (wantScale - focusScale) * sk;
+        if (Math.abs(wantScale - focusScale) < 0.001f) focusScale = wantScale;
 
         layoutTabs();
         if (!tabDrag) {
@@ -605,6 +645,7 @@ public class HomeView extends View {
         topBar(c, W, H);
         notifyRoblox(true);
         if (!boxset) categories(c, W, H);
+        if (onSearch()) drawSearchUi(c, W, H);
         if (!boxset && (cats.get(cat).id.equals("games") || cats.get(cat).id.equals("cloud") || H / (float) W < 0.7f || true)) mark(c, W, H);
         if (browseList()) browseList(c, W, H); else tiles(c, W, H);
         hints(c, W, H);
@@ -614,11 +655,11 @@ public class HomeView extends View {
         if (splash != null && drawSplash(c, W, H)) { postInvalidateOnAnimation(); return; }
 
         boolean settling = coast || Math.abs(cat - catAnim) > 0.002f || Math.abs(focusTarget - scrollAnim) > 0.004f
-                || Math.abs(tabScrollTo - tabScroll) > 0.5f;
+                || Math.abs(tabScrollTo - tabScroll) > 0.5f || Math.abs(wantScale - focusScale) > 0.001f;
         if (anim || settling) {
             if ("on".equals(fx) || settling) postInvalidateOnAnimation();
             else postInvalidateDelayed(33);                 // auto: 30 fps background on weak chips
-        }
+        } else if (kids) postInvalidateDelayed(1000);      // 0.10.49: pick up allowed-hours lock without a continuous loop
     }
 
     /** Returns false (and frees the picture) once the splash is over. Geometry is in the 1672x941 art's pixels. */
@@ -932,12 +973,28 @@ public class HomeView extends View {
         p.setFakeBoldText(false);
     }
     private void getBadge(Canvas c, Catalog.Item it) {
-        if (it.isAction() || host.installed(it)) return;
-        String b = it.webUrl != null ? "WEB" : "GET";
-        p.setShader(null); p.setColor(it.webUrl != null ? T.webBadge : T.getBadge);
-        RectF br = new RectF(r.right - 44 * s, r.top + 7 * s, r.right - 7 * s, r.top + 23 * s);
-        c.drawRoundRect(br, 8 * s, 8 * s, p);
-        text(c, b, br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        if (it.isAction()) return;
+        boolean on = host.installed(it);
+        if (!on && it.webUrl == null) {
+            p.setShader(null); p.setColor(T.getBadge);
+            RectF br = new RectF(r.right - 44 * s, r.top + 7 * s, r.right - 7 * s, r.top + 23 * s);
+            c.drawRoundRect(br, 8 * s, 8 * s, p);
+            text(c, "GET", br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+            return;
+        }
+        if (!on && it.webUrl != null) {
+            p.setShader(null); p.setColor(T.webBadge);
+            RectF br = new RectF(r.right - 44 * s, r.top + 7 * s, r.right - 7 * s, r.top + 23 * s);
+            c.drawRoundRect(br, 8 * s, 8 * s, p);
+            text(c, "WEB", br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+            return;
+        }
+        if (on) {
+            p.setShader(null); p.setColor(0xF22E7D32);
+            RectF br = new RectF(r.right - 48 * s, r.top + 7 * s, r.right - 7 * s, r.top + 23 * s);
+            c.drawRoundRect(br, 8 * s, 8 * s, p);
+            text(c, "PLAY", br.centerX(), br.bottom - 4 * s, 10 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        }
     }
     private void tickBadge(Canvas c, Catalog.Item it) {
         if (!isPicked(it)) return;
@@ -949,20 +1006,25 @@ public class HomeView extends View {
         c.drawLine(cx - 1.5f * s, cy + 4.5f * s, cx + 6 * s, cy - 4 * s, stroke);
     }
 
-    /** 0.10.48: one row of tiles the same size and style as Wi-Fi / Update — cover fills the tile
-     *  (centre-cropped, not stretched), big bold title over the lower part of the cover, all tiles equal. */
+    /** 0.10.49: Wi-Fi-sized tiles. Art is fitted (not cropped) above a solid caption strip for the big title. */
+    private float browseCaptionH() {
+        float cap = (kids ? 78 : 50) * s;
+        float max = Math.max(36 * s, browseTileH() - 56 * s);
+        return cap > max ? max : cap;
+    }
     private void browseList(Canvas c, int W, int H) {
         List<Catalog.Item> its = items();
         float top = browseTop(), bot = browseBottom();
         float tw = browseTileW(), th = browseTileH(), gap = browseGap(), left = browsePad();
         c.save();
-        c.clipRect(0, top - 16 * s, W, H);
+        c.clipRect(0, top - 20 * s, W, H);
         for (int i = 0; i < its.size(); i++) {
             float x = left + (i - scrollAnim) * (tw + gap);
-            if (x > W || x + tw < 0) continue;
+            if (x > W + tw || x + tw < -tw) continue;   // skip off-screen (one canvas; nothing to recycle)
             boolean sel = i == tile && !inCats;
             Catalog.Item it = its.get(i); badgeItem = it;
-            r.set(x, top, x + tw, top + th);
+            float grow = sel ? th * (focusScale - 1f) / 2f : 0;
+            r.set(x - grow, top - grow, x + tw + grow, top + th + grow);
             if (sel) {
                 p.setShader(new RadialGradient(r.centerX(), r.centerY(), tw * 0.85f, 0x66000000 | T.glowRgb, T.glowRgb, Shader.TileMode.CLAMP));
                 c.drawCircle(r.centerX(), r.centerY(), tw * 0.85f, p); p.setShader(null);
@@ -971,13 +1033,16 @@ public class HomeView extends View {
             getBadge(c, it);
             tickBadge(c, it);
             updBadge(c);
-            tileName(c, it.label.toUpperCase(Locale.ROOT), r.centerX(), r.top + th * 0.86f, tw - 12 * s, (kids ? 34 : 20) * s, 11 * s);
+            tileName(c, it.label.toUpperCase(Locale.ROOT), r.centerX(), r.bottom - 10 * s, tw - 12 * s, (kids ? 34 : 20) * s, 11 * s);
         }
         c.restore();
-        if (its.isEmpty()) text(c, "Nothing in this list yet.", W / 2f, (top + bot) / 2, 16 * s, DIM, Paint.Align.CENTER, false);
-        else {
+        if (its.isEmpty()) {
+            String empty = onSearch() ? searchEmptyMessage() : (rowRetryMessage() != null ? rowRetryMessage() : "Nothing in this list yet.");
+            text(c, empty, W / 2f, (top + bot) / 2, 16 * s, DIM, Paint.Align.CENTER, false);
+        } else {
             Catalog.Item f = its.get(Math.min(tile, its.size() - 1));
-            String hint = "wifi".equals(f.action) ? host.wifi() : host.scanNote(cats.get(cat).id) != null && !f.isRom() ? host.scanNote(cats.get(cat).id) : Catalog.copyHint(cats.get(cat).id, f) != null ? Catalog.copyHint(cats.get(cat).id, f) : f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
+            String hint = onSearch() ? (host.installed(f) ? "Installed on this device — press A to play" : "Not installed — press A for the parent PIN, then its Play Store page")
+                    : "wifi".equals(f.action) ? host.wifi() : host.scanNote(cats.get(cat).id) != null && !f.isRom() ? host.scanNote(cats.get(cat).id) : Catalog.copyHint(cats.get(cat).id, f) != null ? Catalog.copyHint(cats.get(cat).id, f) : f.isAction() ? "" : f.isRom() ? "Your game file - opens with an emulator you have installed" : f.isDeviceApp() ? "Installed on this device" : host.installed(f) ? "Installed" : f.webUrl != null ? "Opens in your browser (or the app, once installed)" : "Not installed - press A for its Play Store page";
             text(c, hint, W / 2f, top + th + 24 * s, 14 * s, DIM, Paint.Align.CENTER, false);
         }
     }
@@ -1079,29 +1144,63 @@ public class HomeView extends View {
 
     private final Path clip = new Path();
     private final RectF src = new RectF();
+    /** 0.10.49: prefer a square Play / package icon so wide feature banners (name baked into the art) are not used
+     *  as the tile picture. Unique wide art (Roblox thumbs, Steam) is kept and fitted, not cropped. */
+    private Bitmap browseArt(Catalog.Item it) {
+        Bitmap icon = host.appIcon(it), cov = host.cover(it);
+        if (Catalog.robloxPlaceId(it) != null && cov != null) return cov;
+        if (icon != null && (cov == null || cov.getWidth() > cov.getHeight() * 1.35f)) return icon;
+        return cov != null ? cov : icon;
+    }
+    /** Whole image fitted in dest (contain). A dimmed, cover-cropped copy of the same bitmap fills the letterbox. */
+    private void drawFittedArt(Canvas c, Bitmap cov, RectF dest) {
+        int iw = Math.max(1, cov.getWidth()), ih = Math.max(1, cov.getHeight());
+        p.setFilterBitmap(true); p.setAlpha(255);
+        p.setColor(0xFF0A0C10); c.drawRect(dest, p);
+        float scFill = Math.max(dest.width() / iw, dest.height() / ih);
+        float bw = iw * scFill, bh = ih * scFill;
+        src.set(dest.centerX() - bw / 2, dest.centerY() - bh / 2, dest.centerX() + bw / 2, dest.centerY() + bh / 2);
+        c.save(); c.clipRect(dest); c.drawBitmap(cov, null, src, p); c.restore();
+        p.setColor(0xB3000000); c.drawRect(dest, p);
+        float sc = Math.min(dest.width() / iw, dest.height() / ih);
+        bw = iw * sc; bh = ih * sc;
+        src.set(dest.centerX() - bw / 2, dest.centerY() - bh / 2, dest.centerX() + bw / 2, dest.centerY() + bh / 2);
+        p.setColor(0xFFFFFFFF); c.drawBitmap(cov, null, src, p);
+    }
     /** A portrait My Games tile in r: the game's picture (centre-cropped), else CodeAque's own generic art with the app icon. */
     private void coverTile(Canvas c, Catalog.Item it, boolean sel) { coverTile(c, it, sel, true); }
     private void coverTile(Canvas c, Catalog.Item it, boolean sel, boolean nameInside) {
         float rad = 12 * s;
-        // 0.10.48: the one-row home uses the ordinary cover, centre-cropped to fill the (Wi-Fi-sized) tile.
         boolean kg = nameInside && kids && cats.get(cat).id.equals("kgames") && !it.isAction();   // 0.10.17 full-bleed Kids Games covers
-        Bitmap cov = kg ? host.wideCover(it) : host.cover(it), ai = cov == null ? host.appIcon(it) : null;
+        Bitmap cov = nameInside ? (kg ? host.wideCover(it) : host.cover(it)) : browseArt(it);
+        Bitmap ai = cov == null ? host.appIcon(it) : null;
         c.save(); clip.reset(); clip.addRoundRect(r, rad, rad, Path.Direction.CW); c.clipPath(clip);
-        if (cov != null) {
-            // Centre-crop: scale to fill the tile, keep aspect, no stretch, clip to the rounded rect.
+        if (cov != null && !nameInside) {
+            // 0.10.49: fit the whole picture in the art area (no crop, no stretch); dimmed fill of the same art behind it;
+            // solid caption strip at the bottom so the big title never sits on the picture.
+            float cap = browseCaptionH();
+            iconRect.set(r.left, r.top, r.right, r.bottom - cap);
+            drawFittedArt(c, cov, iconRect);
+            p.setShader(null); p.setColor(0xF2141518);
+            c.drawRect(r.left, r.bottom - cap, r.right, r.bottom, p);
+        } else if (cov != null) {
+            // Classic / cover-row tiles keep a centre-crop fill and in-tile name.
             float sc = Math.max(r.width() / Math.max(1, cov.getWidth()), r.height() / Math.max(1, cov.getHeight()));
             float bw = cov.getWidth() * sc, bh = cov.getHeight() * sc;
             src.set(r.centerX() - bw / 2, r.centerY() - bh / 2, r.centerX() + bw / 2, r.centerY() + bh / 2);
             p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(cov, null, src, p);
         } else if (!nameInside) {
-            // Same face as the Wi-Fi / Update tiles, so a missing cover still matches that style.
-            p.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
-            c.drawRect(r, p); p.setShader(null);
+            // Same face as the Wi-Fi / Update tiles; title still goes in the caption strip.
+            float cap = browseCaptionH();
+            p.setShader(new LinearGradient(0, r.top, 0, r.bottom - cap, sel ? T.tileSelTop : T.tileTop, T.tileBottom, Shader.TileMode.CLAMP));
+            c.drawRect(r.left, r.top, r.right, r.bottom - cap, p); p.setShader(null);
+            float midY = r.top + (r.height() - cap) * 0.42f;
             if (ai != null) {
-                float is = 40 * s * big(); iconRect.set(r.centerX() - is / 2, r.top + r.height() * 0.30f - is / 2 - 4 * s, r.centerX() + is / 2, r.top + r.height() * 0.30f + is / 2 - 4 * s);
+                float is = 40 * s * big(); iconRect.set(r.centerX() - is / 2, midY - is / 2, r.centerX() + is / 2, midY + is / 2);
                 p.setFilterBitmap(true); p.setAlpha(255); c.drawBitmap(ai, null, iconRect, p);
-            } else icon(c, it.icon, r.centerX(), r.top + r.height() * 0.30f, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
-            spaced(c, "CODEAQUE", r.centerX(), r.top + r.height() * 0.56f, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
+            } else icon(c, it.icon, r.centerX(), midY, 30 * s, sel ? T.accentLight : T.accentMid, 2.2f);
+            spaced(c, "CODEAQUE", r.centerX(), r.bottom - cap - 8 * s, 8.5f * s, sel ? GOLD : T.sub, Paint.Align.CENTER);
+            p.setColor(0xF2141518); c.drawRect(r.left, r.bottom - cap, r.right, r.bottom, p);
             c.restore();
             stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
             stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
@@ -1128,8 +1227,10 @@ public class HomeView extends View {
                 p.setFilterBitmap(true); p.setColor(0xFFFFFFFF); c.drawBitmap(ai, null, iconRect, p); }
             else icon(c, it.icon, r.centerX(), r.top + r.height() * 0.36f, 40 * s, sel ? T.accentLight : 0xFFDDF4FF, 2.2f);
         }
-        p.setShader(new LinearGradient(0, r.bottom - r.height() * 0.48f, 0, r.bottom, 0x00000000, 0xF2000000, Shader.TileMode.CLAMP));   // 0.10.19 taller, darker fade
-        c.drawRect(r.left, r.bottom - r.height() * 0.48f, r.right, r.bottom, p); p.setShader(null);
+        if (nameInside) {
+            p.setShader(new LinearGradient(0, r.bottom - r.height() * 0.48f, 0, r.bottom, 0x00000000, 0xF2000000, Shader.TileMode.CLAMP));   // 0.10.19 taller, darker fade
+            c.drawRect(r.left, r.bottom - r.height() * 0.48f, r.right, r.bottom, p); p.setShader(null);
+        }
         c.restore();
         stroke.setStrokeWidth((sel ? 3 : 1.5f) * s);
         stroke.setShader(new LinearGradient(0, r.top, 0, r.bottom, sel ? new int[]{T.goldLight, GOLD, GOLD_D} : new int[]{T.border, T.borderDark, T.border}, null, Shader.TileMode.CLAMP));
@@ -1199,8 +1300,11 @@ public class HomeView extends View {
     private void timeUpPanel(Canvas c, int W, int H) {
         p.setShader(null);
         p.setColor(0xE80A0C10); c.drawRect(0, 0, W, H, p);
-        text(c, "TIME'S UP", W / 2f, H * 0.38f, 42 * s, GOLD, Paint.Align.CENTER, true);
-        text(c, "Play time is used up for today.", W / 2f, H * 0.50f, 20 * s, 0xFFFFFFFF, Paint.Align.CENTER, false);
+        String head = host.timeUpHeadline(), line = host.timeUpMessage();
+        if (head == null || head.isEmpty()) head = "TIME'S UP";
+        if (line == null || line.isEmpty()) line = "Play time is used up for today.";
+        text(c, head, W / 2f, H * 0.38f, 42 * s, GOLD, Paint.Align.CENTER, true);
+        text(c, line, W / 2f, H * 0.50f, 20 * s, 0xFFFFFFFF, Paint.Align.CENTER, false);
         text(c, "Ask a parent to add time or unlock.", W / 2f, H * 0.56f, 16 * s, 0xFFC9D6CF, Paint.Align.CENTER, false);
         float bw = 280 * s, bh = 64 * s;
         r2.set(W / 2f - bw / 2, H * 0.66f, W / 2f + bw / 2, H * 0.66f + bh);
@@ -1329,4 +1433,216 @@ public class HomeView extends View {
                 c.drawCircle(cx, cy, 8 * u, stroke);
         }
     }
+
+    // ---------- 0.10.49 Kids search (in-launcher keyboard + Play-backed results) ----------
+    private boolean onSearch() {
+        return !boxset && kids && !cats.isEmpty()
+                && "ksearch".equals(cats.get(Math.max(0, Math.min(cat, cats.size() - 1))).id);
+    }
+    private boolean searchKeysFocused() { return onSearch() && searchKb && !inCats; }
+
+    private String[][] searchKeys() {
+        if (searchSym) {
+            return new String[][]{
+                    {"1","2","3","4","5","6","7","8","9","0"},
+                    {"-","'",".","!","?","@","&",":",";","+"},
+                    {"ABC",",","(",")","\"","/","#","*","⌫"},
+                    {"ABC"," ","GO"}
+            };
+        }
+        if (searchShift) {
+            return new String[][]{
+                    {"Q","W","E","R","T","Y","U","I","O","P"},
+                    {"A","S","D","F","G","H","J","K","L"},
+                    {"⇧","Z","X","C","V","B","N","M","⌫"},
+                    {"123"," ","GO"}
+            };
+        }
+        return new String[][]{
+                {"q","w","e","r","t","y","u","i","o","p"},
+                {"a","s","d","f","g","h","j","k","l"},
+                {"⇧","z","x","c","v","b","n","m","⌫"},
+                {"123"," ","GO"}
+        };
+    }
+
+    private void layoutSearch(int W, int H) {
+        float top = catsBottom() + 8 * s;
+        float bot = browseTop() - 8 * s;
+        float qh = Math.min(44 * s, Math.max(28 * s, (bot - top) * 0.16f));
+        searchQueryBox.set(24 * s, top, W - 24 * s, top + qh);
+        String st = host.kidsSearchStatus();
+        boolean retry = st != null && st.toLowerCase(Locale.ROOT).contains("retry");
+        float retryH = retry ? Math.min(32 * s, 28 * s) : 0;
+        float kbTop = searchQueryBox.bottom + 8 * s;
+        float kbBot = bot - (retry ? retryH + 6 * s : 0);
+        if (kbBot < kbTop + 40 * s) kbBot = kbTop + 40 * s;
+        searchKbBox.set(16 * s, kbTop, W - 16 * s, kbBot);
+        if (retry) searchRetryBox.set(W * 0.12f, kbBot + 4 * s, W * 0.88f, kbBot + 4 * s + retryH);
+        else searchRetryBox.setEmpty();
+    }
+
+    private void drawSearchUi(Canvas c, int W, int H) {
+        layoutSearch(W, H);
+        // Query field
+        p.setShader(null); p.setColor(0xCC141518);
+        c.drawRoundRect(searchQueryBox, 12 * s, 12 * s, p);
+        stroke.setShader(null); stroke.setColor(searchKeysFocused() ? GOLD : 0x66FFFFFF); stroke.setStrokeWidth(2 * s);
+        c.drawRoundRect(searchQueryBox, 12 * s, 12 * s, stroke);
+        String shown = searchQ.isEmpty() ? "Search for a game" : searchQ + (searchKeysFocused() ? "▌" : "");
+        int col = searchQ.isEmpty() ? DIM : TXT;
+        text(c, shown, searchQueryBox.left + 16 * s, searchQueryBox.centerY() + 6 * s, 18 * s, col, Paint.Align.LEFT, false);
+
+        String[][] keys = searchKeys();
+        float pad = 4 * s;
+        float kbH = searchKbBox.height(), kbW = searchKbBox.width();
+        int rows = keys.length;
+        float rowH = kbH / Math.max(1, rows);
+        for (int r = 0; r < rows; r++) {
+            int cols = keys[r].length;
+            float kw = kbW / cols;
+            for (int colI = 0; colI < cols; colI++) {
+                String lab = keys[r][colI];
+                RectF kr = new RectF(searchKbBox.left + colI * kw + pad, searchKbBox.top + r * rowH + pad,
+                        searchKbBox.left + (colI + 1) * kw - pad, searchKbBox.top + (r + 1) * rowH - pad);
+                boolean sel = searchKeysFocused() && r == kbRow && colI == Math.min(kbCol, cols - 1);
+                p.setColor(sel ? (0xE0000000 | (GOLD & 0x00FFFFFF)) : 0xD01C1D22);
+                if (" ".equals(lab)) p.setColor(sel ? 0xE02E7D32 : 0xD0222830);
+                if ("GO".equals(lab)) p.setColor(sel ? 0xF2E53935 : 0xE0C62828);
+                c.drawRoundRect(kr, 8 * s, 8 * s, p);
+                if (sel) { stroke.setColor(0xFFFFFFFF); stroke.setStrokeWidth(2 * s); c.drawRoundRect(kr, 8 * s, 8 * s, stroke); }
+                String draw = " ".equals(lab) ? "space" : lab;
+                float ts = Math.min(22 * s, kr.height() * 0.55f);
+                if (draw.length() > 1 && !"GO".equals(draw)) ts *= 0.85f;
+                text(c, draw, kr.centerX(), kr.centerY() + ts * 0.35f, ts, 0xFFFFFFFF, Paint.Align.CENTER, "GO".equals(draw) || sel);
+            }
+        }
+        if (!searchRetryBox.isEmpty()) {
+            p.setColor(0xE0C62828);
+            c.drawRoundRect(searchRetryBox, 12 * s, 12 * s, p);
+            String st = host.kidsSearchStatus();
+            if (st == null || st.isEmpty()) st = "Couldn't load more games, tap to retry";
+            text(c, st, searchRetryBox.centerX(), searchRetryBox.centerY() + 5 * s, 13 * s, 0xFFFFFFFF, Paint.Align.CENTER, true);
+        } else {
+            String st = host.kidsSearchStatus();
+            if (st != null && !st.isEmpty() && !st.toLowerCase(Locale.ROOT).contains("retry"))
+                text(c, st, W / 2f, searchKbBox.bottom + 16 * s, 13 * s, DIM, Paint.Align.CENTER, false);
+        }
+    }
+
+    private boolean inSearchUi(float x, float y) {
+        return searchQueryBox.contains(x, y) || searchKbBox.contains(x, y) || (!searchRetryBox.isEmpty() && searchRetryBox.contains(x, y));
+    }
+
+    private boolean tapSearchKey(float x, float y) {
+        if (!searchKbBox.contains(x, y)) return false;
+        String[][] keys = searchKeys();
+        int rows = keys.length;
+        float kbH = searchKbBox.height(), kbW = searchKbBox.width();
+        float rowH = kbH / Math.max(1, rows);
+        int r = (int) Math.floor((y - searchKbBox.top) / Math.max(1f, rowH));
+        if (r < 0 || r >= rows) return false;
+        int cols = keys[r].length;
+        float kw = kbW / cols;
+        int colI = (int) Math.floor((x - searchKbBox.left) / Math.max(1f, kw));
+        if (colI < 0 || colI >= cols) return false;
+        kbRow = r; kbCol = colI; searchKb = true; inCats = false;
+        pressSearchKey(keys[r][colI]);
+        return true;
+    }
+
+    private void pressSearchKey(String lab) {
+        if (lab == null) return;
+        host.sound("hhmove");
+        if ("⇧".equals(lab)) { searchShift = !searchShift; invalidate(); return; }
+        if ("123".equals(lab)) { searchSym = true; searchShift = false; kbRow = 0; kbCol = 0; invalidate(); return; }
+        if ("ABC".equals(lab)) { searchSym = false; kbRow = 0; kbCol = 0; invalidate(); return; }
+        if ("⌫".equals(lab)) { if (searchQ.length() > 0) searchQ = searchQ.substring(0, searchQ.length() - 1); scheduleSearch(); invalidate(); return; }
+        if ("GO".equals(lab) || "go".equals(lab)) { searchKb = false; host.runKidsSearch(searchQ); invalidate(); return; }
+        if (" ".equals(lab)) searchQ += " ";
+        else searchQ += lab;
+        if (!searchSym) searchShift = false;
+        scheduleSearch();
+        invalidate();
+    }
+
+    final HomeSearchDebounce searchDebounce = new HomeSearchDebounce(this);
+    void fireSearch() { if (onSearch()) host.runKidsSearch(searchQ); }
+    private void scheduleSearch() {
+        removeCallbacks(searchDebounce);
+        postDelayed(searchDebounce, 450);
+    }
+
+    private boolean handleSearchKey(int code, KeyEvent e) {
+        if (!onSearch()) return false;
+        // Hardware typing when the keyboard is up (Q/E are otherwise L1/R1 tab aliases).
+        if (searchKeysFocused()) {
+            if (code == KeyEvent.KEYCODE_DEL || code == KeyEvent.KEYCODE_BUTTON_L1) { pressSearchKey("⌫"); return true; }
+            if (code == KeyEvent.KEYCODE_BUTTON_R1) { pressSearchKey(searchSym ? "ABC" : "⇧"); return true; }
+            if (code == KeyEvent.KEYCODE_SPACE) { pressSearchKey(" "); return true; }
+            if (code == KeyEvent.KEYCODE_ENTER && e.getRepeatCount() == 0) { pressSearchKey("GO"); return true; }
+            if (code == KeyEvent.KEYCODE_DPAD_LEFT) { moveKb(0, -1); return true; }
+            if (code == KeyEvent.KEYCODE_DPAD_RIGHT) { moveKb(0, 1); return true; }
+            if (code == KeyEvent.KEYCODE_DPAD_UP) {
+                if (kbRow == 0) { inCats = true; searchKb = true; host.sound("hhmove"); invalidate(); }
+                else moveKb(-1, 0);
+                return true;
+            }
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN) {
+                String[][] keys = searchKeys();
+                if (kbRow >= keys.length - 1) { searchKb = false; inCats = false; host.sound("hhmove"); invalidate(); }
+                else moveKb(1, 0);
+                return true;
+            }
+            if (code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_DPAD_CENTER) {
+                if (e.getRepeatCount() == 0) {
+                    String[][] keys = searchKeys();
+                    int r = Math.max(0, Math.min(kbRow, keys.length - 1));
+                    int c = Math.max(0, Math.min(kbCol, keys[r].length - 1));
+                    pressSearchKey(keys[r][c]);
+                }
+                return true;
+            }
+            int u = e.getUnicodeChar();
+            if (u >= 32 && u < 127 && code != KeyEvent.KEYCODE_ENTER) { pressSearchKey(String.valueOf((char) u)); return true; }
+        }
+        // From the result row, Up returns to the keyboard.
+        if (!inCats && !searchKb && code == KeyEvent.KEYCODE_DPAD_UP) {
+            searchKb = true; host.sound("hhmove"); invalidate(); return true;
+        }
+        // From the tab strip, Down opens the keyboard (not the tiles first).
+        if (inCats && code == KeyEvent.KEYCODE_DPAD_DOWN) {
+            inCats = false; searchKb = true; host.sound("hhmove"); invalidate(); return true;
+        }
+        return false;
+    }
+
+    private void moveKb(int dr, int dc) {
+        String[][] keys = searchKeys();
+        kbRow = Math.max(0, Math.min(keys.length - 1, kbRow + dr));
+        kbCol = Math.max(0, Math.min(keys[kbRow].length - 1, kbCol + dc));
+        host.sound("hhmove");
+        invalidate();
+    }
+
+    private String searchEmptyMessage() {
+        String st = host.kidsSearchStatus();
+        if (st != null && !st.isEmpty()) return st;
+        if (searchQ.trim().isEmpty()) return "Games on this device show here. Type a name to find more on the Play Store.";
+        return "No games found.";
+    }
+    private String rowRetryMessage() {
+        String st = host.scanNote(cats.get(Math.max(0, Math.min(cat, cats.size() - 1))).id);
+        if (st != null && st.toLowerCase(Locale.ROOT).contains("retry")) return st;
+        return null;
+    }
+
 }
+
+/** Package-level (not an inner class) so the older D8 dexer can compile the search debounce. */
+final class HomeSearchDebounce implements Runnable {
+    final HomeView view;
+    HomeSearchDebounce(HomeView view) { this.view = view; }
+    @Override public void run() { view.fireSearch(); }
+}
+
