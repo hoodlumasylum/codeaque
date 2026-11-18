@@ -53,6 +53,14 @@ public final class NovaPlace {
         return dx * dx + dy * dy > slop * slop;
     }
 
+    /**
+     * 0.10.54: a finger move past slop on the bubble starts a drag, even before the long-press timeout.
+     * (0.10.53 cancelled that move so a real finger often never started a drag.)
+     */
+    public static boolean dragStartsOnMove(boolean alreadyDragging, boolean big, boolean pinching, boolean movedPastSlop) {
+        return !alreadyDragging && !big && !pinching && movedPastSlop;
+    }
+
     public static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
     /** Wait this long after a tap to see if a second tap (hide) is coming. */

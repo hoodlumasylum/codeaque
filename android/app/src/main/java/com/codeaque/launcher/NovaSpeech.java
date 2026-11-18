@@ -1,0 +1,163 @@
+package com.codeaque.launcher;
+
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+
+import java.util.ArrayList;
+
+/**
+ * 0.10.54: tap-to-talk in Chat. Prefers the offline recognizer, no API keys.
+ * Listen only while the mic is active. Named listener (NovaSpeechListen) — d8 8.2
+ * has NPEd on anonymous listeners elsewhere in Nova.
+ */
+public final class NovaSpeech {
+    public static final String PREF_VOICE_TALK = "novaVoiceTalk";
+
+    public interface Callbacks {
+        void onSpeechResult(String text);
+        void onSpeechError(String message);
+        void onSpeechState(boolean listening);
+    }
+
+    final Handler ui = new Handler(Looper.getMainLooper());
+    SpeechRecognizer rec;
+    Callbacks cb;
+    boolean listening, offlineTried, destroyed;
+    Context app;
+
+    public static boolean voiceTalkOn(SharedPreferences p) {
+        return p == null || p.getBoolean(PREF_VOICE_TALK, true);
+    }
+
+    public boolean isListening() { return listening; }
+
+    public void start(Context ctx, Callbacks callbacks) {
+        stop();
+        destroyed = false;
+        cb = callbacks;
+        if (ctx == null) {
+            fail("Voice talk isn't available on this phone. You can type your question instead.");
+            return;
+        }
+        app = ctx.getApplicationContext();
+        if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
+            fail("Voice talk isn't available on this phone. You can type your question instead.");
+            return;
+        }
+        try {
+            rec = SpeechRecognizer.createSpeechRecognizer(ctx);
+            rec.setRecognitionListener(new NovaSpeechListen(this));
+        } catch (Exception e) {
+            rec = null;
+            fail("Voice talk isn't available on this phone. You can type your question instead.");
+            return;
+        }
+        listen(true);
+    }
+
+    public void toggle(Context ctx, Callbacks callbacks) {
+        if (listening) stop();
+        else start(ctx, callbacks);
+    }
+
+    public void stop() {
+        listening = false;
+        offlineTried = false;
+        SpeechRecognizer r = rec;
+        rec = null;
+        if (r != null) {
+            try { r.stopListening(); } catch (Exception ignored) { }
+            try { r.cancel(); } catch (Exception ignored) { }
+            try { r.destroy(); } catch (Exception ignored) { }
+        }
+        notifyState(false);
+    }
+
+    public void destroy() {
+        destroyed = true;
+        stop();
+        cb = null;
+        app = null;
+    }
+
+    void listen(boolean preferOffline) {
+        if (destroyed || rec == null) return;
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        if (preferOffline) i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        offlineTried = preferOffline;
+        listening = true;
+        notifyState(true);
+        try { rec.startListening(i); }
+        catch (Exception e) {
+            if (preferOffline) { listen(false); return; }
+            listening = false;
+            notifyState(false);
+            fail("I couldn't start the mic. You can type your question instead.");
+        }
+    }
+
+    void onReady() { }
+
+    void onResults(Bundle b) {
+        if (destroyed) return;
+        listening = false;
+        notifyState(false);
+        String text = firstResult(b);
+        if (text == null || text.trim().isEmpty()) {
+            fail("I didn't catch that. Try again, or type it.");
+            return;
+        }
+        final String said = text.trim();
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RESULT, said, false));
+    }
+
+    void onError(int code) {
+        if (destroyed) return;
+        // Offline packs are missing on some phones: retry once without EXTRA_PREFER_OFFLINE.
+        if (listening && offlineTried && (code == SpeechRecognizer.ERROR_CLIENT
+                || code == SpeechRecognizer.ERROR_SERVER
+                || code == SpeechRecognizer.ERROR_NETWORK
+                || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
+                || code == SpeechRecognizer.ERROR_NO_MATCH)) {
+            listen(false);
+            return;
+        }
+        listening = false;
+        notifyState(false);
+        fail(friendlyError(code));
+    }
+
+    static String firstResult(Bundle b) {
+        if (b == null) return null;
+        ArrayList<String> list = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        if (list == null || list.isEmpty()) return null;
+        return list.get(0);
+    }
+
+    static String friendlyError(int code) {
+        if (code == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS)
+            return "The mic wasn't allowed, so you can type your question instead.";
+        if (code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || code == SpeechRecognizer.ERROR_NO_MATCH)
+            return "I didn't catch that. Try again, or type it.";
+        if (code == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
+            return "The mic is busy. Try again in a moment, or type it.";
+        return "I couldn't hear that. You can type your question instead.";
+    }
+
+    void fail(String message) {
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.ERROR, message, false));
+    }
+
+    void notifyState(boolean on) {
+        if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.STATE, null, on));
+    }
+}

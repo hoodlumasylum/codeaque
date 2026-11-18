@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="153" android:versionName="0.10.53">
+    android:versionCode="154" android:versionName="0.10.54">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 0.10.54: Voice talk in Chat (asked at runtime, only while the mic button is on) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -40,8 +42,10 @@
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="market" /></intent>
         <intent><action android:name="android.intent.action.DIAL" /><data android:scheme="tel" /></intent>
         <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
     </queries>
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />

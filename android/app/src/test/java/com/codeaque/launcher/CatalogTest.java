@@ -796,7 +796,7 @@ public class CatalogTest {
         check(!merged.isEmpty() && "com.device.only".equals(merged.get(0).storePackage()), "installed games are listed first");
         check(PlaySearch.searchUrl(PlayArt.PLAY, "lego world").contains("/store/search?q=lego%20world")
                 && PlaySearch.searchUrl(PlayArt.PLAY, "lego world").contains("c=apps"), "search url is Play search, not opened to kids");
-        check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && LockPin.needsPin("exitcodeaque") && LockPin.needsPin("phonesettings") && LockPin.needsPin("phoneaccounts") && LockPin.needsPin("homeapp") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock, device owner, Exit and Phone Settings when locked; Update is gated in Kids mode instead");
+        check(LockPin.needsPin("kidsprofile") && LockPin.needsPin("screentime") && LockPin.needsPin("alwayskids") && LockPin.needsPin("kidslock") && LockPin.needsPin("lockphone") && LockPin.needsPin("removeowner") && LockPin.needsPin("exitcodeaque") && LockPin.needsPin("phonesettings") && LockPin.needsPin("phoneaccounts") && LockPin.needsPin("homeapp") && !LockPin.needsPin("update"), "PIN for profile, screen time, always-kids, kids lock, device owner, Exit and Phone Settings when locked; Update is not lock-gated");
         java.util.List<String> settingsActs = new java.util.ArrayList<>();
         java.util.List<Catalog.Category> cats39 = Catalog.categories();
         for (Catalog.Item i : cats39.get(Catalog.indexOf(cats39, "settings")).items) settingsActs.add(i.action);
@@ -1029,7 +1029,7 @@ public class CatalogTest {
         check(!KidsPlay.ageFilteredGet(teen.item(), false, false) && KidsPlay.ageFilteredGet(teen.item(), false, true), "search PEGI 12 follows Kids 12+");
 
         check(LockPin.needsPin("installpin") && LockPin.needsPin("novaoverlay"), "Ask PIN to install and Nova-over-games need the PIN when Lock mode is on");
-        check(!LockPin.needsPin("nova") && LockPin.needsPin("kidsoff") && LockPin.needsPin("screentime") && !LockPin.needsPin("update"), "Nova settings tile is not lock-gated; leaving Kids, Screen Time still are; Update stays gated in Kids mode");
+        check(!LockPin.needsPin("nova") && LockPin.needsPin("kidsoff") && LockPin.needsPin("screentime") && !LockPin.needsPin("update") && !LockPin.needsPin("kids"), "Nova settings tile is not lock-gated; leaving Kids and Screen Time still are; entering Kids and Update are not");
 
         String a = NovaHelp.answer("How do I update?");
         check(a.toLowerCase().contains("update") && a.toLowerCase().contains("settings"), "Nova help: update");
@@ -1120,6 +1120,51 @@ public class CatalogTest {
         check(NovaPlace.goBig(false, 1.3f) && !NovaPlace.goBig(false, 1.1f) && !NovaPlace.goBig(true, 0.7f) && NovaPlace.goBig(true, 1.0f), "pinch-out grows, pinch-in shrinks, unclear keeps the mode");
         check(NovaPlace.showBubble(true, false) && !NovaPlace.showBubble(true, true) && !NovaPlace.showBubble(false, false), "bubble only when the parent allows her and she is not hidden");
         check(NovaPlace.showTab(true, true) && !NovaPlace.showTab(false, true) && !NovaPlace.showTab(true, false), "edge tab only after a double-tap hide while Show Nova is on");
+
+        // 0.10.54: Kids-mode PIN list (CodeAque Update and entering Kids skip the PIN).
+        check(!LockPin.kidsActionNeedsPin("update") && !LockPin.kidsActionNeedsPin("wifi")
+                && !LockPin.kidsActionNeedsPin("kidson") && !LockPin.kidsActionNeedsPin("kids")
+                && !LockPin.kidsActionNeedsPin(null), "Kids self-update, Wi-Fi and entering Kids do not need the PIN");
+        check(LockPin.kidsActionNeedsPin("kidsoff") && LockPin.kidsActionNeedsPin("adultpin")
+                && LockPin.kidsActionNeedsPin("settingspin") && LockPin.kidsActionNeedsPin("goto:settings")
+                && LockPin.kidsActionNeedsPin("kidsprofile"), "leaving Kids, Settings and changing the Kids profile still need the PIN");
+        check(!LockPin.kidsActionNeedsPin("theme") && !LockPin.kidsActionNeedsPin("kthemes"), "unknown Kids actions are not PIN-gated by this list");
+
+        // Movement past slop starts a drag; a clean tap / pinch is not a drag-start.
+        check(NovaPlace.dragStartsOnMove(false, false, false, true), "move past slop starts a drag");
+        check(!NovaPlace.dragStartsOnMove(true, false, false, true), "already dragging does not re-start");
+        check(!NovaPlace.dragStartsOnMove(false, true, false, true), "big mode does not start a bubble drag");
+        check(!NovaPlace.dragStartsOnMove(false, false, true, true), "pinch does not start a drag");
+        check(!NovaPlace.dragStartsOnMove(false, false, false, false), "a still finger is not a drag (tap / double-tap can fire)");
+
+        check(NovaHelp.kidsUnsafe("Don't pee on the floor") && !NovaHelp.kidsUnsafe("It wasn't peeling well."),
+                "kidsUnsafe uses word boundaries so pee is blocked and peeling is not");
+        check(NovaHelp.kidsUnsafe("kill the dragon") && !NovaHelp.kidsUnsafe("A skill puzzle"), "kill is a word, skill is not");
+        check(NovaHelp.KIDS_UNSURE.toLowerCase().contains("grown-up") && !NovaHelp.kidsUnsafe(NovaHelp.KIDS_UNSURE), "unsure fallback is kid-safe");
+        check(!NovaHelp.kidsMayAskOnline("Find a game") && !NovaHelp.kidsMayAskOnline("Learning")
+                && !NovaHelp.kidsMayAskOnline("Tell me a joke") && !NovaHelp.kidsMayAskOnline("parent PIN")
+                && !NovaHelp.kidsMayAskOnline("How do I update?") && !NovaHelp.kidsMayAskOnline(""),
+                "local games/learning/joke/admin questions stay offline");
+        check(NovaHelp.kidsMayAskOnline("what is a volcano") && NovaHelp.kidsMayAskOnline("why is the sky blue"),
+                "an unknown learning question may use Smarter Nova");
+        check(!NovaHelp.answer("what is a volcano", true).toLowerCase().contains("wikipedia")
+                && !NovaHelp.answer("what is a volcano", true).toLowerCase().contains("gemma")
+                && !NovaHelp.KIDS_GREETING.toLowerCase().contains("wikipedia"),
+                "kids answers never name a model or Wikipedia");
+
+        String os = "[\"volcano\",[\"Volcano\"],[\"A volcano is a mountain.\"],[\"https://simple.wikipedia.org/wiki/Volcano\"]]";
+        check("Volcano".equals(NovaWiki.firstOpenSearchTitle(os)), "opensearch first title");
+        check(NovaWiki.firstOpenSearchTitle("[\"q\",[],[],[]]") == null, "empty opensearch title");
+        check("A volcano is a mountain that can erupt.".equals(NovaWiki.extractExtract(
+                "{\"title\":\"Volcano\",\"extract\":\"A volcano is a mountain that can erupt.\",\"extract_html\":\"<p>no\"}")),
+                "summary extract, not extract_html");
+        check("Volcano".equals(NovaWiki.titlePath("Volcano")) && "Mount_Etna".equals(NovaWiki.titlePath("Mount Etna")), "title path");
+        check("A volcano is a mountain. It can erupt.".equals(NovaWiki.firstSentences(
+                "A volcano is a mountain. It can erupt. Scientists watch them closely.", 2)), "two sentences");
+        check("Hello there.".equals(NovaWiki.stripLinks("Hello https://example.com there.")), "strip links");
+        check("Short fact. Extra sentence three is long for a child.".equals(NovaWiki.kidTrim("Short fact. Extra sentence three is long for a child. More.")), "kidTrim keeps two sentences");
+        check(NovaWiki.kidTrim("See www.example.com for more.") == null || !NovaWiki.kidTrim("See www.example.com for more.").toLowerCase().contains("www."),
+                "kidTrim does not keep a web address");
     }
 
 }

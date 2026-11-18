@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 /** CodeAque HOME launcher. Android stays the system underneath; this is just the home screen. */
-public class MainActivity extends Activity implements HomeView.Host, ArtLoader.Listener {
+public class MainActivity extends Activity implements HomeView.Host, ArtLoader.Listener, NovaView.Host {
     private HomeView view;
     private SoundPool pool;
     private final Map<String, Integer> sounds = new HashMap<>();
@@ -73,6 +73,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         searchField = buildKidsSearchField();
         root.addView(searchField);
         nova = new NovaView(this);
+        nova.setHost(this);
         root.addView(nova, new android.widget.FrameLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
@@ -807,7 +808,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
      *  Age-filtered GET games do not, unless Settings > Ask PIN to install games is on. */
     private boolean kidsPinGate(Catalog.Item it) {
         if (!prefs.getBoolean("kidsMode", false) || pinFresh()) return false;
-        if (it.isAction()) return "kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action) || "goto:settings".equals(it.action) || "update".equals(it.action);
+        if (it.isAction()) return LockPin.kidsActionNeedsPin(it.action);
         if (Catalog.opensStore(it, installed(it)))
             return KidsPlay.kidsStoreNeedsPin(it, installed(it), kids12(), prefs.getBoolean(KidsPlay.PREF_ASK_PIN_INSTALL, false));
         return false;
@@ -1507,6 +1508,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 toast("Calls were not allowed, so the phone app opens with this number. It may show its own keypad.");
                 safeLaunch(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + c.number)));
             }
+        } else if (req == REQ_MIC) {
+            if (nova != null) nova.onMicPermission(ok);
+            if (!ok) toast("The mic was not allowed, so you can still type your question.");
         }
     }
 
@@ -1690,9 +1694,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                     catch (Exception e) { pendingUpdateConfirm = false; toast("The installer could not be opened: " + e.getMessage()); endParentUpdate(); }
                 }
             };
-            if (prefs.getBoolean("kidsMode", false) && !pinFresh() && !parentUpdateActive()) {
-                askPin("Parent PIN: Update", go);
-            } else go.run();
+            // 0.10.54: CodeAque's own Update in Kids mode does not ask for the PIN.
+            // beginParentUpdate() still runs in go so the 10-minute installer window works.
+            go.run();
         } else if (st != android.content.pm.PackageInstaller.STATUS_SUCCESS) {
             endParentUpdate();
             Toast.makeText(this, "Update not installed: " + i.getStringExtra(android.content.pm.PackageInstaller.EXTRA_STATUS_MESSAGE), Toast.LENGTH_LONG).show();
@@ -1737,7 +1741,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 rescan(); break;
             }
             case "update": checkUpdate(true); break;
-            case "about": toast("CodeAque version " + myVersion() + (Catalog.updateAvailable ? " - an update is available" : "")); break;   // 0.10.28
+            case "about": aboutDialog(); break;
             case "makehome": makeHome(true); break;              // 0.10.28
             case "exitcodeaque": exitCodeaque(); break;     // 0.10.39: PIN; opens Home-app settings
             case "hidelaunchers": hideLaunchers(); break;        // 0.10.28 (PIN in Lock mode; always asks the PIN below)
@@ -1745,7 +1749,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             case "rotation": rotationToggle(); break;
             case "nova": novaSettings(); break;          // 0.10.52
             case "installpin": installPinToggle(); break;  // 0.10.52
-            case "kids": kidsMode(true); break;
+            case "kids": enterKids(); break;          // 0.10.54: no PIN, no extra question
             case "kidsprofile": kidsProfilePicker(); break;   // 0.10.37: always PIN (mustPin)
             case "screentime": screenTimePicker(); break;
             case "alwayskids": alwaysKidsToggle(); break;   // 0.10.37: adult Settings, PIN
@@ -1756,15 +1760,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             case "adultpin": parentGo(false, true); break;      // 0.10.35: always ask, even if a PIN was entered a minute ago
             case "settingspin": parentGo(true, true); break;    // 0.10.35
             case "sortapps": sortApps(); break;            // 0.10.27
-            case "kidson":                                   // 0.10.26: one tap, no PIN, no question
-                leaveBoxSet();
-                pinOkUntil = 0;                               // 0.10.35: a PIN from before Kids mode must not unlock Settings
-                prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply(); timeUpScreen = false;
-                parentStoreGen++;
-                ScreenTimeService.sync(this); NovaOverlayService.sync(this); rescan();
-                syncDeviceOwnerKiosk();
-                syncKidsPinning();
-                toast(kids12() ? "Kids 12+ is on. Leaving it needs the parent PIN." : "Kids mode is on. Leaving it needs the parent PIN."); break;
+            case "kidson": enterKids(); break;              // 0.10.26 / 0.10.54: one tap, no PIN, last-used profile
             case "boxset": enterBoxSet(); break;             // 0.10.32: no PIN to leave
             case "boxsetboot": toggleBoxSetBoot(); break;
             case "lock": lockToggle(); break;              // 0.10.21
@@ -1797,7 +1793,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         box.setOrientation(android.widget.LinearLayout.VERTICAL);
         box.setPadding(pad, pad / 2, pad, 0);
         android.widget.TextView msg = new android.widget.TextView(this);
-        msg.setText("Nova is a corner helper for simple CodeAque questions. She works offline, has no account, and does not collect data. Double-tap her to hide her; a small tab on the edge brings her back. Turn Show Nova off to hide her completely, including the tab. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
+        msg.setText("Nova is a corner helper for simple CodeAque questions. She has no account and does not collect data. Double-tap her to hide her; a small tab on the edge brings her back. Turn Show Nova off to hide her completely, including the tab. Voice talk lets her listen in Chat while the mic is on (the phone's own recognizer, no account). Smarter Nova can look up a short fact when she isn't sure; licence details are in About. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
         msg.setPadding(0, 0, 0, pad);
         box.addView(msg);
         android.widget.CheckBox show = new android.widget.CheckBox(this);
@@ -1812,13 +1808,29 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         over.setChecked(want && granted && !kids);
         over.setEnabled(!kids);
         box.addView(over);
+        android.widget.CheckBox voice = new android.widget.CheckBox(this);
+        voice.setText("Voice talk");
+        voice.setChecked(prefs.getBoolean(NovaView.PREF_VOICE_TALK, true));
+        box.addView(voice);
+        android.widget.CheckBox smarter = new android.widget.CheckBox(this);
+        smarter.setText("Smarter Nova");
+        smarter.setChecked(prefs.getBoolean(NovaView.PREF_SMARTER, true));
+        box.addView(smarter);
+        android.widget.TextView cred = new android.widget.TextView(this);
+        cred.setText("Smarter Nova may look up a short fact when she isn't sure. Licence details are in About.");
+        cred.setPadding(0, pad / 2, 0, pad / 2);
+        box.addView(cred);
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Nova")
                 .setView(box)
                 .setPositiveButton("OK", (dlg, w) -> {
-                    android.content.SharedPreferences.Editor ed = prefs.edit().putBoolean(NovaView.PREF_BUBBLE, show.isChecked());
+                    android.content.SharedPreferences.Editor ed = prefs.edit()
+                            .putBoolean(NovaView.PREF_BUBBLE, show.isChecked())
+                            .putBoolean(NovaView.PREF_VOICE_TALK, voice.isChecked())
+                            .putBoolean(NovaView.PREF_SMARTER, smarter.isChecked());
                     if (show.isChecked()) ed.putBoolean(NovaView.PREF_HIDDEN, false);
                     ed.apply();
+                    if (nova != null) nova.rebuildPanel();
                     if (nova != null) nova.applyPref();
                     if (kids) {
                         prefs.edit().putBoolean(NovaView.PREF_OVERLAY, false).apply();
@@ -1942,9 +1954,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
 
     /** manual = Settings > Update (asks and installs); otherwise the once-a-day quiet check that only tells you. */
     private void checkUpdate(boolean manual) {
-        if (manual && prefs.getBoolean("kidsMode", false) && !pinFresh()) {
-            askPin("Parent PIN: Update", () -> checkUpdate(true)); return;
-        }
+        // 0.10.54: CodeAque's own Update does not ask for the PIN in Kids mode.
         if (updating) return;
         updating = true;
         if (manual) toast("Checking for updates ...");
@@ -1956,7 +1966,6 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 prefs.edit().putString("updKnown", u.version).apply();
                 Catalog.updateAvailable = true; runOnUiThread(() -> view.invalidate());   // 0.10.28 badge
                 if (!manual) {
-                    if (prefs.getBoolean("kidsMode", false)) return;   // 0.10.37: badge only; installing needs the parent PIN
                     runOnUiThread(() -> updatePopup(u, mine)); return;
                 }
                 runOnUiThread(() -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -1972,10 +1981,6 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     private void install(UpdateInfo u) {
-        if (prefs.getBoolean("kidsMode", false) && !pinFresh() && !parentUpdateActive()) {
-            runOnUiThread(() -> askPin("Parent PIN: Update", () -> new Thread(() -> install(u)).start()));
-            return;
-        }
         try {
             if (prefs.getBoolean("kidsMode", false)) runOnUiThread(() -> beginParentUpdate());
             toast("Downloading CodeAque " + u.version + " ...");
@@ -2956,6 +2961,52 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     // ---------- 0.10.2 Kids mode ----------
+    /** 0.10.54: enter Kids / Kids 12+ (last-used profile) from the home tile or Settings, with no PIN and no extra question. Leaving still needs the PIN. */
+    private void enterKids() {
+        leaveBoxSet();
+        pinOkUntil = 0;   // a PIN from before Kids mode must not unlock Settings
+        prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply();
+        timeUpScreen = false;
+        parentStoreGen++;
+        ScreenTimeService.sync(this); NovaOverlayService.sync(this); rescan();
+        syncDeviceOwnerKiosk();
+        syncKidsPinning();
+        toast(kids12() ? "Kids 12+ is on. Leaving it needs the parent PIN." : "Kids mode is on. Leaving it needs the parent PIN.");
+    }
+
+    void aboutDialog() {
+        String ver = "CodeAque " + myVersion() + (Catalog.updateAvailable ? " — an update is available." : ".");
+        String licences = "Licences: Smarter Nova may use short extracts from Simple English Wikipedia (CC BY-SA).";
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("About CodeAque")
+                .setMessage(ver + "\n\n" + licences)
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+    // 0.10.54: Voice talk (RECORD_AUDIO). Friendly message first, then the system prompt.
+    static final int REQ_MIC = 64;
+
+    @Override public void onNovaExpandChanged(boolean expanded) { }
+
+    @Override public boolean novaMicAllowed() {
+        if (android.os.Build.VERSION.SDK_INT < 23) return true;
+        return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override public void novaRequestMic() {
+        if (novaMicAllowed()) {
+            if (nova != null) nova.onMicPermission(true);
+            return;
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Nova would like the mic")
+                .setMessage("Nova can listen while the mic in Chat is on, so you can ask out loud. She does not listen all the time — only after you tap Mic. The words stay on this phone.")
+                .setPositiveButton("Allow", (d, w) -> requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC))
+                .setNegativeButton("Not now", (d, w) -> { if (nova != null) nova.onMicPermission(false); })
+                .show();
+    }
+
     private void kidsMode(boolean on) {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(on ? "Turn on Kids mode?" : "Turn off Kids mode?")

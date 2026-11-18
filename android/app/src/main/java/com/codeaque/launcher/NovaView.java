@@ -10,6 +10,8 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.speech.tts.TextToSpeech;
 import android.text.InputType;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -41,6 +43,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     public static final String PREF_Y = "novaBubbleY";
     public static final String PREF_HIDDEN = "novaHidden";
     public static final String PREF_BIG = "novaBig";
+    /** 0.10.54: grown-ups can turn Voice talk off. Default on. */
+    public static final String PREF_VOICE_TALK = NovaSpeech.PREF_VOICE_TALK;
+    /** 0.10.54: optional short online fact. Default on. Branded "Smarter Nova". */
+    public static final String PREF_SMARTER = "novaSmarter";
 
     final NovaFace face = new NovaFace();
     final NovaAnim.State st = new NovaAnim.State();
@@ -52,7 +58,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     LinearLayout panel;
     TextView answerView, muteLabel;
     EditText askField;
+    Button micBtn;
     TextToSpeech tts;
+    NovaSpeech speech;
     String pendingSpeak, lastAnswer = NovaHelp.GREETING;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady;
     final RectF tabHit = new RectF();
@@ -66,6 +74,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     public interface Host {
         void onNovaExpandChanged(boolean expanded);
+        default boolean novaMicAllowed() { return false; }
+        default void novaRequestMic() { }
     }
 
     public NovaView(Context ctx) { this(ctx, ctx.getSharedPreferences("codeaque", Context.MODE_PRIVATE), false); }
@@ -153,6 +163,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             if (askField != null) askField.clearFocus();
         } else {
             stopSpeak();
+            stopListen();
         }
         invalidate();
     }
@@ -180,6 +191,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         askField = null;
         answerView = null;
         muteLabel = null;
+        micBtn = null;
+        stopListen();
         buildPanel(getResources().getDisplayMetrics().density);
         setPanelShown(expanded);
         requestLayout();
@@ -240,6 +253,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             panel.addView(joke, jlp);
         }
 
+        LinearLayout askRow = new LinearLayout(getContext());
+        askRow.setOrientation(LinearLayout.HORIZONTAL);
+        askRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
         askField = new EditText(getContext());
         askField.setHint(kids ? "Ask about games or learning…" : "Ask about CodeAque…");
         askField.setHintTextColor(0x88B8A88A);
@@ -250,16 +266,21 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         styleGlass(askField, 0x66101820, 0x33E8C872, 14 * d, 1f);
         askField.setPadding(pad, pad, pad, pad);
         askField.setOnEditorActionListener((v, a, e) -> { ask(askField.getText().toString()); return true; });
-        LinearLayout.LayoutParams askLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        askLp.topMargin = pad;
-        panel.addView(askField, askLp);
-
-        LinearLayout actions = new LinearLayout(getContext());
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.addView(btn("Ask", v -> ask(askField.getText().toString())), lpBtn());
-        if (!kids) actions.addView(btn("Hear it", v -> speak(lastAnswer)), lpBtn());
-        actions.addView(btn("Close", v -> collapse()), lpBtn());
-        panel.addView(actions);
+        LinearLayout.LayoutParams askLp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
+        askRow.addView(askField, askLp);
+        if (voiceTalkOn()) {
+            micBtn = btn("Mic", v -> onMicTap());
+            micBtn.setMinWidth(dp(48));
+            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            mlp.leftMargin = pad / 2;
+            askRow.addView(micBtn, mlp);
+            refreshMicLabel();
+        } else {
+            micBtn = null;
+        }
+        LinearLayout.LayoutParams askRowLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        askRowLp.topMargin = pad;
+        panel.addView(askRow, askRowLp);
 
         answerView = new TextView(getContext());
         answerView.setText(lastAnswer);
@@ -277,6 +298,15 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         foot.setTextSize(11);
         panel.addView(foot);
 
+        // Ask / Close sit under the answer and foot so they stay in the measured panel box.
+        LinearLayout actions = new LinearLayout(getContext());
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, pad / 2, 0, 0);
+        actions.addView(btn("Ask", v -> ask(askField.getText().toString())), lpBtn());
+        if (!kids) actions.addView(btn("Hear it", v -> speak(lastAnswer)), lpBtn());
+        actions.addView(btn("Close", v -> collapse()), lpBtn());
+        panel.addView(actions);
+
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
         addView(panel, plp);
     }
@@ -288,25 +318,88 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         b.setTextSize(13);
         b.setAllCaps(false);
         b.setOnClickListener(l);
-        b.setMinHeight(0);
+        b.setMinHeight(dp(48));
+        b.setMinimumHeight(dp(48));
         b.setMinWidth(0);
-        b.setPadding(dp(10), dp(6), dp(10), dp(6));
+        b.setPadding(dp(10), dp(8), dp(10), dp(8));
         styleGlass(b, 0x33202830, 0x33E8C872, dp(14), 1f);
         return b;
     }
 
     LinearLayout.LayoutParams lpBtn() {
-        return new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
+        lp.height = Math.max(dp(48), LayoutParams.WRAP_CONTENT);
+        return lp;
     }
 
     void ask(String q) {
+        stopListen();
         if (kids && NovaHelp.looksLikeJoke(q)) { tellJoke(); return; }
+        if (kids && smarterOn() && NovaHelp.kidsMayAskOnline(q)) {
+            if (askField != null && q != null) askField.setText(q);
+            lastAnswer = "Let me think…";
+            if (answerView != null) answerView.setText(lastAnswer);
+            final String question = q;
+            new Thread(new NovaWikiJob(this, question), "nova-wiki").start();
+            invalidate();
+            return;
+        }
         lastAnswer = NovaHelp.answer(q, kids);
-        if (kids && NovaHelp.kidsUnsafe(lastAnswer)) lastAnswer = NovaHelp.KIDS_FOOT;
+        if (kids && NovaHelp.kidsUnsafe(lastAnswer)) lastAnswer = NovaHelp.KIDS_UNSURE;
         if (answerView != null) answerView.setText(lastAnswer);
         if (askField != null && q != null) askField.setText(q);
         if (kids) speakAuto(lastAnswer);
         invalidate();
+    }
+
+    void finishOnlineAsk(String question) {
+        String local = NovaHelp.answer(question, true);
+        String wiki = null;
+        try { wiki = NovaWiki.fetchSummary(question); } catch (Exception ignored) { }
+        String a = local;
+        if (wiki != null && !wiki.isEmpty() && !NovaHelp.kidsUnsafe(wiki)) a = wiki;
+        else if (a == null || NovaHelp.kidsUnsafe(a) || a.equals(NovaHelp.KIDS_FOOT)) a = NovaHelp.KIDS_UNSURE;
+        final String ans = a;
+        post(new NovaWikiDone(this, ans));
+    }
+
+    boolean smarterOn() { return prefs == null || prefs.getBoolean(PREF_SMARTER, true); }
+
+    boolean voiceTalkOn() { return NovaSpeech.voiceTalkOn(prefs); }
+
+    void onMicTap() {
+        if (!voiceTalkOn()) return;
+        if (speech != null && speech.isListening()) { stopListen(); return; }
+        if (host != null && !host.novaMicAllowed()) { host.novaRequestMic(); return; }
+        startListen();
+    }
+
+    /** Grown-ups granted or denied RECORD_AUDIO. */
+    public void onMicPermission(boolean ok) {
+        if (ok) startListen();
+        else {
+            lastAnswer = "The mic wasn't allowed, so you can type your question instead.";
+            if (answerView != null) answerView.setText(lastAnswer);
+            refreshMicLabel();
+        }
+    }
+
+    void startListen() {
+        if (!voiceTalkOn()) return;
+        if (speech == null) speech = new NovaSpeech();
+        speech.start(getContext(), new NovaTalkCb(this));
+        refreshMicLabel();
+    }
+
+    void stopListen() {
+        if (speech != null) speech.stop();
+        refreshMicLabel();
+    }
+
+    void refreshMicLabel() {
+        if (micBtn == null) return;
+        boolean on = speech != null && speech.isListening();
+        micBtn.setText(on ? "Listening…" : "Mic");
     }
 
     void tellJoke() {
@@ -420,12 +513,16 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         downOnTab = false;
         ignoreUntilUp = false;
         tapArmedAt = 0;
+        stopListen();
+        if (speech != null) { speech.destroy(); speech = null; }
         stopAnim();
         shutdownTts();
         super.onDetachedFromWindow();
     }
 
     public void release() {
+        stopListen();
+        if (speech != null) { speech.destroy(); speech = null; }
         stopAnim();
         shutdownTts();
         face.recycle();
@@ -489,10 +586,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
         layoutParts(r - l, b - t);
-        if (!hidden && panel != null && panel.getVisibility() == VISIBLE) {
-            panel.layout(Math.round(panelBox().left), Math.round(panelBox().top),
-                    Math.round(panelBox().right), Math.round(panelBox().bottom));
-        }
+        if (!hidden && panel != null && panel.getVisibility() == VISIBLE) layoutPanel();
     }
 
     RectF panelBox() {
@@ -523,6 +617,17 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             if (rightX - leftX < dp(200)) { rightX = w - margin - insetR(); leftX = Math.max(margin + insetL(), rightX - pw); }
         }
         return new RectF(leftX, top, rightX, bottom);
+    }
+
+    void layoutPanel() {
+        if (panel == null || panel.getVisibility() != VISIBLE) return;
+        RectF b = panelBox();
+        int pw = Math.max(1, Math.round(b.width()));
+        int ph = Math.max(1, Math.round(b.height()));
+        int ws = MeasureSpec.makeMeasureSpec(pw, MeasureSpec.EXACTLY);
+        int hs = MeasureSpec.makeMeasureSpec(ph, MeasureSpec.EXACTLY);
+        panel.measure(ws, hs);
+        panel.layout(Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom));
     }
 
     float bigFaceSize(int w, int h) {
@@ -609,8 +714,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         super.dispatchDraw(c);
         if (getVisibility() != VISIBLE) return;
         if (hidden) { drawTab(c); return; }
-        float ring = Math.max(2, getResources().getDisplayMetrics().density * 2.2f);
-        if (!bubble.isEmpty()) face.draw(c, bubble, st, ring, true);
+        if (!bubble.isEmpty()) face.draw(c, bubble, st, 0, false);
         drawMuteBadge(c);
     }
 
@@ -628,7 +732,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (!tabHit.isEmpty()) {
             float inset = dp(3);
             RectF peek = new RectF(tabHit.left + inset, tabHit.top + inset, tabHit.right - inset, tabHit.bottom - inset);
-            face.draw(c, peek, st, 0, true);
+            face.draw(c, peek, st, 0, false);
         }
     }
 
@@ -663,9 +767,15 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     @Override public boolean dispatchTouchEvent(MotionEvent ev) {
         if (getVisibility() != VISIBLE) return false;
-        // Keep the gesture while a long-press, drag, pinch, or tab press is in progress.
+        float x = ev.getX(), y = ev.getY();
+        // Panel controls (Ask, chips, field, mic) must get the tap. Don't let a leftover
+        // pinch ignoreUntilUp eat the first tap on Chat.
+        if (hitsPanel(x, y) && !dragging && !pinching && !downOnBubble && !downOnTab) {
+            if (ignoreUntilUp && ev.getActionMasked() == MotionEvent.ACTION_DOWN) ignoreUntilUp = false;
+            return super.dispatchTouchEvent(ev);
+        }
         if (dragging || pinching || downOnBubble || downOnTab || ignoreUntilUp) return super.dispatchTouchEvent(ev);
-        if (!hitsInteractive(ev.getX(), ev.getY())) return false;
+        if (!hitsInteractive(x, y)) return false;
         return super.dispatchTouchEvent(ev);
     }
 
@@ -727,14 +837,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (!downOnBubble && !dragging) return false;
         if (action == MotionEvent.ACTION_MOVE) {
             float dx = ev.getX() - downX, dy = ev.getY() - downY;
-            if (!dragging && !big && NovaPlace.movedPast(dx, dy, slop)) {
-                // Moved before the long-press: not a drag and not a tap. Start a row scroll off the bubble.
-                cancelArmedTap();
-                downOnBubble = false;
-                downOnMute = false;
-                return false;
-            }
-            if (!dragging && !big && android.os.SystemClock.uptimeMillis() - downAt >= longPressMs) {
+            // 0.10.54: movement past slop on the bubble starts a drag (0.10.53 cancelled it,
+            // so a real finger often never moved her). Tap / double-tap / pinch are unchanged.
+            if (NovaPlace.dragStartsOnMove(dragging, big, pinching, NovaPlace.movedPast(dx, dy, slop))) {
                 startDrag();
             }
             if (dragging) {
@@ -962,11 +1067,14 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (hidden) return hitsTab(x, y);
         if (hitsMute(x, y)) return true;
         if (hitsBubble(x, y)) return true;
-        if ((expanded || big) && panel != null && panel.getVisibility() == VISIBLE) {
-            RectF p = panelBox();
-            return p.contains(x, y);
-        }
-        return false;
+        return hitsPanel(x, y);
+    }
+
+    boolean hitsPanel(float x, float y) {
+        if (!expanded && !big) return false;
+        if (panel == null || panel.getVisibility() != VISIBLE) return false;
+        // Use the laid-out bounds so Ask / chips / field / mic match where they were drawn.
+        return x >= panel.getLeft() && x <= panel.getRight() && y >= panel.getTop() && y <= panel.getBottom();
     }
 
     boolean hitsMute(float x, float y) { return !muteHit.isEmpty() && muteHit.contains(x, y); }
@@ -978,9 +1086,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     boolean hitsBubble(float x, float y) {
-        float cx = bubble.centerX(), cy = bubble.centerY(), r = bubble.width() * 0.5f + dp(4);
-        float dx = x - cx, dy = y - cy;
-        return dx * dx + dy * dy <= r * r;
+        if (bubble.isEmpty()) return false;
+        float pad = dp(4);
+        return x >= bubble.left - pad && x <= bubble.right + pad && y >= bubble.top - pad && y <= bubble.bottom + pad;
     }
 
     int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }

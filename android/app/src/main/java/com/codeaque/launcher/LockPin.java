@@ -49,10 +49,23 @@ public final class LockPin {
                 || p.endsWith(".settings");
     }
 
-    /** CodeAque actions that need the PIN while Lock mode is on (everything except Wi-Fi, Update and game shortcuts). */
+    /** CodeAque actions that need the PIN while Lock mode is on (everything except Wi-Fi, Update, entering Kids, and game shortcuts). */
     public static boolean needsPin(String action) {
         if (action == null) return false;
-        return !(action.equals("wifi") || action.equals("update") || action.startsWith("goto:") || action.equals("gfn:rivals") || action.equals("calltext") || action.equals("changepin") || action.equals("kidson") || action.equals("kthemes") || action.equals("about") || action.equals("nova"));
+        return !(action.equals("wifi") || action.equals("update") || action.startsWith("goto:") || action.equals("gfn:rivals") || action.equals("calltext") || action.equals("changepin") || action.equals("kidson") || action.equals("kids") || action.equals("kthemes") || action.equals("about") || action.equals("nova"));
+    }
+
+    /**
+     * 0.10.54: Kids-mode actions that still need the parent PIN.
+     * CodeAque's own Update does not. Entering Kids / Kids 12+ (last-used profile) does not.
+     * Leaving Kids, Grown-ups / Settings, and changing the Kids profile still do.
+     * Installing other apps is decided separately by KidsPlay.kidsStoreNeedsPin.
+     */
+    public static boolean kidsActionNeedsPin(String action) {
+        if (action == null) return false;
+        if (action.equals("update") || action.equals("wifi") || action.equals("kidson") || action.equals("kids")) return false;
+        return action.equals("kidsoff") || action.equals("adultpin") || action.equals("settingspin")
+                || action.equals("goto:settings") || action.equals("kidsprofile");
     }
 
     static String hex(byte[] b) { StringBuilder s = new StringBuilder(); for (byte x : b) s.append(String.format("%02x", x)); return s.toString(); }

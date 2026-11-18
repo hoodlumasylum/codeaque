@@ -1,19 +1,23 @@
 package com.codeaque.launcher;
 
 /**
- * Offline CodeAque helper answers. No network, no accounts, no data collection.
- * In Kids mode the only topics are games help, learning help, and clean jokes.
+ * CodeAque helper answers. No accounts, no API keys, no data collection.
+ * In Kids mode the local topics are games help, learning help, and clean jokes.
+ * 0.10.54: an optional short online fact (Smarter Nova) may fill in a learning
+ * question that is not in the local set. Kids answers never name the source.
  */
 public final class NovaHelp {
     private NovaHelp() {}
 
-    public static final String GREETING = "Hi, I'm Nova. I can help with CodeAque on this phone — updates, Kids mode, search, Screen Time, the parent PIN, and a few other Settings. I don't go online and I don't collect data.";
+    public static final String GREETING = "Hi, I'm Nova. I can help with CodeAque on this phone — updates, Kids mode, search, Screen Time, the parent PIN, and a few other Settings. If Smarter Nova is on I can look up a short fact when I'm not sure. I don't collect data.";
 
-    public static final String LIMITS = "I only know simple CodeAque help stored on this phone. I don't use an account or an internet assistant. Nova over other games needs a parent PIN and Android's Display over other apps permission — some phones, full-screen games, or Kids lock may still hide or block me.";
+    public static final String LIMITS = "I know simple CodeAque help stored on this phone. If Smarter Nova is on I can look up a short fact when a question isn't already here. I don't use an account. Licence details are in About. Nova over other games needs a parent PIN and Android's Display over other apps permission — some phones, full-screen games, or Kids lock may still hide or block me.";
 
     public static final String KIDS_GREETING = "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.";
 
     public static final String KIDS_FOOT = "I can help with games, learning, or a joke. For anything else, ask a grown-up.";
+
+    public static final String KIDS_UNSURE = "I'm not sure about that. Let's ask a grown-up.";
 
     /** Clean, silly jokes for about age 6. No insults, toilet humour, scares or religion. */
     public static final String[] JOKES = {
@@ -108,9 +112,9 @@ public final class NovaHelp {
         if (has(q, "who are you", "who is nova", "hello", "hi nova", "hey nova", "what can you", "help", "what do you"))
             return GREETING + " " + LIMITS;
         if (has(q, "update", "upgrade", "new version", "install apk", "latest"))
-            return "To update CodeAque: open Settings (parent PIN if Kids mode is on) and tap Update. CodeAque checks for a new APK and Android will ask you to confirm the install. You can also sideload a CodeAque APK the usual way. I don't download anything myself.";
+            return "To update CodeAque: open Settings and tap Update, or use Wi-Fi & Update in Kids mode. From 0.10.54, CodeAque's own Update in Kids mode does not need the parent PIN. Leaving Kids mode, Settings, installing other apps, and a device still on 0.10.53 (which needs the PIN once to install 0.10.54) still follow their usual PIN rules. CodeAque checks for a new APK and Android will ask you to confirm the install.";
         if (has(q, "kids mode", "kidsmode", "turn off kids", "leave kids", "grown up", "adult mode", "kid mode"))
-            return "Kids mode shows a simpler home with games you allow. A parent turns it on from Settings, or with the Kids tile. Turning it off always needs the parent PIN. There is also Kids 12+, Always start in Kids mode, and Lock phone to CodeAque in Kids mode — those are parent Settings, also behind the PIN.";
+            return "Kids mode shows a simpler home with games you allow. A parent turns it on from the Kids Mode tile on the home screen, or from Settings, with no PIN. Turning it off always needs the parent PIN. If Kids and Kids 12+ both exist, entering uses the last-used profile. Changing the profile is a parent setting and still needs the PIN.";
         if (has(q, "search", "find a game", "find game", "look up"))
             return "In Kids mode, use the search box at the top of the home screen to find a game on the home rows or on Google Play (a parent may need to approve a store install). In Adult mode, browse the rows or use All Apps. Search never leaves your phone except when you open Play.";
         if (has(q, "screen time", "screentime", "time's up", "times up", "play time", "time limit", "hours"))
@@ -124,7 +128,7 @@ public final class NovaHelp {
         if (has(q, "overlay", "over other", "over games", "display over", "bubble over", "float", "system_alert", "draw over"))
             return "Nova can sit in the CodeAque corner without any extra permission. Showing her over other games is optional and off by default. A parent turns it on in Settings > Nova (PIN), then grants Android's Display over other apps permission. It stays off while Kids mode is on. Some phones, full-screen or lock-task games, or OEM game modes may still cover or block the bubble. You can revoke the permission in Android Settings at any time.";
         if (has(q, "hide nova", "turn off nova", "remove nova", "show nova", "where is nova"))
-            return "Nova is the circle in the corner of CodeAque, including in Kids mode. Tap her to open this help, tap again or Back to close. Show or hide her in Settings > Nova. That does not need a PIN. Showing her over other games does, and is off in Kids mode.";
+            return "Nova is the helper in the corner of CodeAque, including in Kids mode. Tap her to open Chat, tap again or Back to close. Drag her to move her. Show or hide her in Settings > Nova. That does not need a PIN. Showing her over other games does, and is off in Kids mode.";
         if (has(q, "cover", "box art", "boxart", "poster", "artwork", "screenshot"))
             return "Game tiles fill the cover edge-to-edge. Art comes from the game's icon, a saved screenshot, or downloaded box art for some retro files. If a cover looks wrong, try Rescan for games in Settings, or add a game folder for retro files.";
         if (has(q, "wifi", "wi-fi", "internet", "network"))
@@ -136,7 +140,7 @@ public final class NovaHelp {
         if (has(q, "home app", "make home", "default home", "launcher", "set as home"))
             return "To make CodeAque the home screen: Settings > Make CodeAque home, or Android's Home app settings. If the Home chooser keeps coming back, pick CodeAque and Always. Exit CodeAque (PIN) opens those system settings if you want a different home app.";
         if (has(q, "privacy", "data", "account", "api key", "online", "collect"))
-            return "Nova has no account, no API key, and no chat server. Answers are written into CodeAque. I don't collect or send what you type here. System text-to-speech, if you use Hear it, stays on the phone.";
+            return "Nova has no account and no API key. Local answers are written into CodeAque. If Smarter Nova is on, a question that isn't already on the phone may look up a short fact; licence details are in About. I don't collect what you type. Speech, if you use it, uses the phone's own recognizer and voice.";
         if (has(q, "scroll", "smooth", "stutter", "lag"))
             return "The home rows should still scroll smoothly — Nova is drawn in her own corner view, not on the game-row scroller. You can hide her in Settings > Nova if you want the corner clear.";
         return "I'm not sure about that. Try asking about updates, Kids mode, search, Screen Time, the parent PIN, covers, Wi-Fi, themes, or Nova over games. " + LIMITS;
@@ -158,7 +162,7 @@ public final class NovaHelp {
         return false;
     }
 
-    /** True if the text looks unsafe to show a child (links or admin/PIN wording). */
+    /** True if the text looks unsafe to show a child (links, PIN, adult or violent wording). Word-boundary checks so "pee" does not match "peeling". */
     public static boolean kidsUnsafe(String text) {
         if (text == null) return false;
         String t = text.toLowerCase();
@@ -167,6 +171,43 @@ public final class NovaHelp {
         if (t.contains("parent pin") || t.contains("the pin") || t.contains("enter the pin")) return true;
         if (t.contains("sideload") || t.contains("overlay") || t.contains("display over")) return true;
         if (t.contains("leave kids") || t.contains("turn off kids") || t.contains("exit codeaque")) return true;
+        if (hasWord(t, "poo", "pee", "toilet", "kill", "dead", "hell", "damn", "stupid", "idiot",
+                "god", "jesus", "christ", "blood", "sex", "porn", "naked", "murder", "suicide",
+                "nazi", "conspiracy", "illuminati", "shoot", "weapon", "gun")) return true;
+        return false;
+    }
+
+    /**
+     * 0.10.54: a learning-style question that is not already in the local set may use Smarter Nova.
+     * Jokes, game-tab help, Wi-Fi, time-up, Settings, PIN, and leave-Kids questions stay local.
+     */
+    public static boolean kidsMayAskOnline(String question) {
+        String q = norm(question);
+        if (q.isEmpty()) return false;
+        if (looksLikeJoke(question)) return false;
+        if (has(q, "pin", "password", "settings", "grown-up", "grown up", "adult mode",
+                "leave kids", "turn off kids", "kidsoff", "overlay", "sideload", "apk",
+                "parent", "update", "upgrade")) return false;
+        if (has(q, "wifi", "wi-fi")) return false;
+        if (has(q, "time's up", "times up", "screen time", "play time")) return false;
+        // Already-answered local topics (games row, learning tab, themes) stay on the phone.
+        String local = kidsAnswer(question);
+        return local.equals(KIDS_FOOT);
+    }
+
+    static boolean hasWord(String t, String... words) {
+        if (t == null) return false;
+        for (String w : words) {
+            if (w == null || w.isEmpty()) continue;
+            int i = 0;
+            while ((i = t.indexOf(w, i)) >= 0) {
+                boolean before = i == 0 || !Character.isLetter(t.charAt(i - 1));
+                int end = i + w.length();
+                boolean after = end >= t.length() || !Character.isLetter(t.charAt(end));
+                if (before && after) return true;
+                i = end;
+            }
+        }
         return false;
     }
 }

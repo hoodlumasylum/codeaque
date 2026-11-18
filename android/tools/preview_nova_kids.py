@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render preview-0.10.53-*.png of Nova on the Kids home (no device needed)."""
+"""Render preview-0.10.54-*.png of Nova on the Kids home (no device needed)."""
 from __future__ import annotations
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 FACE = ROOT / "app/src/main/assets/nova-face.jpg"
+CUTOUT = ROOT / "app/src/main/assets/nova-face-cutout.png"
 BASE = DIST / "preview-0.10.51-covers.png"
 FX, FY, FW, FH = 0.18, 0.02, 0.66, 0.78
 LEX, LEY, LEW, LEH = 0.352, 0.370, 0.108, 0.052
@@ -28,6 +29,10 @@ def font(size, bold=False):
 def head_crop(src):
     w, h = src.size
     return src.crop((round(FX * w), round(FY * h), round((FX + FW) * w), round((FY + FH) * h)))
+
+def load_face():
+    src_path = CUTOUT if CUTOUT.exists() else FACE
+    return Image.open(src_path).convert("RGBA")
 
 def map_box(head, nx, ny, nw, nh):
     bw, bh = head.size
@@ -82,19 +87,20 @@ def apply_mouth(head, open_=0.7):
             paste(b, t)
     return out
 
-def circle_bubble(head, size, ring=8):
+def cutout_bubble(head, size, ring=0):
+    """Floating cut-out with a soft drop shadow. No circular mask or gold ring."""
     head = head.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
-    mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
-    bubble = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    bubble.paste(head, (0, 0), mask)
-    canvas = Image.new("RGBA", (size + 16, size + 16), (0, 0, 0, 0))
-    sh = Image.new("L", canvas.size, 0)
-    ImageDraw.Draw(sh).ellipse((6, 8, 6 + size, 8 + size), fill=140)
-    sh = sh.filter(ImageFilter.GaussianBlur(5))
-    canvas.paste((0, 0, 0, 160), (0, 0), sh)
-    canvas.paste(bubble, (8, 8), bubble)
-    ImageDraw.Draw(canvas).ellipse((8, 8, 8 + size - 1, 8 + size - 1), outline=(232, 200, 114, 255), width=ring)
+    pad = 18
+    canvas = Image.new("RGBA", (size + pad * 2, size + pad * 2), (0, 0, 0, 0))
+    # Shadow from the cut-out's own alpha, offset down-right and blurred.
+    sh = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    shadow = head.copy()
+    a = shadow.split()[3].point(lambda v: int(v * 0.45) if v else 0)
+    shadow = Image.merge("RGBA", (Image.new("L", head.size, 0), Image.new("L", head.size, 0), Image.new("L", head.size, 0), a))
+    sh.alpha_composite(shadow, (pad + 8, pad + 12))
+    sh = sh.filter(ImageFilter.GaussianBlur(6))
+    canvas.alpha_composite(sh)
+    canvas.alpha_composite(head, (pad, pad))
     return canvas
 
 def paste_bubble(bg, bubble, margin=36, side="right", y_frac=1.0):
@@ -152,11 +158,18 @@ def kids_panel(w, h, title, body, talking=False):
         x += int(tw) + 32
     d.rounded_rectangle((24, 132, w - 24, 190), radius=18, fill=(32, 40, 48, 90), outline=(232, 200, 114, 102), width=2)
     d.text((44, 148), "Tell me a joke", font=font(22, True), fill=(232, 200, 114, 255))
-    d.rounded_rectangle((24, 206, w - 24, 248), radius=14, fill=(16, 24, 32, 102), outline=(232, 200, 114, 51), width=1)
+    d.rounded_rectangle((24, 206, w - 118, 248), radius=14, fill=(16, 24, 32, 102), outline=(232, 200, 114, 51), width=1)
     d.text((34, 216), "Ask about games or learning…", font=font(16), fill=(184, 192, 200, 160))
+    # Mic button (Voice talk)
+    d.rounded_rectangle((w - 106, 206, w - 24, 248), radius=14, fill=(32, 40, 48, 110), outline=(232, 200, 114, 140), width=2)
+    d.text((w - 92, 216), "Mic", font=font(16, True), fill=(232, 200, 114, 255))
     wrap(d, body, 24, 268, font(18), (236, 240, 244, 255), w - 48, 26)
-    d.text((24, h - 52), "Ask          Close", font=font(16, True), fill=(232, 200, 114, 255))
-    d.text((24, h - 28), "I can help with games, learning, or a joke. For anything else, ask a grown-up.", font=font(13), fill=(138, 152, 164, 255))
+    # Foot then Ask / Close (48 dp-ish), matching the 0.10.54 panel order
+    d.text((24, h - 92), "I can help with games, learning, or a joke. For anything else, ask a grown-up.", font=font(13), fill=(138, 152, 164, 255))
+    d.rounded_rectangle((24, h - 72, w // 2 - 12, h - 20), radius=16, fill=(32, 40, 48, 110), outline=(232, 200, 114, 140), width=2)
+    d.rounded_rectangle((w // 2 + 4, h - 72, w - 24, h - 20), radius=16, fill=(32, 40, 48, 110), outline=(232, 200, 114, 140), width=2)
+    d.text((24 + 36, h - 58), "Ask", font=font(20, True), fill=(232, 200, 114, 255))
+    d.text((w // 2 + 40, h - 58), "Close", font=font(20, True), fill=(232, 200, 114, 255))
     return card
 
 def place_panel(bg, card, bubble_xy, bubble_w, gap=16):
@@ -197,8 +210,8 @@ def draw_edge_tab(bg, side="right", y_frac=1.0):
     d.rounded_rectangle((0, 0, tw - 1, th - 1), radius=22, fill=(20, 26, 34, 220), outline=(232, 200, 114, 255), width=3)
     # Peek of Nova's face inside the tab
     try:
-        src = Image.open(FACE).convert("RGBA")
-        peek = circle_bubble(apply_gaze(head_crop(src), 0.12, -0.04), th - 16, ring=0)
+        src = load_face()
+        peek = cutout_bubble(apply_gaze(head_crop(src), 0.12, -0.04), th - 16, ring=0)
         # crop to tab width so she peeks from the edge
         left = 8 if side == "left" else peek.width - (tw - 8)
         cropped = peek.crop((max(0, left), 0, max(0, left) + tw - 8, peek.height))
@@ -210,52 +223,52 @@ def draw_edge_tab(bg, side="right", y_frac=1.0):
 
 def main():
     DIST.mkdir(parents=True, exist_ok=True)
-    src = Image.open(FACE).convert("RGBA")
+    src = load_face()
     head = head_crop(src)
     idle = apply_gaze(head, 0.12, -0.04)
     talk = apply_mouth(apply_gaze(head, -0.15, 0.05), 0.70)
 
     home = kids_home()
-    bub = circle_bubble(idle, 220, ring=7)
+    bub = cutout_bubble(idle, 220, ring=7)
     paste_bubble(home, bub, margin=40)
-    out1 = DIST / "preview-0.10.53-kids-home.png"
+    out1 = DIST / "preview-0.10.54-kids-home.png"
     home.convert("RGB").save(out1, "PNG")
     print("wrote", out1, home.size)
 
     exp = kids_home()
-    face = circle_bubble(talk, 200, ring=7)
+    face = cutout_bubble(talk, 200, ring=7)
     bx = paste_bubble(exp, face, margin=40)
     card = kids_panel(1100, 740, "Chat",
         "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.")
     place_panel(exp, card, bx, face.width)
-    out2 = DIST / "preview-0.10.53-kids-expanded.png"
+    out2 = DIST / "preview-0.10.54-kids-expanded.png"
     exp.convert("RGB").save(out2, "PNG")
     print("wrote", out2, exp.size)
 
     joke = kids_home()
-    face2 = circle_bubble(talk, 200, ring=7)
+    face2 = cutout_bubble(talk, 200, ring=7)
     bx = paste_bubble(joke, face2, margin=40)
     card2 = kids_panel(1100, 740, "Chat",
         "Why did the banana go to the doctor? It wasn't peeling well.")
     place_panel(joke, card2, bx, face2.width)
-    out3 = DIST / "preview-0.10.53-kids-joke.png"
+    out3 = DIST / "preview-0.10.54-kids-joke.png"
     joke.convert("RGB").save(out3, "PNG")
     print("wrote", out3)
 
     moved = kids_home()
-    face3 = circle_bubble(idle, 200, ring=7)
+    face3 = cutout_bubble(idle, 200, ring=7)
     bx = paste_bubble(moved, face3, margin=40, side="left", y_frac=0.45)
     card3 = kids_panel(1100, 740, "Chat",
         "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.")
     place_panel(moved, card3, bx, face3.width)
-    out4 = DIST / "preview-0.10.53-kids-moved.png"
+    out4 = DIST / "preview-0.10.54-kids-moved.png"
     moved.convert("RGB").save(out4, "PNG")
     print("wrote", out4)
 
     # Near-full-screen portrait + Chat (pinch-out)
     big = kids_home()
     face_n = 520
-    faceb = circle_bubble(talk, face_n, ring=8)
+    faceb = cutout_bubble(talk, face_n, ring=8)
     # Portrait on the right (default edge), Chat fills the left — same as a right-edge bubble going big.
     margin = 40
     fx = big.width - faceb.width - margin
@@ -264,16 +277,47 @@ def main():
         "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.")
     place_panel_at(big, cardb, margin, (big.height - cardb.height) // 2)
     big.alpha_composite(faceb, (fx, fy))
-    out5 = DIST / "preview-0.10.53-kids-big.png"
+    out5 = DIST / "preview-0.10.54-kids-big.png"
     big.convert("RGB").save(out5, "PNG")
     print("wrote", out5, big.size)
 
     # Double-tap hide: only a tiny edge tab where she was (bottom-right by default)
     hid = kids_home()
     draw_edge_tab(hid, side="right", y_frac=1.0)
-    out6 = DIST / "preview-0.10.53-kids-hidden.png"
+    out6 = DIST / "preview-0.10.54-kids-hidden.png"
     hid.convert("RGB").save(out6, "PNG")
     print("wrote", out6)
+
+    # Kids-mode self-update: Wi-Fi & Update badge + "New update ready" popup, no PIN field
+    upd = kids_home()
+    bubu = cutout_bubble(idle, 200)
+    paste_bubble(upd, bubu, margin=40)
+    d = ImageDraw.Draw(upd)
+    # Wi-Fi & Update strip
+    d.rounded_rectangle((480, 24, 1280, 88), radius=16, fill=(20, 22, 28, 230), outline=(232, 200, 114, 180), width=2)
+    d.text((500, 38), "Wi-Fi  &  Update", font=font(28, True), fill=(244, 228, 193, 255))
+    d.rounded_rectangle((1020, 36, 1260, 76), radius=14, fill=(196, 80, 48, 230), outline=(232, 200, 114, 180), width=1)
+    d.text((1036, 44), "UPDATE AVAILABLE", font=font(16, True), fill=(255, 244, 220, 255))
+    # Popup — no PIN field
+    pw, ph = 820, 420
+    px, py = (upd.width - pw) // 2, (upd.height - ph) // 2
+    # dim
+    dim = Image.new("RGBA", upd.size, (0, 0, 0, 90))
+    upd.alpha_composite(dim)
+    card = Image.new("RGBA", (pw, ph), (0, 0, 0, 0))
+    dc = ImageDraw.Draw(card)
+    dc.rounded_rectangle((0, 0, pw - 1, ph - 1), radius=24, fill=(24, 28, 36, 245), outline=(232, 200, 114, 180), width=2)
+    dc.text((36, 28), "New update ready", font=font(32, True), fill=(244, 228, 193, 255))
+    wrap(dc, "CodeAque 0.10.54 is ready. In Kids mode you can install this CodeAque update without the parent PIN. Leaving Kids mode and Settings still need the PIN.",
+         36, 90, font(22), (236, 240, 244, 255), pw - 72, 32)
+    dc.rounded_rectangle((36, ph - 120, pw // 2 - 16, ph - 36), radius=18, fill=(32, 40, 48, 200), outline=(232, 200, 114, 200), width=2)
+    dc.rounded_rectangle((pw // 2 + 8, ph - 120, pw - 36, ph - 36), radius=18, fill=(32, 40, 48, 160), outline=(232, 200, 114, 120), width=2)
+    dc.text((36 + 48, ph - 96), "Update now", font=font(26, True), fill=(232, 200, 114, 255))
+    dc.text((pw // 2 + 80, ph - 96), "Later", font=font(26, True), fill=(200, 208, 216, 255))
+    upd.alpha_composite(card, (px, py))
+    out7 = DIST / "preview-0.10.54-kids-update.png"
+    upd.convert("RGB").save(out7, "PNG")
+    print("wrote", out7)
 
 if __name__ == "__main__":
     main()

@@ -4,6 +4,9 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -18,6 +21,8 @@ import java.io.InputStream;
  */
 public final class NovaFace {
     public static final String ASSET = "nova-face.jpg";
+    /** 0.10.54: studio backdrop keyed out, soft feathered edge. Same 1024 layout as ASSET. */
+    public static final String ASSET_CUTOUT = "nova-face-cutout.png";
     public static final String[] MOUTH_ASSETS = {
             "nova-mouth-1.png", "nova-mouth-2.png", "nova-mouth-3.png"
     };
@@ -54,11 +59,8 @@ public final class NovaFace {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inPreferredConfig = Bitmap.Config.ARGB_8888;
         o.inSampleSize = 1;   // full 1024: the large (pinch-out) portrait is big enough to show softening
-        try (InputStream in = am.open(ASSET)) {
-            portrait = BitmapFactory.decodeStream(in, null, o);
-        } catch (Exception e) {
-            portrait = null;
-        }
+        portrait = openBitmap(am, ASSET_CUTOUT, o);
+        if (portrait == null) portrait = openBitmap(am, ASSET, o);
         if (portrait == null) return false;
         srcW = portrait.getWidth();
         srcH = portrait.getHeight();
@@ -87,20 +89,21 @@ public final class NovaFace {
 
     public boolean ready() { return portrait != null && !portrait.isRecycled(); }
 
-    /** dest is the circle (or rounded square) that shows the head crop. */
+    /** dest is the box that shows the head crop. 0.10.54: no circular clip or gold ring; a soft drop shadow sits under the cut-out. ringDp/circle are ignored (kept so callers compile). */
     public void draw(Canvas c, RectF dest, NovaAnim.State st, float ringDp, boolean circle) {
         if (dest == null || dest.width() <= 0) return;
         float bob = st == null ? 0 : st.bob * dest.height();
         dst.set(dest);
         dst.offset(0, bob);
         int save = c.save();
-        if (circle) {
-            almond.reset();
-            almond.addOval(dst, Path.Direction.CW);
-            c.clipPath(almond);
-        }
         if (ready()) {
             focusSrc(src);
+            // Soft shadow: the cut-out itself, tinted dark and offset a little.
+            shadow.setColorFilter(new PorterDuffColorFilter(0x66000000, PorterDuff.Mode.SRC_IN));
+            tmp.set(dst);
+            tmp.offset(dst.width() * 0.03f, dst.height() * 0.04f);
+            c.drawBitmap(portrait, src, tmp, shadow);
+            shadow.setColorFilter((ColorFilter) null);
             c.drawBitmap(portrait, src, dst, bmp);
             float gx = st == null ? 0 : st.gazeX;
             float gy = st == null ? 0 : st.gazeY;
@@ -124,11 +127,13 @@ public final class NovaFace {
             c.drawText("Nova", dst.centerX(), dst.centerY() + p.getTextSize() * 0.35f, p);
         }
         c.restoreToCount(save);
-        if (ringDp > 0) {
-            shadow.setStrokeWidth(ringDp * 1.6f);
-            c.drawOval(dest, shadow);
-            ring.setStrokeWidth(ringDp);
-            c.drawOval(dest, ring);
+    }
+
+    static Bitmap openBitmap(AssetManager am, String name, BitmapFactory.Options o) {
+        try (InputStream in = am.open(name)) {
+            return BitmapFactory.decodeStream(in, null, o);
+        } catch (Exception e) {
+            return null;
         }
     }
 

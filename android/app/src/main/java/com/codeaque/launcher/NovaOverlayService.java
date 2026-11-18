@@ -116,14 +116,7 @@ public class NovaOverlayService extends Service {
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.START;
-        bubble.setHost(expanded -> {
-            // Take focus only while the help panel is open so a game keeps its input otherwise.
-            lp.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                    | (expanded ? 0 : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
-            try { if (added) wm.updateViewLayout(bubble, lp); } catch (Exception ignored) { }
-        });
+        bubble.setHost(new NovaOverlayHost(this, lp));
         try {
             wm.addView(bubble, lp);
             added = true;
