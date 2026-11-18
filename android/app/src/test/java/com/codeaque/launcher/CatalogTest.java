@@ -1397,6 +1397,43 @@ public class CatalogTest {
         check(!HomeDrawGate.drawHeavyFx(true) && HomeDrawGate.drawHeavyFx(false), "glows and embers pause during a fling");
         check(HomeDrawGate.tileKey("a", 144, 200, 400, 400).equals("a@144x200#400x400"), "tile cache keys are stable sizes");
 
+        // 0.10.62: Listening chip stays on between restarts; empty cycles back off and then give up.
+        check(NovaListenGate.retryDelayMs(0) == 300 && NovaListenGate.retryDelayMs(1) == 600
+                && NovaListenGate.retryDelayMs(2) == 1200 && NovaListenGate.retryDelayMs(3) == 2000
+                && NovaListenGate.retryDelayMs(9) == 2000, "restart delay starts at 300 ms and caps at 2 s");
+        check(NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_NO_MATCH)
+                && NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_SPEECH_TIMEOUT)
+                && NovaListenGate.isEmptyCycle(NovaVoiceGate.ERR_CLIENT)
+                && !NovaListenGate.isEmptyCycle(NovaConvo.ERR_BUSY), "no-match, timeout and client count as empty cycles");
+        check(NovaListenGate.nextEmptyCycles(0, true) == 1 && NovaListenGate.nextEmptyCycles(4, true) == 5
+                && NovaListenGate.nextEmptyCycles(3, false) == 0, "empty cycles increment, a real result resets them");
+        check(NovaListenGate.shouldRetryEmpty(0) && NovaListenGate.shouldRetryEmpty(4)
+                && !NovaListenGate.shouldRetryEmpty(5), "give up after 5 empty cycles");
+        check(NovaListenGate.showListeningChip(true, true, false, false, false, true), "chip stays on between restarts");
+        check(!NovaListenGate.showListeningChip(true, true, false, true, false, true), "chip hides while she is speaking or thinking");
+        check(!NovaListenGate.showListeningChip(true, true, true, false, false, true), "chip hides after the loop gives up");
+        check(NovaListenGate.chipVisible(false, false, 1000, 1500) && !NovaListenGate.chipVisible(false, true, 1000, 1500),
+                "a hide is debounced unless she starts talking");
+        check(NovaListenGate.canRestart(true, true, false, false, false, false, false)
+                && !NovaListenGate.canRestart(true, true, false, true, false, false, false)
+                && !NovaListenGate.canRestart(true, true, false, false, true, false, false)
+                && !NovaListenGate.canRestart(true, true, false, false, false, true, false)
+                && !NovaListenGate.canRestart(true, true, true, false, false, false, false),
+                "never restart while speaking, thinking, or after giving up");
+        check(NovaListenGate.idleStatus(true, false).equals("Tap Mic to talk")
+                && NovaListenGate.idleStatus(false, true).equals("Listening…"), "give-up status is Tap Mic to talk");
+        int cycles = 0;
+        boolean gaveUp = false;
+        for (int i = 0; i < 8; i++) {
+            long d = NovaListenGate.retryDelayMs(cycles);
+            cycles = NovaListenGate.nextEmptyCycles(cycles, true);
+            if (!NovaListenGate.shouldRetryEmpty(cycles)) { gaveUp = true; break; }
+            check(d >= 300 && d <= 2000, "each backoff stays in range");
+        }
+        check(gaveUp && cycles == 5, "five silent restarts then Tap Mic to talk");
+
+
+
 
 
 

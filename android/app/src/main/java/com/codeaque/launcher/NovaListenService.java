@@ -266,7 +266,7 @@ final class NovaListenSpeechCb implements NovaSpeech.Callbacks {
         svc.onListenRetry();
     }
     @Override public void onSpeechState(boolean listening) { }
-    @Override public void onSpeechRetry() { svc.onListenRetry(); }
+    @Override public void onSpeechRetry(int code) { svc.onListenRetry(); }
     @Override public void onSpeechUsePrompt() { svc.onListenRetry(); }
     @Override public void onSpeechNeedService() { NovaListenService.stopAndClear(svc); }
 }

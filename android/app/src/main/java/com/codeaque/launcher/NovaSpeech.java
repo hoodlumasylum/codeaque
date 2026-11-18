@@ -25,7 +25,7 @@ public final class NovaSpeech {
         void onSpeechError(String message);
         void onSpeechState(boolean listening);
         /** Timeout / no-match: keep the hands-free loop going. Not used for a busy mic. */
-        void onSpeechRetry();
+        void onSpeechRetry(int code);
         /** No in-app recognizer; use ACTION_RECOGNIZE_SPEECH. */
         void onSpeechUsePrompt();
         /** No recognition service at all; show the Play Store message and button. */
@@ -43,6 +43,7 @@ public final class NovaSpeech {
     Context app;
     /** 0.10.61: bumped on each start/stop so a late result cannot replay an old question. */
     int listenGen;
+    final NovaListenBeep beep = new NovaListenBeep();
 
     public static boolean voiceTalkOn(SharedPreferences p) {
         return p == null || p.getBoolean(PREF_VOICE_TALK, true);
@@ -101,6 +102,7 @@ public final class NovaSpeech {
         listening = false;
         offlineTried = false;
         listenGen = NovaConvo.nextGen(listenGen);
+        beep.restoreNow();
         SpeechRecognizer r = rec;
         rec = null;
         if (r != null) {
@@ -125,8 +127,11 @@ public final class NovaSpeech {
         listenGen = NovaConvo.nextGen(listenGen);
         listening = true;
         notifyState(true);
+        // Duck the start beep only for the moment of startListening.
+        if (app != null) beep.duck(app);
         try { rec.startListening(i); }
         catch (Exception e) {
+            beep.restoreNow();
             if (preferOffline) { listen(false); return; }
             listening = false;
             notifyState(false);
@@ -134,12 +139,13 @@ public final class NovaSpeech {
         }
     }
 
-    void onReady() { }
+    void onReady() { beep.restoreNow(); }
 
     void onResults(Bundle b) {
         int gen = listenGen;
         if (destroyed || !listening) return;
         listening = false;
+        beep.restoreNow();
         notifyState(false);
         String text = firstResult(b);
         if (text == null || text.trim().isEmpty()) {
@@ -174,13 +180,14 @@ public final class NovaSpeech {
             return;
         }
         listening = false;
+        beep.restoreNow();
         notifyState(false);
         if (NovaConvo.isMicBusy(code)) {
             if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.MIC_BUSY, NovaConvo.MIC_BUSY_TEXT, false, gen));
             return;
         }
         if (softListenError(code)) {
-            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen));
+            if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.RETRY, null, false, gen, code));
             return;
         }
         fail(friendlyError(code));

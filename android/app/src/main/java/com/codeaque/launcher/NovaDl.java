@@ -38,7 +38,7 @@ public final class NovaDl {
             c.setConnectTimeout(20000);
             c.setReadTimeout(30000);
             c.setInstanceFollowRedirects(true);
-            c.setRequestProperty("User-Agent", "CodeAque/0.10.61");
+            c.setRequestProperty("User-Agent", "CodeAque/0.10.62");
             if (already > 0) c.setRequestProperty("Range", "bytes=" + already + "-");
             c.connect();
             int code = c.getResponseCode();

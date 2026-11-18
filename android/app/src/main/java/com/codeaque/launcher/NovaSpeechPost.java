@@ -9,17 +9,23 @@ public final class NovaSpeechPost implements Runnable {
     final String text;
     final boolean on;
     final int gen;
+    final int code;
 
     public NovaSpeechPost(NovaSpeech speech, int kind, String text, boolean on) {
-        this(speech, kind, text, on, speech == null ? 0 : speech.listenGen);
+        this(speech, kind, text, on, speech == null ? 0 : speech.listenGen, 0);
     }
 
     public NovaSpeechPost(NovaSpeech speech, int kind, String text, boolean on, int gen) {
+        this(speech, kind, text, on, gen, 0);
+    }
+
+    public NovaSpeechPost(NovaSpeech speech, int kind, String text, boolean on, int gen, int code) {
         this.speech = speech;
         this.kind = kind;
         this.text = text;
         this.on = on;
         this.gen = gen;
+        this.code = code;
     }
 
     @Override public void run() {
@@ -32,7 +38,7 @@ public final class NovaSpeechPost implements Runnable {
         if (kind == RESULT) c.onSpeechResult(text);
         else if (kind == ERROR) c.onSpeechError(text);
         else if (kind == STATE) c.onSpeechState(on);
-        else if (kind == RETRY) c.onSpeechRetry();
+        else if (kind == RETRY) c.onSpeechRetry(code);
         else if (kind == USE_PROMPT) c.onSpeechUsePrompt();
         else if (kind == NEED_SERVICE) c.onSpeechNeedService();
         else if (kind == PARTIAL) c.onSpeechPartial(text);

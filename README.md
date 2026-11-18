@@ -31,6 +31,12 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.62
+
+**Listening no longer flashes on and off.** While hands-free mode is on, the Listening chip stays put between recognizer restarts, instead of hiding every time a silence timeout or "no match" comes back. Restarts wait 300 ms at first, then back off up to 2 seconds if she keeps hearing nothing. After five empty tries she stops and shows "Tap Mic to talk" — tap Mic to start again. The start beep is muted while the recognizer starts (system and notification volume only, and it is always restored). She never restarts the mic while she is speaking or thinking.
+
+These changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. The steady Listening chip, the backoff, and start-beep ducking on a device remain untested.
+
 ## What's new in 0.10.61
 
 **A conversation that can last more than one turn.** Each reply path releases its locks, even if Heart is slow or fails. If a reply takes too long she says a short fallback and listens again. While she is working you will see **You said: …** and **Thinking…**. What you are still saying appears in a live caption, not in the input field, so the field cannot jump on its own. The mic waits 1.5–2 seconds of silence before it stops, so a question is less likely to be cut off.

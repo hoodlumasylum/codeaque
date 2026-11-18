@@ -8,8 +8,8 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
 
     @Override public void onSpeechResult(String text) {
         if (view == null) return;
-        view.refreshMicLabel();
         view.onHeard(text);
+        view.refreshMicLabel();
     }
 
     @Override public void onSpeechPartial(String text) {
@@ -22,28 +22,25 @@ public final class NovaTalkCb implements NovaSpeech.Callbacks {
 
     @Override public void onSpeechError(String message) {
         if (view == null) return;
-        view.refreshMicLabel();
-        if (message != null) view.showListenStatus(message);
-        // Stay in the hands-free loop after a hard error, unless permission was refused
-        // or the mic is busy (retrying would spin against a screen recorder).
-        if (message != null && (message.toLowerCase().contains("wasn't allowed")
-                || message.contains("Mic is busy"))) {
+        // A hard error still must not hide the Listening chip mid-loop, and
+        // must not retry if we have already given up or she is speaking.
+        if (message != null && message.toLowerCase().contains("wasn't allowed")) {
+            view.showListenStatus(message);
             return;
         }
-        if (view.voiceLoop) view.postDelayed(new NovaListenSoon(view), 600);
+        if (message != null && message.contains("Mic is busy")) {
+            view.onMicBusy(message);
+            return;
+        }
+        view.onEmptyListen(NovaVoiceGate.ERR_CLIENT);
     }
 
     @Override public void onSpeechState(boolean listening) {
-        if (view != null) {
-            view.refreshMicLabel();
-            view.invalidate();
-        }
+        if (view != null) view.refreshMicLabel();
     }
 
-    @Override public void onSpeechRetry() {
-        if (view == null) return;
-        view.refreshMicLabel();
-        view.postDelayed(new NovaListenSoon(view), 300);
+    @Override public void onSpeechRetry(int code) {
+        if (view != null) view.onEmptyListen(code);
     }
 
     @Override public void onSpeechUsePrompt() {

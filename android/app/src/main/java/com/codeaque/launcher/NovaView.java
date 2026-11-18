@@ -73,6 +73,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     int convoState;
     String lastHeard;
     NovaReplyTimeout replyWait;
+    NovaListenSoon listenSoon;
+    int emptyListenCycles;
+    boolean listenGiveUp;
+    long listenHideAfter;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady, deviceVoice;
     int ttsInitTries;
     final RectF tabHit = new RectF();
@@ -497,6 +501,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         hideSoftIme();
         if (host != null && !host.novaMicAllowed()) { host.novaRequestMic(); return; }
         voiceLoop = true;
+        listenGiveUp = false;
+        emptyListenCycles = 0;
+        cancelListenSoon();
         refreshVoiceButtons();
         startListen();
     }
@@ -521,6 +528,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void startListen() {
         long now = android.os.SystemClock.uptimeMillis();
+        if (listenGiveUp) return;
+        if (!NovaListenGate.canRestart(voiceLoop, expanded, listenGiveUp, talking, thinking(), speakJobInFlight, pendingSpeak != null)) return;
         if (talking || speakJobInFlight || pendingSpeak != null || now < silentUntil) return;
         if (speech == null) speech = new NovaSpeech();
         speech.start(getContext(), new NovaTalkCb(this));
@@ -533,15 +542,67 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     void refreshMicLabel() {
-        boolean on = isListening();
         // Keep the Mic button label stable so the portrait does not twitch when listening starts.
         if (micBtn != null) micBtn.setText("Mic");
-        if (listenLabel != null) listenLabel.setVisibility(on ? VISIBLE : INVISIBLE);
-        if (on) {
-            convoState = NovaConvo.LISTENING;
+        boolean speakingOrThinking = talking || speakJobInFlight || thinking();
+        boolean between = voiceLoop && !listenGiveUp && !speakingOrThinking;
+        boolean want = NovaListenGate.showListeningChip(voiceLoop, expanded, listenGiveUp,
+                speakingOrThinking, isListening(), between);
+        long now = android.os.SystemClock.uptimeMillis();
+        listenHideAfter = NovaListenGate.hideAfter(want, now, listenHideAfter);
+        boolean show = NovaListenGate.chipVisible(want, speakingOrThinking || listenGiveUp, now, listenHideAfter);
+        if (listenLabel != null) listenLabel.setVisibility(show ? VISIBLE : INVISIBLE);
+        if (listenGiveUp && convoState != NovaConvo.MIC_BUSY) {
+            showListenStatus(NovaListenGate.TAP_MIC);
+        } else if ((want || isListening())
+                && convoState != NovaConvo.HEARD
+                && convoState != NovaConvo.THINKING
+                && convoState != NovaConvo.SPEAKING
+                && convoState != NovaConvo.MIC_BUSY) {
             showListenStatus(NovaConvo.LISTENING_TEXT);
         }
         invalidate();
+    }
+
+    boolean thinking() {
+        return awaitingAnswer || convoState == NovaConvo.THINKING;
+    }
+
+    void cancelListenSoon() {
+        if (listenSoon != null) {
+            removeCallbacks(listenSoon);
+            listenSoon = null;
+        }
+    }
+
+    void scheduleListen(long delayMs) {
+        cancelListenSoon();
+        listenSoon = new NovaListenSoon(this);
+        postDelayed(listenSoon, delayMs);
+    }
+
+    /** A silent / no-match / timeout cycle. Keep the chip on, back off, then give up. */
+    public void onEmptyListen(int code) {
+        if (NovaConvo.isMicBusy(code)) {
+            onMicBusy(NovaConvo.MIC_BUSY_TEXT);
+            return;
+        }
+        long delay = NovaListenGate.retryDelayMs(emptyListenCycles);
+        emptyListenCycles = NovaListenGate.nextEmptyCycles(emptyListenCycles, true);
+        setLiveCaption("");
+        boolean can = NovaListenGate.canRestart(voiceLoop, expanded, listenGiveUp,
+                talking, thinking(), speakJobInFlight, pendingSpeak != null);
+        if (!can || !NovaListenGate.shouldRetryEmpty(emptyListenCycles)) {
+            listenGiveUp = true;
+            cancelListenSoon();
+            showListenStatus(NovaListenGate.TAP_MIC);
+            refreshMicLabel();
+            return;
+        }
+        convoState = NovaConvo.LISTENING;
+        showListenStatus(NovaConvo.LISTENING_TEXT);
+        refreshMicLabel();
+        scheduleListen(delay);
     }
 
     void showListenStatus(String msg) {
@@ -561,6 +622,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     public void onMicBusy(String message) {
+        listenGiveUp = true;
+        cancelListenSoon();
         convoState = NovaConvo.MIC_BUSY;
         setLiveCaption("");
         showListenStatus(message == null || message.isEmpty() ? NovaConvo.MIC_BUSY_TEXT : message);
@@ -690,6 +753,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     void enterVoiceMode() {
         voiceLoop = true;
+        listenGiveUp = false;
+        emptyListenCycles = 0;
         refreshVoiceButtons();
         greet();
         // 0.10.57: if she is muted, listen straight away. Otherwise wait until
@@ -702,6 +767,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         boolean was = voiceLoop;
         voiceLoop = false;
         awaitingAnswer = false;
+        listenGiveUp = false;
+        emptyListenCycles = 0;
+        cancelListenSoon();
         stopListen();
         refreshVoiceButtons();
         if (was && answerView != null && lastAnswer != null) {
@@ -746,7 +814,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     /** After she finishes speaking, listen again if the conversation loop is still on. */
     public void maybeResumeListen() {
-        if (!voiceLoop || !expanded || !voiceTalkOn() || awaitingAnswer) return;
+        if (!voiceLoop || !expanded || !voiceTalkOn() || listenGiveUp) return;
+        if (!NovaListenGate.canRestart(true, true, listenGiveUp, talking, thinking(), speakJobInFlight, pendingSpeak != null)) return;
         long now = android.os.SystemClock.uptimeMillis();
         if (!NovaSpeakGate.canStartListen(true, true, talking, pendingSpeak != null, speakJobInFlight, now, silentUntil)) return;
         if (speech != null && speech.isListening()) return;
@@ -768,6 +837,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     void speak(String s) {
         if (s == null || s.isEmpty()) return;
         if (muted()) return;
+        cancelListenSoon();
         stopListen();   // 0.10.55: do not hear herself while speaking
         // 0.10.60: cancel any other engine / leftover job first so only one voice plays.
         if (tts != null) { try { tts.stop(); } catch (Exception ignored) { } }
@@ -829,6 +899,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         deviceVoice = false;
         talkUntil = 0;
         st.talking = false;
+        setVoiceTag(null);
     }
 
     /** Mark her as talking so the mouth animates from a timer even if audio is late. */
@@ -895,6 +966,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             return;
         }
         lastHeard = text;
+        emptyListenCycles = 0;
+        listenGiveUp = false;
         convoState = NovaConvo.HEARD;
         showListenStatus(NovaConvo.youSaid(text));
         ask(text, true);
