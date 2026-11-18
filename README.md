@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.67
+
+**The Mic button works again.** On 0.10.66 the pinned reply ("Speaking… Hi, I'm Nova!…") was drawn on top of the text field and the Mic button on the short landscape Chat card, so taps never reached the button. The reply now has its own space above the input row, does not intercept touches, and the Mic hit target is at least 48 dp. The version label, mic meter, and listen status stay in that reserved bottom area so they still fit. Tapping Mic always toggles listening: it cancels a greeting or reply if one is in the way, the button shows **Listening**, and if the system recognizer fails to start she shows a short message and tries built-in listening.
+
+**She listens after the greeting, and she does not tell jokes on her own.** Opening Chat no longer flashes "Listening…" for a second and then go quiet. After she finishes saying hello, she starts listening and stays in that state. Jokes only happen if you tap **Tell me a joke** or clearly ask for one — her own greeting cannot trigger one, and she will not speak over you.
+
+**Kids mode is tuned for a 6-year-old.** Replies are very short, simple, warm and encouraging, with easy words. She is patient with unclear speech, gentle with simple maths and spelling, playful but safe, and will suggest asking a grown-up when something is risky. If a child is rude or swears, she stays calm, says "let's use kind words", does not repeat the swear words, does not scold, and keeps helping. The playtime line is only for a real playtime or screen-time question.
+
+Untested: these changes were unit-tested and the APK was built here. They have not been tried on a real phone, a K56, or a Win600. Tapping Mic on the short landscape Chat card, listening after the greeting, the joke change, and the 6-year-old persona on a device remain untested.
+
 ## What's new in 0.10.66
 
 **The top category row no longer shakes while you swipe it.** In 0.10.65 the icons and labels were redrawn every frame of a horizontal swipe at a fractional Y, and the selected tab grew and shrank (which also moved its label). That made the whole strip crawl up and down by 1–2 pixels until the row came to rest. The game row was already steady — while it scrolls, the rest of the home is frozen as a snapshot. The category row has to move, so this build locks it instead: a fixed row height, a fixed icon size, one-line labels at one size, pixel-aligned Y, and widths measured only when the list or the screen size changes, not on every scroll frame. Kids mode uses the same tab strip, so it gets the same fix. This is a custom-drawn row, not a RecyclerView.

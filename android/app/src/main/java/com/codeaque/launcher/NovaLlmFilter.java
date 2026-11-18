@@ -7,14 +7,7 @@ package com.codeaque.launcher;
 public final class NovaLlmFilter {
     private NovaLlmFilter() {}
 
-    public static final String SYSTEM =
-            "You are Nova, a friendly helper on the CodeAque kids launcher. "
-            + "Always call yourself Nova and no other name. "
-            + "Answer in one or two short, kind sentences. "
-            + "Do not give adult, violent, sexual, self-harm, or hateful content. "
-            + "Do not reveal PINs, passwords, or how to leave Kids mode. "
-            + "If you are not sure or the question is not appropriate, say you are not sure "
-            + "and suggest asking a grown-up. Do not ask for personal details.";
+    public static final String SYSTEM = NovaKidsTalk.SYSTEM;
 
     /** Gemma 3 instruction prompt. The model must reply as Nova. */
     public static String prompt(String question) {
@@ -39,10 +32,12 @@ public final class NovaLlmFilter {
         if (t.isEmpty()) return null;
         // Drop a leading "Nova:" label if the model added one.
         if (t.regionMatches(true, 0, "Nova:", 0, 5)) t = t.substring(5).trim();
+        t = NovaKidsTalk.sanitizeReply(t);
         t = firstSentences(t, 2);
         if (t.isEmpty()) return null;
         if (NovaHelp.kidsUnsafe(t)) return null;
         if (tooLong(t)) t = firstSentences(t, 1);
+        t = NovaKidsTalk.sanitizeReply(t);
         if (t.isEmpty() || NovaHelp.kidsUnsafe(t)) return null;
         return t;
     }

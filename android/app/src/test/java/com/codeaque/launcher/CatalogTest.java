@@ -1072,7 +1072,12 @@ public class CatalogTest {
             for (String w : bad) check(!low.contains(" " + w + " "), "joke wording: " + w + " in " + j);
         }
         check(NovaHelp.jokeAt(NovaHelp.jokeCount()).equals(NovaHelp.jokeAt(0)), "jokes wrap");
-        check(NovaHelp.looksLikeJoke("Tell me a joke") && NovaHelp.looksLikeJoke("something funny"), "joke intent");
+        check(NovaHelp.looksLikeJoke("Tell me a joke") && NovaHelp.looksLikeJoke("tell me something funny")
+                && NovaHelp.looksLikeJoke("joke") && NovaHelp.looksLikeJoke("another joke"), "joke intent");
+        check(!NovaHelp.looksLikeJoke("I can tell you a joke")
+                && !NovaHelp.looksLikeJoke(NovaHelp.KIDS_GREETING)
+                && !NovaHelp.looksLikeJoke("something funny"),
+                "her greeting must not look like a joke request");
 
         String kg = NovaHelp.answer("", true);
         check(kg.equals(NovaHelp.KIDS_GREETING) && !NovaHelp.kidsUnsafe(kg), "kids greeting");
@@ -1347,7 +1352,7 @@ public class CatalogTest {
         check(!NovaSpeakGate.canStartListen(true, true, true, false, false, 2000, 0), "no listen while talking");
         check(!NovaSpeakGate.canStartListen(true, true, false, false, true, 2000, 0), "no listen while a speak job is in flight");
         check(!NovaSpeakGate.canStartListen(true, true, false, false, false, 500, 1000), "no listen during hangover");
-        check(NovaSpeakGate.sameLine("Hi, I'm Nova! I can help you find a game.",
+        check(NovaSpeakGate.sameLine("Hi, I'm Nova! We can find a game.",
                 NovaHelp.KIDS_GREETING),
                 "a heard slice of her greeting is treated as her echo");
         check(!NovaSpeakGate.sameLine("hello", NovaHelp.KIDS_GREETING), "a real hello is not her greeting");
@@ -1422,6 +1427,63 @@ public class CatalogTest {
                 "never restart while speaking, thinking, or after giving up");
         check(NovaListenGate.idleStatus(true, false).equals("Tap Mic to talk")
                 && NovaListenGate.idleStatus(false, true).equals("Listening…"), "give-up status is Tap Mic to talk");
+        // 0.10.67: a user Mic tap must toggle listening even while she is speaking.
+        check(NovaMicTap.isToggleOff(true) && !NovaMicTap.isToggleOff(false), "a second Mic tap stops listening");
+        check(NovaMicTap.cancelSpeechFirst(true, false, false, false, false)
+                && NovaMicTap.cancelSpeechFirst(false, true, false, false, false)
+                && NovaMicTap.cancelSpeechFirst(false, false, true, false, false)
+                && NovaMicTap.cancelSpeechFirst(false, false, false, true, false)
+                && NovaMicTap.cancelSpeechFirst(false, false, false, false, true)
+                && !NovaMicTap.cancelSpeechFirst(false, false, false, false, false),
+                "a Mic tap cancels speech, a Heart job, or a hangover first");
+        check(NovaMicTap.allowStart(true, true, true, false, true, true, true, true, true)
+                && !NovaMicTap.allowStart(true, false, true, false, false, false, false, false, false)
+                && !NovaMicTap.allowStart(false, true, true, false, true, false, false, false, false)
+                && !NovaMicTap.allowStart(false, true, true, false, false, false, false, false, true),
+                "user tap starts while she is speaking; auto-restart still waits");
+        check(NovaMicTap.fallbackBuiltin(false, true) && !NovaMicTap.fallbackBuiltin(true, true)
+                && !NovaMicTap.fallbackBuiltin(false, false),
+                "a failed start falls back to built-in listening when the pack is ready");
+        check(NovaMicTap.buttonLabel(true).equals("Listening") && NovaMicTap.buttonLabel(false).equals("Mic")
+                && NovaMicTap.startedStatus().equals("Listening…")
+                && NovaMicTap.FAIL_FALLBACK.contains("built-in")
+                && NovaMicTap.FAIL_RETRY.contains("Try again"),
+                "Mic shows Listening while on, and a short message on start failure");
+
+        check(NovaChatLayout.replyAboveAskRow() && !NovaChatLayout.replyInterceptsTouches()
+                && NovaChatLayout.MIC_MIN_DP >= 48
+                && NovaChatLayout.replyMaxLines(200) == 2 && NovaChatLayout.replyMaxLines(400) == 4
+                && NovaChatLayout.chromeFits(240, 2),
+                "pinned reply sits above the input and Mic stays at least 48 dp");
+        check(NovaKidsTalk.SYSTEM.toLowerCase().contains("6-year-old")
+                && NovaKidsTalk.SYSTEM.toLowerCase().contains("kind words")
+                && NovaKidsTalk.SYSTEM.toLowerCase().contains("do not scold")
+                && NovaKidsTalk.SYSTEM.contains("Do not refuse to help")
+                && NovaLlmFilter.SYSTEM.equals(NovaKidsTalk.SYSTEM),
+                "Kids persona is for a 6-year-old and stays patient if they are rude");
+        check(NovaKidsTalk.isRude("shut up you idiot") && NovaKidsTalk.isRude("this is shit")
+                && !NovaKidsTalk.isRude("hello nova"), "rude talk is detected");
+        check(NovaKidsTalk.stripRude("shut up, what is 2 plus 2").contains("what is 2 plus 2")
+                && !NovaKidsTalk.stripRude("this is shit").contains("shit"),
+                "rude words are stripped so she can still help");
+        String kind = NovaKidsTalk.withPatience("8 times 8 is 64.", true);
+        check(kind.startsWith(NovaKidsTalk.KIND_WORDS) && kind.contains("64")
+                && !kind.toLowerCase().contains("shit")
+                && NovaKidsTalk.withPatience(NovaKidsTalk.STILL_HERE, true).startsWith(NovaKidsTalk.KIND_WORDS),
+                "rude child gets a gentle redirect and still gets help");
+        check(NovaKidsTalk.sanitizeReply("Don't say shit please").toLowerCase().indexOf("shit") < 0
+                && NovaKidsTalk.mentionsFavouriteShow("I love Pokemon")
+                && NovaKidsTalk.favouriteShowReply().toLowerCase().contains("pokémon"),
+                "replies never repeat swears, and favourite-show talk is friendly");
+        check(NovaHelp.KIDS_GREETING.contains("find a game")
+                && !NovaHelp.KIDS_GREETING.toLowerCase().contains("tell you a joke")
+                && !NovaKidsTalk.looksLikeJoke(NovaHelp.KIDS_GREETING)
+                && NovaHelp.KIDS_FOOT.toLowerCase().contains("words"),
+                "kids greeting is short and does not say tell you a joke");
+        check(NovaIntent.confident("play time is finished", "play time")
+                && !NovaIntent.confident("eight times eight", "play time")
+                && NovaArith.answer("eight times eight").contains("64"),
+                "playtime line stays for genuine playtime; times is arithmetic");
         int cycles = 0;
         boolean gaveUp = false;
         for (int i = 0; i < 8; i++) {
@@ -1483,11 +1545,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.66") && NovaAppVer.CODE == 166, "shipping version is 0.10.66");
-        check(NovaAppVer.label().equals("CodeAque 0.10.66")
-                && NovaAppVer.label("0.10.66").equals("CodeAque 0.10.66")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.66")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.66"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.67") && NovaAppVer.CODE == 167, "shipping version is 0.10.67");
+        check(NovaAppVer.label().equals("CodeAque 0.10.67")
+                && NovaAppVer.label("0.10.67").equals("CodeAque 0.10.67")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.67")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.67"), "version label for Chat and Nova's tab");
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1517,7 +1579,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "extend a slow Heart load once; never cut a started Heart line over to the phone");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.66") && NovaAppVer.CODE == 166, "shipping version is 0.10.66");
+        check(NovaAppVer.NAME.equals("0.10.67") && NovaAppVer.CODE == 167, "shipping version is 0.10.67");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1572,7 +1634,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.66") && NovaAppVer.CODE == 166, "shipping version is 0.10.66");
+        check(NovaAppVer.NAME.equals("0.10.67") && NovaAppVer.CODE == 167, "shipping version is 0.10.67");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

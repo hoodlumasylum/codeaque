@@ -20,7 +20,7 @@ public final class NovaReplyQuick {
     public static final String NO_SOUND =
             "Mic is getting no sound. Another app may be using it";
 
-    public static final String HELLO_KIDS = "Hi! How can I help you today?";
+    public static final String HELLO_KIDS = "Hi! I'm happy to help. What would you like to do?";
     public static final String HELLO_ADULT = "Hi! How can I help?";
 
     public static boolean isSimpleGreeting(String q) {

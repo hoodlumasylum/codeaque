@@ -13,11 +13,11 @@ public final class NovaHelp {
 
     public static final String LIMITS = "I know simple CodeAque help stored on this phone. If Smarter Nova is on I can look up a short fact when a question isn't already here. I don't use an account. Licence details are in About. I stay in CodeAque — I don't sit over other apps. Double-tap hides me until you turn Show Nova on in the Nova tab.";
 
-    public static final String KIDS_GREETING = "Hi, I'm Nova! I can help you find a game. We can talk about Learning, or I can tell you a joke. If you need anything else, ask a grown-up.";
+    public static final String KIDS_GREETING = "Hi, I'm Nova! We can find a game. I can also help with words and numbers. There is a joke button if you want one.";
 
-    public static final String KIDS_FOOT = "I can help with games, learning, or a joke. For anything else, ask a grown-up.";
+    public static final String KIDS_FOOT = "I can help with games, words, numbers, or a joke. For anything else, ask a grown-up.";
 
-    public static final String KIDS_UNSURE = "I'm not sure about that. Let's ask a grown-up.";
+    public static final String KIDS_UNSURE = "I'm not sure. Let's ask a grown-up.";
 
     /** Clean, silly jokes for about age 6. No insults, toilet humour, scares or religion. */
     public static final String[] JOKES = {
@@ -89,8 +89,7 @@ public final class NovaHelp {
     }
 
     public static boolean looksLikeJoke(String question) {
-        String q = norm(question);
-        return has(q, "joke", "jokes", "funny", "make me laugh", "tell me something funny");
+        return NovaKidsTalk.looksLikeJoke(question);
     }
 
     static String kidsAnswer(String question) {
@@ -99,12 +98,14 @@ public final class NovaHelp {
             return KIDS_GREETING;
         if (looksLikeJoke(question))
             return "Tap Tell me a joke and I'll tell you one.";
-        if (has(q, "learn", "learning", "school", "puzzle", "read", "maths", "math", "spell", "count"))
-            return "The Learning tab has learning games and puzzles. Scroll the row and tap a game to play it. If it isn't on the phone yet, tap GET. You can also type a name in Search at the top.";
+        if (NovaKidsTalk.mentionsFavouriteShow(question))
+            return NovaKidsTalk.favouriteShowReply();
+        if (has(q, "learn", "learning", "school", "puzzle", "read", "maths", "math", "spell", "spelling", "count", "write"))
+            return "The Learning tab has games for words and numbers. Scroll the row and tap one to play. If it isn't on the phone yet, tap GET. You can also type a name in Search at the top. I can help with simple spelling or maths too — just ask.";
         if (has(q, "search", "find", "look up", "where is", "how do i play", "how to play", "start a game", "open a game", "play a game", "get a game", "install", "game"))
-            return "To find a game, look along the rows or use Search at the top. Tap a game to play it. If you see GET, tap it to put that game on the phone. Then come back to CodeAque and tap it to play.";
+            return "Look along the rows, or use Search at the top. Tap a game to play it. If you see GET, tap it to put that game on the phone.";
         if (has(q, "theme", "colour", "color", "wallpaper", "looks"))
-            return "You can change how CodeAque looks with the Themes tile. Pick a look you like. If you want help with something else, ask a grown-up.";
+            return "The Themes tile can change how CodeAque looks. Pick one you like. If you want help with something else, ask a grown-up.";
         if (has(q, "wifi", "wi-fi", "internet", "network"))
             return "If the internet isn't working, ask a grown-up to help with Wi-Fi.";
         if (NovaIntent.confident(q, "times up", "time's up", "time is up", "play time",

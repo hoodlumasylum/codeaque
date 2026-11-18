@@ -12,8 +12,6 @@ public final class NovaWikiDone implements Runnable {
 
     @Override public void run() {
         if (view == null) return;
-        view.lastAnswer = ans;
-        if (view.answerView != null) view.answerView.setText(ans);
         view.speakStreamed(ans);
         view.invalidate();
     }

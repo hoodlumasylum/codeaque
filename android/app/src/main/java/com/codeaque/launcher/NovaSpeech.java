@@ -62,14 +62,14 @@ public final class NovaSpeech {
 
     public boolean usingBuiltin() { return usingBuiltin; }
 
-    public void start(Context ctx, Callbacks callbacks) {
-        start(ctx, callbacks, false);
+    public boolean start(Context ctx, Callbacks callbacks) {
+        return start(ctx, callbacks, false);
     }
 
-    public void start(Context ctx, Callbacks callbacks, boolean forceBuiltin) {
+    public boolean start(Context ctx, Callbacks callbacks, boolean forceBuiltin) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             ui.post(new NovaSpeechStart(this, ctx, callbacks, forceBuiltin));
-            return;
+            return true;
         }
         stop();
         destroyed = false;
@@ -80,7 +80,7 @@ public final class NovaSpeech {
         language = NovaListenPick.firstLanguage();
         if (ctx == null) {
             fail("Voice talk isn't available on this phone. You can type your question instead.");
-            return;
+            return false;
         }
         app = ctx.getApplicationContext();
         NovaListenService.pauseForChat(app);
@@ -92,7 +92,7 @@ public final class NovaSpeech {
             NovaListenDiag.setPermissionDenied(true);
             NovaListenDiag.setReason(NovaSpeechAvail.PERMISSION_DENIED);
             fail(NovaSpeechAvail.PERMISSION_DENIED);
-            return;
+            return false;
         }
         NovaListenDiag.setPermissionDenied(false);
 
@@ -110,24 +110,24 @@ public final class NovaSpeech {
             startBuiltin(forceBuiltin && (recOk || onDeviceOk)
                     ? NovaSpeechAvail.SYSTEM_ERROR_BUILTIN
                     : NovaSpeechAvail.NO_SERVICE_BUILTIN);
-            return;
+            return listening;
         }
         if (path == NovaSpeechAvail.NEED_PERMISSION) {
             NovaListenDiag.setPermissionDenied(true);
             NovaListenDiag.setReason(NovaSpeechAvail.PERMISSION_DENIED);
             fail(NovaSpeechAvail.PERMISSION_DENIED);
-            return;
+            return false;
         }
         if (path == NovaSpeechAvail.NEED_BUILTIN || path == NovaSpeechAvail.NEED_INSTALL) {
             String msg = NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN;
             NovaListenDiag.setReason(msg);
             fail(msg);
             if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_BUILTIN, msg, false));
-            return;
+            return false;
         }
         if (path == NovaSpeechAvail.USE_PROMPT) {
             if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.USE_PROMPT, null, false));
-            return;
+            return false;
         }
         try {
             rec = createBest(ctx);
@@ -137,19 +137,20 @@ public final class NovaSpeech {
             rec = null;
             if (builtinReady) {
                 startBuiltin(NovaSpeechAvail.SYSTEM_ERROR_BUILTIN);
-                return;
+                return listening;
             }
             if (promptOk) {
                 if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.USE_PROMPT, null, false));
-                return;
+                return false;
             }
             String msg = NovaSpeechAvail.NO_SERVICE_NEED_BUILTIN;
             NovaListenDiag.setReason(msg);
             fail(msg);
             if (cb != null) ui.post(new NovaSpeechPost(this, NovaSpeechPost.NEED_BUILTIN, msg, false));
-            return;
+            return false;
         }
         listen(NovaListenPick.preferOfflineFirst(), language);
+        return listening;
     }
 
     SpeechRecognizer createBest(Context ctx) {
