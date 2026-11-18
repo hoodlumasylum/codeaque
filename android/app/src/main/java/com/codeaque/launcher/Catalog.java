@@ -19,10 +19,16 @@ public final class Catalog {
         public Item(String label, String icon, String[] packages, String webUrl, String action) {
             this(label, icon, packages, webUrl, action, null, null, null);
         }
+        /** 0.10.52: PEGI-like age from the catalogue or an age-filtered Play search (0 = unknown). */
+        public final int pegi;
         public Item(String label, String icon, String[] packages, String webUrl, String action, String pkg, String cls, String uri) {
+            this(label, icon, packages, webUrl, action, pkg, cls, uri, 0);
+        }
+        public Item(String label, String icon, String[] packages, String webUrl, String action, String pkg, String cls, String uri, int pegi) {
             this.label = label; this.icon = icon; this.webUrl = webUrl; this.action = action;
             this.packages = Collections.unmodifiableList(Arrays.asList(packages));
             this.pkg = pkg; this.cls = cls; this.uri = uri;
+            this.pegi = pegi < 0 ? 0 : pegi;
         }
         public boolean isDeviceApp() { return pkg != null && cls != null; }
         public boolean isRom() { return uri != null; }
@@ -47,6 +53,9 @@ public final class Catalog {
     }
 
     static Item app(String label, String icon, String... pkgs) { return new Item(label, icon, pkgs, null, null); }
+    static Item appRated(String label, String icon, int pegi, String... pkgs) {
+        return new Item(label, icon, pkgs, null, null, null, null, null, pegi);
+    }
     static Item web(String label, String icon, String url, String... pkgs) { return new Item(label, icon, pkgs, url, null); }
     static Item act(String label, String icon, String action) { return new Item(label, icon, new String[0], null, action); }
 
@@ -811,9 +820,9 @@ public final class Catalog {
         c.add(new Category("settings", "Settings", "gear",
                 act("CodeAque v" + VERSION, "gear", "about"),   // 0.10.28: version shown clearly, first in Settings
                 act("Wi-Fi", "wifi", "wifi"), act("Bluetooth", "bt", "bluetooth"),
-                act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"),
+                act("Theme", "palette", "theme"), act("Wallpaper", "image", "wallpaper"), act("Nova", "sparkle", "nova"),
                 act("Display", "display", "display"), act("Effects", "sparkle", "effects"),
-                PHONE_SETTINGS, PHONE_ACCOUNTS, HOME_APP, act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), EXIT_CODEAQUE, act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), INSTALL_KIDS, KIDS_EMUS, CLASSIC_HOME, act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly")));
+                PHONE_SETTINGS, PHONE_ACCOUNTS, HOME_APP, act("Make CodeAque home", "home", "makehome"), act("Hide other launchers", "home", "hidelaunchers"), EXIT_CODEAQUE, act("Game folders", "image", "romfolder"), act("Find Dreamcast games", "disc", "files"), act("Rescan for games", "download", "rescan"), act("Scan details", "disc", "scandetails"), INSTALL_KIDS, KIDS_EMUS, CLASSIC_HOME, act("Kids mode games", "pad", "kidsgames"), act("Sort apps", "grid", "sortapps"), act("Projector mode", "display", "projector"), act("Update", "download", "update"), act("CodeAque boot animation", "download", "bootanim"), act("Force landscape for games", "display", "rotation"), act("Kids mode", "pad", "kids"), act("Ask PIN to install games", "gear", "installpin"), KIDS_PROFILE, SCREEN_TIME, ALWAYS_KIDS, KIDS_LOCK, LOCK_PHONE, REMOVE_OWNER, BOXSET_MODE, BOXSET_BOOT, DOWNLOADS, act("Lock mode", "gear", "lock"), act("Change PIN", "gear", "changepin"), act("Safe contacts", "gear", "safecontacts"), act("Block unknown callers", "gear", "blockunknown"), act("Only call safe numbers", "gear", "safeonly")));
         c.add(new Category("power", "Power", "gear", EXIT_CODEAQUE));
         return c;
     }

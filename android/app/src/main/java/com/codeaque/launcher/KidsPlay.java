@@ -31,7 +31,7 @@ public final class KidsPlay {
         public Game(String cat, int pegi, String pkg, String title, String blurb) {
             this.cat = cat; this.pegi = pegi; this.pkg = pkg; this.title = title; this.blurb = blurb;
         }
-        public Catalog.Item item() { return Catalog.app(title, "cube", pkg); }
+        public Catalog.Item item() { return Catalog.appRated(title, "cube", pegi, pkg); }
     }
 
     /** Official listings, each checked on play.google.com/store/apps/details?id=... (en_GB contentRating) on 16 Nov 2026. */
@@ -2392,6 +2392,64 @@ public final class KidsPlay {
         for (Game g : ALL) if (pkg.equals(g.pkg)) return g;
         return null;
     }
+
+    /** 0.10.52: Grown-ups setting. Off by default so a child can GET age-filtered games without the PIN. */
+    public static final String PREF_ASK_PIN_INSTALL = "kidsInstallPin";
+
+    /** PEGI for a tile: the bundled catalogue wins; otherwise the value carried from an age-filtered search hit. */
+    public static int pegiOf(Catalog.Item it) {
+        if (it == null) return 0;
+        String pkg = it.storePackage() != null ? it.storePackage() : it.pkg;
+        Game g = byPkg(pkg);
+        if (g != null) return g.pegi;
+        return it.pegi > 0 ? it.pegi : 0;
+    }
+
+    public static int pegiOfPkg(String pkg) {
+        Game g = byPkg(pkg);
+        return g != null ? g.pegi : 0;
+    }
+
+    /**
+     * A Get (not-installed) tile that is already age-safe for this Kids / Kids 12+ profile.
+     * The Play Store itself, sideload / Settings packages, unrated titles, and over-age games are false.
+     */
+    public static boolean ageFilteredGet(Catalog.Item it, boolean installed, boolean kids12) {
+        if (it == null || installed) return false;
+        if (it == Catalog.PLAY_STORE) return false;
+        if (it.isAction() || it.isRom() || it.isDeviceApp()) return false;
+        if (it.webUrl != null) return false;
+        if (!Catalog.opensStore(it, false)) return false;
+        String pkg = it.storePackage();
+        if (pkg == null || ScreenTime.blockedKidPackage(pkg) || Catalog.settingsPkg(pkg)) return false;
+        int pegi = pegiOf(it);
+        return pegi > 0 && allowed(pegi, maxPegi(kids12));
+    }
+
+    public static boolean ageFilteredGet(String pkg, boolean kids12) {
+        if (pkg == null || pkg.isEmpty() || "com.android.vending".equals(pkg)) return false;
+        if (ScreenTime.blockedKidPackage(pkg) || Catalog.settingsPkg(pkg)) return false;
+        int pegi = pegiOfPkg(pkg);
+        return pegi > 0 && allowed(pegi, maxPegi(kids12));
+    }
+
+    /**
+     * Whether Kids mode should ask the parent PIN before opening this Play page.
+     * When the Ask-PIN setting is off (default), age-filtered GET games skip the PIN.
+     * Raw Play browsing, unrated or over-age titles still need it.
+     */
+    public static boolean kidsStoreNeedsPin(Catalog.Item it, boolean installed, boolean kids12, boolean askPinPref) {
+        if (!Catalog.opensStore(it, installed)) return false;
+        if (askPinPref) return true;
+        return !ageFilteredGet(it, installed, kids12);
+    }
+
+    public static boolean kidsStoreNeedsPin(String pkg, boolean kids12, boolean askPinPref) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        if (askPinPref) return true;
+        return !ageFilteredGet(pkg, kids12);
+    }
+
 
     public static String blurb(Catalog.Item it) {
         if (it == null) return "";

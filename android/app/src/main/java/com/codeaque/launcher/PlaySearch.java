@@ -29,7 +29,7 @@ public final class PlaySearch {
             this.title = title == null ? pkg : title;
             this.pegi = pegi;
         }
-        public Catalog.Item item() { return Catalog.app(title, "cube", pkg); }
+        public Catalog.Item item() { return Catalog.appRated(title, "cube", pegi, pkg); }
         public Hit withPegi(int p) { return new Hit(pkg, title, p); }
     }
 

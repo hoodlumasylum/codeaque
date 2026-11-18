@@ -167,6 +167,7 @@ public class CatalogTest {
         }
         homeScrollChecks();
         coverFitChecks();
+        novaAndInstallPinChecks();
         System.out.println("CatalogTest: all checks passed");
     }
 
@@ -983,6 +984,76 @@ public class CatalogTest {
         check(empty[0] == 0 && empty[2] == 4 && empty[3] == 4, "fully transparent image keeps the full bounds");
         int[] same = CoverFit.coverSrc(188, 136, 188, 136);
         check(same[0] == 0 && same[1] == 0 && same[2] == 188 && same[3] == 136, "already the tile size is a no-op crop");
+    }
+
+
+    static void novaAndInstallPinChecks() {
+        List<Catalog.Item> settings = Catalog.categories().get(Catalog.indexOf(Catalog.categories(), "settings")).items;
+        java.util.List<String> acts = new java.util.ArrayList<>();
+        for (Catalog.Item i : settings) acts.add(i.action);
+        check(acts.contains("nova") && acts.contains("installpin"), "Settings has Nova and Ask PIN to install games: " + acts);
+
+        Catalog.Item candy = KidsPlay.byPkg("com.king.candycrushsaga").item();
+        check(candy.pegi == 3 && Catalog.opensStore(candy, false) && !Catalog.opensStore(candy, true), "Candy Crush is a GET when not installed");
+        check(KidsPlay.ageFilteredGet(candy, false, false) && KidsPlay.ageFilteredGet(candy, false, true), "PEGI 3 GET is age-filtered in Kids and Kids 12+");
+        check(!KidsPlay.ageFilteredGet(candy, true, false), "installed game is not a GET");
+        check(!KidsPlay.kidsStoreNeedsPin(candy, false, false, false), "default: no PIN for age-filtered GET");
+        check(KidsPlay.kidsStoreNeedsPin(candy, false, false, true), "Ask PIN to install games on: GET needs the PIN");
+        check(!KidsPlay.kidsStoreNeedsPin(candy, true, false, false), "installed tile is not a store PIN gate");
+
+        KidsPlay.Game gardenscapes = KidsPlay.byPkg("com.playrix.gardenscapes");
+        check(gardenscapes != null && gardenscapes.pegi == 16, "Gardenscapes is PEGI 16 in the catalogue");
+        Catalog.Item gs = gardenscapes.item();
+        check(!KidsPlay.allowed(16, KidsPlay.maxPegi(false)) && !KidsPlay.allowed(16, KidsPlay.maxPegi(true)), "PEGI 16 is not in Kids or Kids 12+");
+        check(!KidsPlay.ageFilteredGet(gs, false, false) && !KidsPlay.ageFilteredGet(gs, false, true), "PEGI 16 GET is not age-filtered");
+        check(KidsPlay.kidsStoreNeedsPin(gs, false, false, false) && KidsPlay.kidsStoreNeedsPin(gs, false, true, false), "PEGI 16 still needs the PIN");
+
+        // A PEGI 12 catalogue title: allowed only in Kids 12+
+        KidsPlay.Game pegi12 = null;
+        for (KidsPlay.Game g : KidsPlay.ALL) if (g.pegi == 12) { pegi12 = g; break; }
+        check(pegi12 != null, "catalogue has a PEGI 12 title");
+        Catalog.Item t12 = pegi12.item();
+        check(!KidsPlay.ageFilteredGet(t12, false, false) && KidsPlay.ageFilteredGet(t12, false, true), "PEGI 12 GET is only age-filtered in Kids 12+");
+        check(KidsPlay.kidsStoreNeedsPin(t12, false, false, false) && !KidsPlay.kidsStoreNeedsPin(t12, false, true, false), "Kids 12+ can GET a PEGI 12 game without the PIN");
+
+        check(!KidsPlay.ageFilteredGet(Catalog.PLAY_STORE, false, false) && !KidsPlay.ageFilteredGet(Catalog.PLAY_STORE, false, true), "Play Store tile is never an age-filtered GET");
+        check(KidsPlay.kidsStoreNeedsPin(Catalog.PLAY_STORE, false, false, false), "raw Play Store still needs the PIN");
+        check(KidsPlay.kidsStoreNeedsPin("com.android.vending", false, false), "raw Play package still needs the PIN");
+        check(!KidsPlay.ageFilteredGet("unknown.unrated.game", false) && KidsPlay.kidsStoreNeedsPin("unknown.unrated.game", false, false), "unrated package still needs the PIN");
+
+        // Search hit carries pegi when not in the bundled catalogue
+        PlaySearch.Hit hit = new PlaySearch.Hit("com.example.kidgame", "Made-up Kids Game", 3);
+        Catalog.Item fromSearch = hit.item();
+        check(fromSearch.pegi == 3 && KidsPlay.ageFilteredGet(fromSearch, false, false), "age-filtered search GET skips the PIN in Kids");
+        PlaySearch.Hit teen = new PlaySearch.Hit("com.example.teengame", "Made-up Teen Game", 12);
+        check(!KidsPlay.ageFilteredGet(teen.item(), false, false) && KidsPlay.ageFilteredGet(teen.item(), false, true), "search PEGI 12 follows Kids 12+");
+
+        check(LockPin.needsPin("installpin") && LockPin.needsPin("novaoverlay"), "Ask PIN to install and Nova-over-games need the PIN when Lock mode is on");
+        check(!LockPin.needsPin("nova") && LockPin.needsPin("kidsoff") && LockPin.needsPin("screentime") && !LockPin.needsPin("update"), "Nova settings tile is not lock-gated; leaving Kids, Screen Time still are; Update stays gated in Kids mode");
+
+        String a = NovaHelp.answer("How do I update?");
+        check(a.toLowerCase().contains("update") && a.toLowerCase().contains("settings"), "Nova help: update");
+        check(NovaHelp.answer("Kids mode").toLowerCase().contains("pin"), "Nova help: Kids mode mentions the PIN");
+        check(NovaHelp.answer("search").toLowerCase().contains("search"), "Nova help: search");
+        String inst = NovaHelp.answer("Ask PIN to install games");
+        check(inst.toLowerCase().contains("get") && inst.toLowerCase().contains("pin"), "Nova help: GET / install PIN");
+        check(NovaHelp.answer("").equals(NovaHelp.GREETING), "empty question is a greeting");
+        check(!NovaHelp.answer("who are you").toLowerCase().contains("api key"), "no API key pitch in the greeting path");
+
+        NovaAnim.State anim = new NovaAnim.State();
+        NovaAnim.reset(anim, 1000);
+        check(anim.blink == 0f, "rest lids are fully open");
+        check(NovaAnim.blinkAt(-1) == 0f && NovaAnim.blinkAt(NovaAnim.BLINK_TOTAL) == 0f, "blink is 0 outside a blink");
+        check(NovaAnim.blinkAt(NovaAnim.CLOSE_MS) == 1f && NovaAnim.blinkAt(NovaAnim.CLOSE_MS + NovaAnim.HOLD_MS / 2) == 1f, "blink is fully closed at the end of close / during hold");
+        float midClose = NovaAnim.blinkAt(NovaAnim.CLOSE_MS / 2);
+        check(midClose > 0f && midClose < 1f, "close eases in");
+        float midOpen = NovaAnim.blinkAt(NovaAnim.CLOSE_MS + NovaAnim.HOLD_MS + NovaAnim.OPEN_MS / 2);
+        check(midOpen > 0f && midOpen < 1f, "open eases out");
+        check(NovaAnim.inQuad(0) == 0f && NovaAnim.inQuad(1) == 1f && NovaAnim.outQuad(0) == 0f && NovaAnim.outQuad(1) == 1f, "quad easing ends");
+        NovaAnim.tick(anim, 1000, 16, 1);
+        check(anim.gazeX >= -NovaAnim.GAZE_MAX_X && anim.gazeX <= NovaAnim.GAZE_MAX_X
+                && anim.gazeY >= -NovaAnim.GAZE_MAX_Y && anim.gazeY <= NovaAnim.GAZE_MAX_Y, "gaze stays in the socket");
+        check(Math.abs(anim.bob) <= NovaAnim.BOB_AMP + 1e-6, "breath amplitude is small");
     }
 
 }

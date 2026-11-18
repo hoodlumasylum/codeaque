@@ -51,6 +51,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private boolean searchPlayFailed, searchWatchLock;
     private android.widget.FrameLayout root;
     private android.widget.EditText searchField;
+    private NovaView nova;
     private String pendingAnimPath;
     private String robloxSession = "", robloxToken = "";
     private boolean robloxOn, robloxLoading, robloxRatingsOk, timeUpScreen;
@@ -71,6 +72,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         searchField = buildKidsSearchField();
         root.addView(searchField);
+        nova = new NovaView(this);
+        root.addView(nova, new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             if (view != null && view.onKidsSearch() && imeVisible()) view.setSearchImeFallback(false);
@@ -161,6 +165,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             syncDeviceOwnerKiosk();
             syncKidsPinning();
         } else if (deviceOwner()) syncDeviceOwnerKiosk();
+        if (nova != null) nova.applyPref();
+        NovaOverlayService.setHostVisible(this, true);
+        NovaOverlayService.sync(this);
         view.invalidate();
     }
 
@@ -172,6 +179,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     @Override protected void onUserLeaveHint() {
         super.onUserLeaveHint();
         maybeBounceKidsLeave();
+        NovaOverlayService.setHostVisible(this, false);
+        NovaOverlayService.sync(this);
     }
 
     @Override public void onWindowFocusChanged(boolean has) {
@@ -699,8 +708,14 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         catch (ActivityNotFoundException e) { Toast.makeText(this, "Install an emulator first (Retro row)", Toast.LENGTH_LONG).show(); }
     }
 
-    @Override public void onBackPressed() { /* a home screen stays */ }
-    @Override protected void onDestroy() { try { unregisterReceiver(packages); } catch (Exception ignored) { } pool.release(); super.onDestroy(); }
+    @Override public void onBackPressed() {
+        if (nova != null && nova.collapse()) return;   // 0.10.52: close Nova's panel first
+        /* a home screen stays */
+    }
+    @Override protected void onDestroy() {
+        if (nova != null) nova.release();
+        try { unregisterReceiver(packages); } catch (Exception ignored) { } pool.release(); super.onDestroy();
+    }
 
     // ---------- Host ----------
     @Override public boolean installed(Catalog.Item it) {
@@ -756,7 +771,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             if (i != null) { if (!forceLandscapeThen(i)) start(i); return; }
             if (it.webUrl != null) { openWeb(it.webUrl); return; }
             if (it == Catalog.PLAY_STORE) { Toast.makeText(this, "Play Store not installed on this device", Toast.LENGTH_LONG).show(); return; }
-            store(it.storePackage());
+            store(it.storePackage(), it);
         } catch (Exception e) {
             Toast.makeText(this, "Could not open " + it.label, Toast.LENGTH_SHORT).show();
         }
@@ -778,12 +793,15 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private boolean boxsetBootApplied;
     /** 0.10.23: a parent PIN exists (set from Kids mode or Lock mode). */
     private boolean pinSet() { return prefs.getString("lockPin", null) != null; }
-    /** 0.10.23 / 0.10.35: leaving Kids mode (Grown-ups Settings / Adult mode, or hold Select) and any Play Store
-     *  launch from Kids mode need the parent PIN. A PIN entered earlier must not skip that. */
+    /** 0.10.23 / 0.10.35 / 0.10.52: leaving Kids mode, Grown-ups Settings, Update, raw Play browsing,
+     *  sideloading and Screen Time still need the parent PIN. A PIN entered earlier must not skip that.
+     *  Age-filtered GET games do not, unless Settings > Ask PIN to install games is on. */
     private boolean kidsPinGate(Catalog.Item it) {
         if (!prefs.getBoolean("kidsMode", false) || pinFresh()) return false;
         if (it.isAction()) return "kidsoff".equals(it.action) || "adultpin".equals(it.action) || "settingspin".equals(it.action) || "goto:settings".equals(it.action) || "update".equals(it.action);
-        return Catalog.opensStore(it, installed(it));
+        if (Catalog.opensStore(it, installed(it)))
+            return KidsPlay.kidsStoreNeedsPin(it, installed(it), kids12(), prefs.getBoolean(KidsPlay.PREF_ASK_PIN_INSTALL, false));
+        return false;
     }
     private boolean locked() { return prefs.getBoolean("lockMode", false) && prefs.getString("lockPin", null) != null; }
     /** Safe contacts and Downloads always ask for the parent PIN. Everything else uses the lock list only while Lock mode is on. */
@@ -793,7 +811,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 || action.equals("kidsprofile") || action.equals("screentime") || action.equals("alwayskids") || action.equals("kidslock")
                 || action.equals("lockphone") || action.equals("removeowner") || action.equals("exitcodeaque")
                 || action.equals("phonesettings") || action.equals("phoneaccounts") || action.equals("homeapp")
-                || action.equals("installkids") || action.equals("kidsemus")) return true;
+                || action.equals("installkids") || action.equals("kidsemus") || action.equals("installpin") || action.equals("novaoverlay")) return true;
         return locked() && LockPin.needsPin(action);
     }
     /** A correct PIN opens grown-up things for 2 minutes. */
@@ -997,7 +1015,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void lockToggle() {
         if (locked()) {
             new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Turn off Lock mode?")
-                    .setMessage("Settings and Files will open without the PIN again. Kids mode and the Play Store in Kids mode still need it.")
+                    .setMessage("Settings and Files will open without the PIN again. Kids mode, leaving Kids mode, and raw Play browsing still need it. Age-filtered GET games do not, unless Ask PIN to install games is on.")
                     .setPositiveButton("Turn off", (d, w) -> { prefs.edit().putBoolean("lockMode", false).apply(); kioskOff(); rescan(); toast("Lock mode is off."); })
                     .setNeutralButton(deviceOwner() ? "Off + remove full kiosk" : null, deviceOwner() ? (d, w) -> { prefs.edit().putBoolean("lockMode", false).apply(); removeOwner(); rescan(); } : null)
                     .setNegativeButton("Cancel", null).show();
@@ -1524,10 +1542,18 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         }
     }
 
-    private void store(String pkg) {
+    private void store(String pkg) { store(pkg, null); }
+    /** Opens only this package's Play details page (not the raw store home). */
+    private void store(String pkg, Catalog.Item src) {
         if (pkg == null || pkg.isEmpty()) return;
-        if (prefs.getBoolean("kidsMode", false) && pinSet() && !pinFresh() && !parentStoreActive()) { askPin("Parent PIN", () -> store(pkg)); return; }   // 0.10.23
-        if (prefs.getBoolean("kidsMode", false)) beginParentStore();
+        if (prefs.getBoolean("kidsMode", false) && pinSet() && !pinFresh() && !parentStoreActive()) {
+            boolean need = src != null
+                    ? KidsPlay.kidsStoreNeedsPin(src, false, kids12(), prefs.getBoolean(KidsPlay.PREF_ASK_PIN_INSTALL, false))
+                    : KidsPlay.kidsStoreNeedsPin(pkg, kids12(), prefs.getBoolean(KidsPlay.PREF_ASK_PIN_INSTALL, false));
+            if (need) { askPin("Parent PIN", () -> store(pkg, src)); return; }
+        }
+        if (prefs.getBoolean("kidsMode", false)) beginParentStore(!pinFresh() && !prefs.getBoolean(KidsPlay.PREF_ASK_PIN_INSTALL, false)
+                && (src != null ? KidsPlay.ageFilteredGet(src, false, kids12()) : KidsPlay.ageFilteredGet(pkg, kids12())));
         pendingPlay = null;   // a store visit is not a game launch (do not treat the game package as the allowed foreground)
         Intent market = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg));
         market.setPackage("com.android.vending");
@@ -1541,13 +1567,15 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         }
     }
 
-    /** 0.10.49: after a correct parent PIN, let Play Store (and Play's installer) stay open for 10 minutes,
-     *  or until CodeAque is back in front. Kids still cannot open the store without the PIN. */
+    /** 0.10.49 / 0.10.52: let Play Store (and Play's installer) stay open for 10 minutes,
+     *  or until CodeAque is back in front, after a parent PIN or an age-filtered GET (setting off).
+     *  This still opens only that game's details page, not the raw Play home. */
     private int parentStoreGen;
     private boolean parentStoreActive() {
         return System.currentTimeMillis() < prefs.getLong(ScreenTime.PARENT_STORE_UNTIL, 0);
     }
-    private void beginParentStore() {
+    private void beginParentStore() { beginParentStore(false); }
+    private void beginParentStore(boolean kidGet) {
         if (!prefs.getBoolean("kidsMode", false)) return;
         boolean already = parentStoreActive();
         long until = System.currentTimeMillis() + ScreenTime.PARENT_STORE_MS;
@@ -1564,7 +1592,9 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         }
         final int gen = ++parentStoreGen;
         if (view != null) view.postDelayed(() -> { if (gen == parentStoreGen) endParentStore(); }, ScreenTime.PARENT_STORE_MS + 250);
-        if (!already) toast("Play Store can stay open for 10 minutes, or until you come back to CodeAque.");
+        if (!already) toast(kidGet
+                ? "Opening this game's Play page so you can install it. Come back to CodeAque when you're done."
+                : "Play Store can stay open for 10 minutes, or until you come back to CodeAque.");
     }
     private void endParentStore() {
         parentStoreGen++;
@@ -1704,6 +1734,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
             case "hidelaunchers": hideLaunchers(); break;        // 0.10.28 (PIN in Lock mode; always asks the PIN below)
             case "bootanim": bootAnim(); break;
             case "rotation": rotationToggle(); break;
+            case "nova": novaSettings(); break;          // 0.10.52
+            case "installpin": installPinToggle(); break;  // 0.10.52
             case "kids": kidsMode(true); break;
             case "kidsprofile": kidsProfilePicker(); break;   // 0.10.37: always PIN (mustPin)
             case "screentime": screenTimePicker(); break;
@@ -1720,7 +1752,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 pinOkUntil = 0;                               // 0.10.35: a PIN from before Kids mode must not unlock Settings
                 prefs.edit().putBoolean("kidsMode", true).remove("parentSettings").remove(ScreenTime.PARENT_STORE_UNTIL).remove(ScreenTime.PARENT_UPDATE_UNTIL).apply(); timeUpScreen = false;
                 parentStoreGen++;
-                ScreenTimeService.sync(this); rescan();
+                ScreenTimeService.sync(this); NovaOverlayService.sync(this); rescan();
                 syncDeviceOwnerKiosk();
                 syncKidsPinning();
                 toast(kids12() ? "Kids 12+ is on. Leaving it needs the parent PIN." : "Kids mode is on. Leaving it needs the parent PIN."); break;
@@ -1746,6 +1778,73 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 }
                 break;
         }
+    }
+
+    /** 0.10.52: show / hide the in-app bubble, or (PIN) Nova over other games. */
+    private void novaSettings() {
+        float d = getResources().getDisplayMetrics().density;
+        int pad = Math.round(12 * d);
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(pad, pad / 2, pad, 0);
+        android.widget.TextView msg = new android.widget.TextView(this);
+        msg.setText("Nova is a corner helper for simple CodeAque questions. She works offline, has no account, and does not collect data. Showing her over other games needs the parent PIN and Android's Display over other apps permission. Some phones, full-screen games, or Kids lock may still hide or block that bubble. It stays off while Kids mode is on.");
+        msg.setPadding(0, 0, 0, pad);
+        box.addView(msg);
+        android.widget.CheckBox show = new android.widget.CheckBox(this);
+        show.setText("Show Nova in CodeAque");
+        show.setChecked(prefs.getBoolean(NovaView.PREF_BUBBLE, true));
+        box.addView(show);
+        android.widget.CheckBox over = new android.widget.CheckBox(this);
+        boolean want = prefs.getBoolean(NovaView.PREF_OVERLAY, false);
+        boolean granted = NovaOverlayService.canOverlay(this);
+        boolean kids = prefs.getBoolean("kidsMode", false);
+        over.setText("Show Nova over other games" + (kids ? " (off in Kids mode)" : (want && !granted ? " (needs Android permission)" : "")));
+        over.setChecked(want && granted && !kids);
+        over.setEnabled(!kids);
+        box.addView(over);
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Nova")
+                .setView(box)
+                .setPositiveButton("OK", (dlg, w) -> {
+                    prefs.edit().putBoolean(NovaView.PREF_BUBBLE, show.isChecked()).apply();
+                    if (nova != null) nova.applyPref();
+                    if (kids) {
+                        prefs.edit().putBoolean(NovaView.PREF_OVERLAY, false).apply();
+                        NovaOverlayService.sync(this);
+                        return;
+                    }
+                    if (over.isChecked() == want && (over.isChecked() ? granted : true)) {
+                        NovaOverlayService.sync(this);
+                        return;
+                    }
+                    if (!over.isChecked()) {
+                        prefs.edit().putBoolean(NovaView.PREF_OVERLAY, false).apply();
+                        NovaOverlayService.sync(this);
+                        toast("Nova will stay in CodeAque only.");
+                        return;
+                    }
+                    Runnable enable = () -> {
+                        prefs.edit().putBoolean(NovaView.PREF_OVERLAY, true).apply();
+                        if (!NovaOverlayService.canOverlay(this)) {
+                            toast("Android needs Display over other apps for Nova. Grant it, then return to CodeAque.");
+                            NovaOverlayService.openOverlaySettings(this);
+                        } else toast("Nova can appear over other apps. Some games or phones may still hide her.");
+                        NovaOverlayService.sync(this);
+                    };
+                    if (!pinFresh()) askPin("Parent PIN: Nova over games", enable);
+                    else enable.run();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    /** 0.10.52: Grown-ups setting, off by default. PIN already asked via mustPin. */
+    private void installPinToggle() {
+        boolean on = !prefs.getBoolean(KidsPlay.PREF_ASK_PIN_INSTALL, false);
+        prefs.edit().putBoolean(KidsPlay.PREF_ASK_PIN_INSTALL, on).apply();
+        toast(on
+                ? "Ask PIN to install games is on. GET in Kids mode needs the parent PIN."
+                : "Ask PIN to install games is off. Kids can install age-filtered games from GET without the PIN. Settings, leaving Kids mode, raw Play browsing, sideloading and Screen Time still need the PIN.");
     }
 
     private void allApps() {
@@ -2862,7 +2961,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                     if (!on) { timeUpScreen = false; stopKidsPinning(); }
                     if (deviceOwner()) { if (on || locked()) { syncDeviceOwnerKiosk(); } }
                     else if (!on) { /* not owner: screen pin already stopped */ }
-                    ScreenTimeService.sync(this); rescan();
+                    ScreenTimeService.sync(this); NovaOverlayService.sync(this); rescan();
                     if (on) { syncDeviceOwnerKiosk(); syncKidsPinning(); toast(kids12() ? "Kids 12+ is on." : "Kids mode is on."); }
                     else syncDeviceOwnerKiosk();
                 })

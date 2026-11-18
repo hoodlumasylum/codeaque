@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="151" android:versionName="0.10.51">
+    android:versionCode="152" android:versionName="0.10.52">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -106,5 +106,7 @@
         </service>
         <!-- 0.10.37: Kids screen time and Strict-mode watcher. Not exported. -->
         <service android:name=".ScreenTimeService" android:exported="false" android:foregroundServiceType="specialUse" />
+        <!-- 0.10.52: optional Nova bubble over other apps (SYSTEM_ALERT_WINDOW, parent PIN). Not exported. -->
+        <service android:name=".NovaOverlayService" android:exported="false" android:foregroundServiceType="specialUse" />
     </application>
 </manifest>
