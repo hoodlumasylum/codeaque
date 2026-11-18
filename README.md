@@ -31,7 +31,20 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
-## What's new in 0.10.51 (unreleased)
+## What's new in 0.10.52
+
+**Nova on the Android home.** A corner bubble uses Nova's original portrait, with a light Canvas blink, gaze and breathing animation that is not on the game-row scroller. Tap to expand or collapse an offline helper that can answer simple CodeAque questions (updates, Kids mode, search, Screen Time, the PIN). No account, no API keys, no data collection. System text-to-speech only, if you use Hear it.
+
+**Nova over other games is optional.** A parent can turn it on in Settings > Nova (PIN), then grant Android's Display over other apps permission. It stays off in Kids mode. Some phones, full-screen games, or Kids lock may still hide or block the bubble.
+
+**Kids can install age-filtered games without the PIN.** GET on a game already allowed for Kids or Kids 12+ opens only that game's Play page. A Grown-ups setting, Ask PIN to install games (off by default), turns the PIN back on. Leaving Kids mode, Settings, raw Play browsing, sideloading and Screen Time still need the PIN. Kids 12+ stays filtered to PEGI 12.
+
+These changes have not been tried on a real phone, a K56, or a Win600.
+
+Devices already on 0.10.48 cannot update through Kids-mode Update: use the parent PIN to leave Kids mode, then Update, then turn Kids back on.
+
+## What's new in 0.10.51
+
 
 **Smoother one-row scrolling.** The 0.10.50 row still felt jittery because snap was fighting the finger (the first draw after a move treated the fling as ended and eased the row back toward the focused tile between touch events), covers were decoded at full size and scaled with a rounded `clipPath` every frame, paints and shaders were allocated during `onDraw`, the whole screen (phoenix background and embers) was invalidated while the row moved, and a late cover download could redraw mid-fling. 0.10.51 keeps the same one-canvas home (not a RecyclerView: the main APK is still built with aapt2/d8 and no AndroidX, and the IME, category chips, swipe-anywhere row, PIN and Screen Time are wired to this view). Snap never runs while a finger is down. A fling coasts, then eases to a tile. Covers are centre-cropped once to the exact tile size and cached. Chrome (background, tabs, hints) is frozen to a snapshot while the row is busy. New art waits until the row is still. A 60 Hz physics bench is in the unit tests; that is not a measurement on a phone GPU.
 
