@@ -5,12 +5,15 @@ import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.speech.tts.TextToSpeech;
 import android.text.InputType;
+import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.Button;
@@ -34,6 +37,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     /** 0.10.53: Kids-mode speech. Default off means she speaks (mute is opt-in). */
     public static final String PREF_KIDS_MUTE = "novaKidsMute";
     public static final String PREF_JOKE = "novaJokeAt";
+    public static final String PREF_LEFT = "novaBubbleLeft";
+    public static final String PREF_Y = "novaBubbleY";
 
     final NovaFace face = new NovaFace();
     final NovaAnim.State st = new NovaAnim.State();
@@ -43,13 +48,15 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     final SharedPreferences prefs;
     final java.util.Random rng = new java.util.Random();
     LinearLayout panel;
-    TextView answerView, subView, muteLabel;
+    TextView answerView, muteLabel;
     EditText askField;
     TextToSpeech tts;
     String pendingSpeak, lastAnswer = NovaHelp.GREETING;
     boolean expanded, running, overlayMode, faceLoaded, kids, talking, ttsReady;
-    long lastFrameNs, talkUntil;
-    int bubbleSize, margin;
+    boolean dragging, snapping, downOnMute, downOnBubble, placed;
+    float downX, downY, startLeft, startTop, slop, snapX0, snapY0, snapX1, snapY1;
+    long lastFrameNs, talkUntil, downAt, snapStart;
+    int bubbleSize, margin, longPressMs;
     Host host;
 
     public interface Host {
@@ -68,6 +75,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         float d = getResources().getDisplayMetrics().density;
         bubbleSize = Math.round((overlayMode ? 72 : 96) * d);
         margin = Math.round(14 * d);
+        slop = ViewConfiguration.get(ctx).getScaledTouchSlop();
+        longPressMs = ViewConfiguration.getLongPressTimeout();
         NovaAnim.reset(st, android.os.SystemClock.uptimeMillis());
         buildPanel(d);
         setPanelShown(false);
@@ -150,7 +159,6 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         panel = null;
         askField = null;
         answerView = null;
-        subView = null;
         muteLabel = null;
         buildPanel(getResources().getDisplayMetrics().density);
         setPanelShown(expanded);
@@ -163,26 +171,22 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         panel = new LinearLayout(getContext());
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(pad, pad, pad, pad);
-        panel.setBackgroundColor(0xF214161C);
-        if (Build.VERSION.SDK_INT >= 21) panel.setElevation(8 * d);
+        styleGlass(panel, 0xB8141A22, 0x66E8C872, 22 * d, Math.max(1f, 1.25f * d));
+        if (Build.VERSION.SDK_INT >= 21) {
+            panel.setElevation(3 * d);
+            panel.setClipToOutline(true);
+        }
 
         LinearLayout head = new LinearLayout(getContext());
         head.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout titles = new LinearLayout(getContext());
-        titles.setOrientation(LinearLayout.VERTICAL);
+        head.setGravity(android.view.Gravity.CENTER_VERTICAL);
         TextView title = new TextView(getContext());
-        title.setText("Nova");
-        title.setTextColor(0xFFF4E4C1);
-        title.setTextSize(20);
+        title.setText("Chat");
+        title.setTextColor(0xFFF2F6FA);
+        title.setTextSize(18);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        subView = new TextView(getContext());
-        subView.setText(kids ? "Games, learning and jokes" : "CodeAque helper · offline");
-        subView.setTextColor(0xFFB8A88A);
-        subView.setTextSize(12);
-        titles.addView(title);
-        titles.addView(subView);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1);
-        head.addView(titles, tlp);
+        head.addView(title, tlp);
         if (kids) {
             muteLabel = btn(muted() ? "Muted" : "Sound on", v -> toggleMute());
             head.addView(muteLabel);
@@ -196,10 +200,10 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         for (String c : (kids ? NovaHelp.kidsChips() : NovaHelp.chips())) {
             TextView chip = new TextView(getContext());
             chip.setText(c);
-            chip.setTextColor(0xFFF4E4C1);
+            chip.setTextColor(0xFFF2F6FA);
             chip.setTextSize(13);
-            chip.setPadding(Math.round(10 * d), Math.round(6 * d), Math.round(10 * d), Math.round(6 * d));
-            chip.setBackgroundColor(0xFF2A2420);
+            chip.setPadding(Math.round(12 * d), Math.round(7 * d), Math.round(12 * d), Math.round(7 * d));
+            styleGlass(chip, 0x55202830, 0x44E8C872, 16 * d, 1f);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
             lp.setMargins(0, pad / 2, Math.round(6 * d), 0);
             final String q = c;
@@ -212,6 +216,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         if (kids) {
             Button joke = btn("Tell me a joke", v -> tellJoke());
             joke.setTextSize(16);
+            styleGlass(joke, 0x55202830, 0x66E8C872, 18 * d, 1.25f);
             LinearLayout.LayoutParams jlp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
             jlp.topMargin = pad;
             panel.addView(joke, jlp);
@@ -224,7 +229,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         askField.setTextSize(14);
         askField.setSingleLine(true);
         askField.setInputType(InputType.TYPE_CLASS_TEXT);
-        askField.setBackgroundColor(0xFF1C1A18);
+        styleGlass(askField, 0x66101820, 0x33E8C872, 14 * d, 1f);
         askField.setPadding(pad, pad, pad, pad);
         askField.setOnEditorActionListener((v, a, e) -> { ask(askField.getText().toString()); return true; });
         LinearLayout.LayoutParams askLp = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -250,7 +255,7 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
         TextView foot = new TextView(getContext());
         foot.setText(kids ? NovaHelp.KIDS_FOOT : NovaHelp.LIMITS);
-        foot.setTextColor(0xFF8A8070);
+        foot.setTextColor(0xFF8A98A4);
         foot.setTextSize(11);
         panel.addView(foot);
 
@@ -267,7 +272,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
         b.setOnClickListener(l);
         b.setMinHeight(0);
         b.setMinWidth(0);
-        b.setPadding(dp(8), dp(4), dp(8), dp(4));
+        b.setPadding(dp(10), dp(6), dp(10), dp(6));
+        styleGlass(b, 0x33202830, 0x33E8C872, dp(14), 1f);
         return b;
     }
 
@@ -375,6 +381,9 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
     }
 
     @Override protected void onDetachedFromWindow() {
+        snapping = false;
+        dragging = false;
+        downOnBubble = false;
         stopAnim();
         shutdownTts();
         super.onDetachedFromWindow();
@@ -422,6 +431,8 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
             if (!still) { talking = false; talkUntil = 0; }
         }
         // Cap at ~30 fps: blink and breath don't need 60, and we stay off the scroll thread.
+        if (downOnBubble && !dragging && now - downAt >= longPressMs) startDrag();
+        if (snapping) tickSnap(now);
         NovaAnim.tick(st, now, dt, rng.nextInt());
         NovaAnim.tickTalk(st, now, talking && !(kids && muted()));
         invalidate();
@@ -444,20 +455,37 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     RectF panelBox() {
         int w = getWidth(), h = getHeight();
-        float pw = Math.min(w - bubbleSize - margin * 2 - dp(8), Math.max(dp(280), w * 0.62f));
+        float gap = dp(8);
+        float pw = Math.min(w - bubbleSize - margin * 2 - gap, Math.max(dp(280), w * 0.62f));
         if (pw < dp(240)) pw = Math.max(dp(220), w - margin * 2);
-        float left = margin + insetL();
         float top = margin + insetT();
-        float right = left + pw;
         float bottom = h - margin - insetB();
-        if (right > bubble.left - dp(8) && w > bubbleSize * 2) right = bubble.left - dp(8);
-        return new RectF(left, top, right, bottom);
+        boolean left = bubble.centerX() < w * 0.5f;
+        float leftX, rightX;
+        if (left) {
+            leftX = bubble.right + gap;
+            rightX = Math.min(w - margin - insetR(), leftX + pw);
+            if (rightX - leftX < dp(200)) { leftX = margin + insetL(); rightX = Math.min(w - margin - insetR(), leftX + pw); }
+        } else {
+            rightX = bubble.left - gap;
+            leftX = Math.max(margin + insetL(), rightX - pw);
+            if (rightX - leftX < dp(200)) { rightX = w - margin - insetR(); leftX = Math.max(margin + insetL(), rightX - pw); }
+        }
+        return new RectF(leftX, top, rightX, bottom);
     }
 
     void layoutParts(int w, int h) {
-        int r = margin + insetR();
-        int btm = margin + insetB();
-        bubble.set(w - r - bubbleSize, h - btm - bubbleSize, w - r, h - btm);
+        if (w <= 0 || h <= 0) return;
+        if (dragging || snapping) {
+            // bubble already follows the finger or the snap
+        } else {
+            boolean left = prefs != null && prefs.getBoolean(PREF_LEFT, false);
+            float yFrac = prefs != null && prefs.contains(PREF_Y) ? prefs.getFloat(PREF_Y, 1f) : 1f;
+            float x = NovaPlace.xForSide(left, bubbleSize, w, insetL(), insetR(), margin);
+            float y = NovaPlace.yFromFrac(yFrac, bubbleSize, h, insetT(), insetB(), margin);
+            bubble.set(x, y, x + bubbleSize, y + bubbleSize);
+            placed = true;
+        }
         float s = Math.max(dp(28), bubble.width() * 0.32f);
         muteHit.set(bubble.right - s, bubble.bottom - s, bubble.right + dp(4), bubble.bottom + dp(4));
     }
@@ -516,20 +544,145 @@ public class NovaView extends FrameLayout implements android.view.Choreographer.
 
     @Override public boolean dispatchTouchEvent(MotionEvent ev) {
         if (getVisibility() != VISIBLE) return false;
+        // Keep the gesture while a long-press or drag is in progress, even if the finger leaves the bubble.
+        if (dragging || downOnBubble) return super.dispatchTouchEvent(ev);
         if (!hitsInteractive(ev.getX(), ev.getY())) return false;
         return super.dispatchTouchEvent(ev);
     }
 
     @Override public boolean onTouchEvent(MotionEvent ev) {
-        if (kids && hitsMute(ev.getX(), ev.getY())) {
-            if (ev.getAction() == MotionEvent.ACTION_UP) toggleMute();
+        int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_POINTER_DOWN) {
+            // A second finger is not a drag (and must not steal a pinch on the home).
+            cancelPress(false);
             return true;
         }
-        if (hitsBubble(ev.getX(), ev.getY())) {
-            if (ev.getAction() == MotionEvent.ACTION_UP) toggle();
+        if (action == MotionEvent.ACTION_DOWN) {
+            downOnBubble = hitsBubble(ev.getX(), ev.getY()) || (kids && hitsMute(ev.getX(), ev.getY()));
+            downOnMute = kids && hitsMute(ev.getX(), ev.getY());
+            if (!downOnBubble) return false;
+            downX = ev.getX();
+            downY = ev.getY();
+            downAt = ev.getEventTime();
+            startLeft = bubble.left;
+            startTop = bubble.top;
+            dragging = false;
+            snapping = false;
             return true;
         }
-        return super.onTouchEvent(ev);
+        if (!downOnBubble && !dragging) return false;
+        if (action == MotionEvent.ACTION_MOVE) {
+            float dx = ev.getX() - downX, dy = ev.getY() - downY;
+            if (!dragging && NovaPlace.movedPast(dx, dy, slop)) {
+                // Moved before the long-press: not a drag and not a tap. Start a row scroll off the bubble.
+                downOnBubble = false;
+                downOnMute = false;
+                return false;
+            }
+            if (!dragging && android.os.SystemClock.uptimeMillis() - downAt >= longPressMs) {
+                startDrag();
+            }
+            if (dragging) {
+                moveBubble(startLeft + dx, startTop + dy);
+                return true;
+            }
+            return true;
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            boolean wasDrag = dragging;
+            boolean mute = downOnMute;
+            downOnBubble = false;
+            downOnMute = false;
+            dragging = false;
+            if (action == MotionEvent.ACTION_UP && wasDrag) {
+                snapGently();
+                return true;
+            }
+            if (action == MotionEvent.ACTION_UP && !wasDrag && !NovaPlace.movedPast(ev.getX() - downX, ev.getY() - downY, slop)) {
+                if (mute) toggleMute();
+                else toggle();
+            }
+            return true;
+        }
+        return true;
+    }
+
+    void startDrag() {
+        if (dragging) return;
+        dragging = true;
+        snapping = false;
+        try { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); } catch (Exception ignored) { }
+    }
+
+    void cancelPress(boolean snapIfDrag) {
+        downOnBubble = false;
+        downOnMute = false;
+        if (dragging) {
+            dragging = false;
+            if (snapIfDrag) snapGently();
+            else placeClamped();
+        }
+    }
+
+    void moveBubble(float left, float top) {
+        int w = getWidth(), h = getHeight();
+        float minX = insetL() + margin, minY = insetT() + margin;
+        float maxX = w - insetR() - margin - bubbleSize, maxY = h - insetB() - margin - bubbleSize;
+        left = NovaPlace.clamp(left, minX, Math.max(minX, maxX));
+        top = NovaPlace.clamp(top, minY, Math.max(minY, maxY));
+        bubble.set(left, top, left + bubbleSize, top + bubbleSize);
+        layoutParts(w, h);
+        requestLayout();
+        invalidate();
+    }
+
+    void snapGently() {
+        int w = getWidth(), h = getHeight();
+        float[] to = NovaPlace.snap(bubble.left, bubble.top, bubbleSize, w, h, insetL(), insetT(), insetR(), insetB(), margin);
+        snapX0 = bubble.left;
+        snapY0 = bubble.top;
+        snapX1 = to[0];
+        snapY1 = to[1];
+        snapStart = android.os.SystemClock.uptimeMillis();
+        snapping = true;
+        savePlace(snapX1, snapY1);
+        startAnim();
+        tickSnap(snapStart);
+    }
+
+    void tickSnap(long now) {
+        if (!snapping) return;
+        float u = (now - snapStart) / 200f;
+        if (u >= 1f) { u = 1f; snapping = false; }
+        // DecelerateInterpolator-style: 1 - (1-u)^2
+        u = 1f - (1f - u) * (1f - u);
+        moveBubble(snapX0 + (snapX1 - snapX0) * u, snapY0 + (snapY1 - snapY0) * u);
+    }
+
+    void placeClamped() {
+        int w = getWidth(), h = getHeight();
+        float[] to = NovaPlace.snap(bubble.left, bubble.top, bubbleSize, w, h, insetL(), insetT(), insetR(), insetB(), margin);
+        bubble.set(to[0], to[1], to[0] + bubbleSize, to[1] + bubbleSize);
+        savePlace(to[0], to[1]);
+        layoutParts(w, h);
+        requestLayout();
+        invalidate();
+    }
+
+    void savePlace(float x, float y) {
+        if (prefs == null) return;
+        int w = getWidth(), h = getHeight();
+        boolean left = NovaPlace.leftSide(x, bubbleSize, w, insetL(), insetR(), margin);
+        float frac = NovaPlace.yFrac(y, bubbleSize, h, insetT(), insetB(), margin);
+        prefs.edit().putBoolean(PREF_LEFT, left).putFloat(PREF_Y, frac).apply();
+    }
+
+    void styleGlass(android.view.View v, int fill, int stroke, float radius, float strokeW) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(fill);
+        d.setCornerRadius(radius);
+        d.setStroke(Math.max(1, Math.round(strokeW)), stroke);
+        v.setBackground(d);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {

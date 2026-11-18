@@ -1093,6 +1093,25 @@ public class CatalogTest {
         // Adult help is unchanged and still explains the PIN
         check(NovaHelp.answer("Kids mode", false).toLowerCase().contains("pin"), "adult help still mentions the PIN");
         check(!KidsPlay.kidsStoreNeedsPin(candy, false, false, false), "0.10.53 does not change no-PIN age-filtered GET");
+
+        // Bubble snap: nearer vertical edge, Y kept and clamped, 0..1 fraction survives a resize.
+        float[] s = NovaPlace.snap(700, 400, 96, 800, 1280, 0, 0, 0, 0, 14);
+        check(s[0] == 800 - 14 - 96 && s[1] == 400, "snap to the nearer right edge, keep Y");
+        s = NovaPlace.snap(40, 400, 96, 800, 1280, 0, 0, 0, 0, 14);
+        check(s[0] == 14 && s[1] == 400, "snap to the nearer left edge, keep Y");
+        s = NovaPlace.snap(100, -20, 96, 800, 1280, 0, 40, 0, 60, 14);
+        check(s[1] == 40 + 14, "Y clamps to the top inset plus margin");
+        s = NovaPlace.snap(100, 2000, 96, 800, 1280, 0, 40, 0, 60, 14);
+        check(s[1] == 1280 - 60 - 14 - 96, "Y clamps to the bottom inset plus margin");
+        check(NovaPlace.leftSide(14, 96, 800, 0, 0, 14) && !NovaPlace.leftSide(800 - 14 - 96, 96, 800, 0, 0, 14), "side from X");
+        check(NovaPlace.xForSide(true, 96, 800, 0, 0, 14) == 14 && NovaPlace.xForSide(false, 96, 800, 0, 0, 14) == 800 - 14 - 96, "X for a side");
+        float frac = NovaPlace.yFrac(400, 96, 1280, 0, 0, 14);
+        check(frac > 0f && frac < 1f, "mid-screen Y is a mid fraction");
+        float y2 = NovaPlace.yFromFrac(frac, 96, 1920, 0, 0, 14);
+        check(Math.abs(NovaPlace.yFrac(y2, 96, 1920, 0, 0, 14) - frac) < 1e-5, "Y fraction survives a taller screen");
+        check(NovaPlace.yFromFrac(1f, 96, 1280, 0, 0, 14) == 1280 - 14 - 96, "default fraction 1 is the bottom");
+        check(!NovaPlace.movedPast(4, 4, 8) && NovaPlace.movedPast(10, 0, 8), "touch slop");
+        check(NovaPlace.clamp(5, 0, 3) == 3 && NovaPlace.clamp(-1, 0, 3) == 0, "clamp");
     }
 
 }

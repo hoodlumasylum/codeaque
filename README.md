@@ -39,6 +39,10 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 **Tell me a joke.** A button tells a pre-written, offline, age-6-friendly joke (no insults, toilet humour, scares or religion) and speaks it aloud.
 
+**Chat panel.** The open panel is titled Chat (not Nova). It uses a glassy dark card with a soft gold edge so it sits closer to the home tiles.
+
+**Move her about.** Long-press the bubble, then drag her. She snaps gently to the nearest left or right edge and remembers the spot. A short tap still opens or closes Chat. A swipe that moves before the long-press is not a drag, so it does not fight tapping or a pinch. A swipe that starts on the bubble cannot be handed to the game row (she sits above the home), so start a row scroll off the bubble.
+
 These changes have not been tried on a real phone, a K56, or a Win600.
 
 Devices already on 0.10.48 cannot update through Kids-mode Update: use the parent PIN to leave Kids mode, then Update, then turn Kids back on.

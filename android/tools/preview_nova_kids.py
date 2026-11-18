@@ -77,9 +77,13 @@ def circle_bubble(head, size, ring=8):
     ImageDraw.Draw(canvas).ellipse((8, 8, 8 + size - 1, 8 + size - 1), outline=(232, 200, 114, 255), width=ring)
     return canvas
 
-def paste_bubble(bg, bubble, margin=36):
-    x = bg.width - bubble.width - margin
-    y = bg.height - bubble.height - margin
+def paste_bubble(bg, bubble, margin=36, side="right", y_frac=1.0):
+    if side == "left":
+        x = margin
+    else:
+        x = bg.width - bubble.width - margin
+    miny, maxy = margin, bg.height - bubble.height - margin
+    y = round(miny + max(0.0, min(1.0, y_frac)) * (maxy - miny))
     bg.alpha_composite(bubble, (x, y))
     return x, y
 
@@ -112,28 +116,45 @@ def wrap(d, text, x, y, font_, fill, maxw, lh):
     return yy
 
 def kids_panel(w, h, title, body, talking=False):
-    card = Image.new("RGBA", (w, h), (20, 22, 28, 242))
+    # Glassy dark card: home shows through, soft gold edge, title is just "Chat".
+    card = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(card)
-    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=22, fill=(20, 22, 28, 242), outline=(232, 200, 114, 160), width=2)
-    d.text((24, 18), "Nova", font=font(34, True), fill=(244, 228, 193, 255))
-    d.text((24, 60), "Games, learning and jokes", font=font(16), fill=(184, 168, 138, 255))
-    d.rounded_rectangle((w - 170, 22, w - 24, 58), radius=8, fill=(42, 36, 32, 255), outline=(232, 200, 114, 180), width=1)
-    d.text((w - 154, 30), "Sound on", font=font(16, True), fill=(232, 200, 114, 255))
+    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=28, fill=(20, 26, 34, 184), outline=(232, 200, 114, 102), width=2)
+    d.text((24, 20), "Chat", font=font(30, True), fill=(242, 246, 250, 255))
+    d.rounded_rectangle((w - 170, 18, w - 24, 56), radius=16, fill=(32, 40, 48, 90), outline=(232, 200, 114, 68), width=1)
+    d.text((w - 154, 26), "Sound on", font=font(16, True), fill=(232, 200, 114, 255))
     chips = ["Find a game", "How do I play?", "Learning"]
-    x, y = 24, 100
+    x, y = 24, 80
     for c in chips:
         tw = d.textlength(c, font=font(16))
-        d.rounded_rectangle((x, y, x + tw + 22, y + 36), radius=8, fill=(42, 36, 32, 255))
-        d.text((x + 11, y + 8), c, font=font(16), fill=(244, 228, 193, 255))
-        x += int(tw) + 30
-    d.rounded_rectangle((24, 152, w - 24, 210), radius=12, fill=(42, 36, 32, 255), outline=(232, 200, 114, 200), width=2)
-    d.text((44, 168), "Tell me a joke", font=font(22, True), fill=(232, 200, 114, 255))
-    d.rounded_rectangle((24, 226, w - 24, 268), radius=8, fill=(28, 26, 24, 255))
-    d.text((34, 236), "Ask about games or learning…", font=font(16), fill=(184, 168, 138, 180))
-    yy = wrap(d, body, 24, 288, font(18), (232, 224, 212, 255), w - 48, 26)
+        d.rounded_rectangle((x, y, x + tw + 24, y + 36), radius=16, fill=(32, 40, 48, 90), outline=(232, 200, 114, 68), width=1)
+        d.text((x + 12, y + 8), c, font=font(16), fill=(242, 246, 250, 255))
+        x += int(tw) + 32
+    d.rounded_rectangle((24, 132, w - 24, 190), radius=18, fill=(32, 40, 48, 90), outline=(232, 200, 114, 102), width=2)
+    d.text((44, 148), "Tell me a joke", font=font(22, True), fill=(232, 200, 114, 255))
+    d.rounded_rectangle((24, 206, w - 24, 248), radius=14, fill=(16, 24, 32, 102), outline=(232, 200, 114, 51), width=1)
+    d.text((34, 216), "Ask about games or learning…", font=font(16), fill=(184, 192, 200, 160))
+    wrap(d, body, 24, 268, font(18), (236, 240, 244, 255), w - 48, 26)
     d.text((24, h - 52), "Ask          Close", font=font(16, True), fill=(232, 200, 114, 255))
-    d.text((24, h - 28), "I can help with games, learning, or a joke. For anything else, ask a grown-up.", font=font(13), fill=(138, 128, 112, 255))
+    d.text((24, h - 28), "I can help with games, learning, or a joke. For anything else, ask a grown-up.", font=font(13), fill=(138, 152, 164, 255))
     return card
+
+def place_panel(bg, card, bubble_xy, bubble_w, gap=16):
+    bx, by = bubble_xy
+    # Open on the opposite side of the bubble.
+    if bx < bg.width * 0.5:
+        x = bx + bubble_w + gap
+    else:
+        x = max(36, bx - gap - card.width)
+    y = max(36, (bg.height - card.height) // 2)
+    # Soft blur of the home under the glass
+    region = bg.crop((x, y, x + card.width, y + card.height)).filter(ImageFilter.GaussianBlur(14))
+    mask = Image.new("L", card.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, card.width - 1, card.height - 1), radius=28, fill=255)
+    glass = Image.new("RGBA", bg.size, (0, 0, 0, 0))
+    glass.paste(region, (x, y), mask)
+    bg.alpha_composite(glass)
+    bg.alpha_composite(card, (x, y))
 
 def main():
     DIST.mkdir(parents=True, exist_ok=True)
@@ -151,23 +172,33 @@ def main():
 
     exp = kids_home()
     face = circle_bubble(talk, 200, ring=7)
-    paste_bubble(exp, face, margin=40)
-    card = kids_panel(1100, 740, "Nova",
+    bx = paste_bubble(exp, face, margin=40)
+    card = kids_panel(1100, 740, "Chat",
         "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.")
-    exp.alpha_composite(card, (48, (exp.height - card.height) // 2))
+    place_panel(exp, card, bx, face.width)
     out2 = DIST / "preview-0.10.53-kids-expanded.png"
     exp.convert("RGB").save(out2, "PNG")
     print("wrote", out2, exp.size)
 
     joke = kids_home()
     face2 = circle_bubble(talk, 200, ring=7)
-    paste_bubble(joke, face2, margin=40)
-    card2 = kids_panel(1100, 740, "Nova",
+    bx = paste_bubble(joke, face2, margin=40)
+    card2 = kids_panel(1100, 740, "Chat",
         "Why did the banana go to the doctor? It wasn't peeling well.")
-    joke.alpha_composite(card2, (48, (joke.height - card2.height) // 2))
+    place_panel(joke, card2, bx, face2.width)
     out3 = DIST / "preview-0.10.53-kids-joke.png"
     joke.convert("RGB").save(out3, "PNG")
     print("wrote", out3)
+
+    moved = kids_home()
+    face3 = circle_bubble(idle, 200, ring=7)
+    bx = paste_bubble(moved, face3, margin=40, side="left", y_frac=0.45)
+    card3 = kids_panel(1100, 740, "Chat",
+        "Hi, I'm Nova! I can help you find a game, talk about the Learning games, or tell you a joke. If you need anything else, ask a grown-up.")
+    place_panel(moved, card3, bx, face3.width)
+    out4 = DIST / "preview-0.10.53-kids-moved.png"
+    moved.convert("RGB").save(out4, "PNG")
+    print("wrote", out4)
 
 if __name__ == "__main__":
     main()
