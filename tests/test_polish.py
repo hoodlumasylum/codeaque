@@ -208,7 +208,8 @@ def test_settings_rows_for_sound_and_animations_work_from_the_keyboard(app, tmp_
         assert ui.mode == "setup"
         rows = [r for r in ui.backend.setupRows()]
         idx = [r["kind"] for r in rows].index("anim")
-        for _ in range(idx):
+        steps = sum(1 for r in rows[:idx] if r["kind"] not in ("info", "heading", "progress"))
+        for _ in range(steps):
             ui.key(Qt.Key_Down, 20)
         assert ui.backend.animations is True
         ui.key(Qt.Key_Return)

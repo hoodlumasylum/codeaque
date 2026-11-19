@@ -8,6 +8,7 @@ Item {
     property color accent: Theme.redBright       // the selection border (the Studio uses gold)
     property color selColor: "#2a0b10"
     property color valueColor: Theme.redBright
+    property real textScale: 1                 // setup uses a slightly larger size for easier reading
     property alias model: lv.model
     property alias currentIndex: lv.currentIndex
     property alias count: lv.count
@@ -22,13 +23,13 @@ Item {
             j += step
             if (j < 0 || j >= n) { j = i; break }
             var row = lv.model[j]
-            if (row && row.kind !== "info" && row.kind !== "progress") break
+            if (row && row.kind !== "info" && row.kind !== "progress" && row.kind !== "heading") break
         }
         lv.currentIndex = j
     }
     function firstSelectable() {
         for (var i = 0; i < lv.count; i++) {
-            if (lv.model[i] && lv.model[i].kind !== "info" && lv.model[i].kind !== "progress") { lv.currentIndex = i; return }
+            if (lv.model[i] && lv.model[i].kind !== "info" && lv.model[i].kind !== "progress" && lv.model[i].kind !== "heading") { lv.currentIndex = i; return }
         }
     }
     ListView {
@@ -44,17 +45,31 @@ Item {
             required property var modelData
             required property int index
             readonly property bool isBar: modelData.kind === "progress"      // a percentage bar (unpacking): not selectable
-            readonly property bool isInfo: modelData.kind === "info" || isBar
+            readonly property bool isHeading: modelData.kind === "heading"
+            readonly property bool isInfo: modelData.kind === "info" || isBar || isHeading
+            readonly property bool needsInstall: !!(modelData.needsInstall)
             readonly property bool sel: ListView.isCurrentItem && !isInfo
             readonly property bool two: !!modelData.detail
             readonly property bool primary: modelData.kind === "done"   // the big red DONE / CONTINUE rows
             width: lv.width
-            height: isBar ? 112 * ml.u : isInfo ? Math.max(34 * ml.u, infoText.implicitHeight + 12 * ml.u)
-                           : (modelData.image ? 112 * ml.u : (two ? 56 * ml.u + detailText.implicitHeight : 62 * ml.u))
+            height: isBar ? 112 * ml.u : isHeading ? Math.max(40 * ml.u, infoText.implicitHeight + 14 * ml.u)
+                           : isInfo ? Math.max(34 * ml.u, infoText.implicitHeight + 12 * ml.u)
+                           : (modelData.image ? 112 * ml.u : (two ? 56 * ml.u * ml.textScale + detailText.implicitHeight : 62 * ml.u * ml.textScale))
             radius: 10 * ml.u
             color: isBar ? "#121420" : primary ? (sel ? "#d8222c" : "#a8121b") : (sel ? ml.selColor : (isInfo ? "transparent" : "#121420"))
-            border.width: sel ? 3 * ml.u : (isInfo && !isBar ? 0 : 1.5 * ml.u)
-            border.color: sel ? (primary ? "white" : ml.accent) : (primary ? "#ff5a62" : "#262a3c")
+            border.width: isHeading ? 0 : (needsInstall ? (sel ? 4 * ml.u : 3 * ml.u) : (sel ? 3 * ml.u : (isInfo && !isBar ? 0 : 1.5 * ml.u)))
+            border.color: needsInstall ? Theme.yellow : (sel ? (primary ? "white" : ml.accent) : (primary ? "#ff5a62" : "#262a3c"))
+            // Focused "needs install" rows keep a clear white inner ring so the cursor is obvious on the yellow box.
+            Rectangle {
+                visible: row.sel && row.needsInstall && !row.primary
+                anchors.fill: parent
+                anchors.margins: 6 * ml.u
+                radius: Math.max(0, parent.radius - 4 * ml.u)
+                color: "transparent"
+                border.width: 4 * ml.u
+                border.color: "white"
+                z: 4
+            }
             Item {                      // the percentage bar: file name, bar, "63%", bytes and file counts
                 id: bar
                 visible: row.isBar
@@ -131,8 +146,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 wrapMode: Text.Wrap
                 text: modelData.title
-                color: Theme.dim
-                font.pixelSize: 18 * ml.u
+                color: row.isHeading ? Theme.yellow : Theme.dim
+                font.pixelSize: (row.isHeading ? 22 : 18) * ml.u * ml.textScale
+                font.bold: row.isHeading
             }
             Image {      // optional picture on the left (the cover picker's candidates)
                 id: rowImg
@@ -148,36 +164,59 @@ Item {
                 height: parent.height - 12 * ml.u
                 width: visible ? 96 * ml.u : 0
             }
+            Rectangle {
+                id: installTag
+                visible: row.needsInstall && !row.isInfo
+                z: 5
+                anchors.right: parent.right
+                anchors.rightMargin: 14 * ml.u
+                anchors.top: parent.top
+                anchors.topMargin: (row.two ? 8 : 0) * ml.u
+                anchors.verticalCenter: row.two ? undefined : parent.verticalCenter
+                height: 28 * ml.u * ml.textScale
+                width: tagLabel.implicitWidth + 16 * ml.u
+                radius: 6 * ml.u
+                color: Theme.yellow
+                Text {
+                    id: tagLabel
+                    anchors.centerIn: parent
+                    text: "INSTALL"
+                    color: "#1a1200"
+                    font.pixelSize: 15 * ml.u * ml.textScale
+                    font.bold: true
+                    font.letterSpacing: 1 * ml.u
+                }
+            }
             Text {
                 id: titleText
                 visible: !row.isInfo
                 anchors.left: parent.left
                 anchors.leftMargin: (modelData.image ? 120 : 22) * ml.u
-                anchors.right: valueText.left
+                anchors.right: valueText.visible ? valueText.left : (installTag.visible ? installTag.left : parent.right)
                 anchors.rightMargin: 12 * ml.u
                 anchors.top: parent.top
                 anchors.topMargin: (row.two ? 9 : 0) * ml.u
-                height: row.two ? 36 * ml.u : parent.height
+                height: row.two ? 36 * ml.u * ml.textScale : parent.height
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
                 text: modelData.title
                 color: row.sel ? "white" : "#e6e8f2"
-                font.pixelSize: 24 * ml.u
+                font.pixelSize: 26 * ml.u * ml.textScale
                 font.bold: true
             }
             Text {
                 id: valueText
                 visible: !row.isInfo && !!modelData.value
-                anchors.right: parent.right
-                anchors.rightMargin: 22 * ml.u
+                anchors.right: installTag.visible ? installTag.left : parent.right
+                anchors.rightMargin: (installTag.visible ? 10 : 22) * ml.u
                 anchors.top: parent.top
                 anchors.topMargin: (row.two ? 9 : 0) * ml.u
-                height: row.two ? 36 * ml.u : parent.height
+                height: row.two ? 36 * ml.u * ml.textScale : parent.height
                 verticalAlignment: Text.AlignVCenter
                 text: modelData.value ? modelData.value : ""
                 color: modelData.tone === "ok" ? Theme.green : modelData.tone === "warn" ? Theme.yellow : modelData.tone === "bad" ? Theme.redBright
                        : (modelData.value === "Not installed" || modelData.value === "Needs BIOS") ? Theme.yellow : (modelData.value === "Ready" ? Theme.green : ml.valueColor)
-                font.pixelSize: 20 * ml.u
+                font.pixelSize: 20 * ml.u * ml.textScale
                 font.bold: true
             }
             Text {
@@ -194,7 +233,7 @@ Item {
                 maximumLineCount: modelData.kind === "ctl" ? 8 : 3
                 elide: Text.ElideRight
                 color: Theme.dim
-                font.pixelSize: 16 * ml.u
+                font.pixelSize: 18 * ml.u * ml.textScale
             }
             MouseArea {
                 anchors.fill: parent

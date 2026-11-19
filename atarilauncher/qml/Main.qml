@@ -52,6 +52,8 @@ Window {
     property string emuBack: "library"       // where Back from the Emulators page goes, while an import started there
     property string updBack: "library"       // where Back from the Update screen goes: library | setup
     property string ctlBack: "library"       // where Back from the Controls page goes: library | emulators
+    property string pageBack: "library"      // where Back from a generic list page goes: library | setup | emulators
+    property string setupFocusKey: ""        // kind+id of the setup row to keep focused after a refresh
     property string pageName: "help"          // help | fix | winform | winchoose | winwork (the generic list page)
     property string oskPurpose: "search"      // search | winname (the on-screen keyboard is shared)
     property var browseTarget: ({})
@@ -227,11 +229,25 @@ Window {
         backend.setQuery(t)
         grid.currentIndex = 0
     }
+    function setupRowKey(r) {
+        return r ? (r.kind + "\t" + (r.id || "")) : ""
+    }
     function refreshSetup(keep) {
-        var idx = setupList.currentIndex
+        var key = setupFocusKey
+        var row = setupList.model[setupList.currentIndex]
+        if (keep && row) key = setupRowKey(row)
         setupList.model = backend.setupRows()
-        if (keep) setupList.currentIndex = Math.min(idx, setupList.count - 1)
-        else setupList.firstSelectable()
+        if (keep && key) {
+            var found = -1
+            for (var i = 0; i < setupList.count; i++) {
+                if (setupRowKey(setupList.model[i]) === key) { found = i; break }
+            }
+            if (found >= 0) setupList.currentIndex = found
+            else setupList.currentIndex = Math.min(Math.max(0, setupList.currentIndex), Math.max(0, setupList.count - 1))
+            setupFocusKey = key
+        } else {
+            setupList.firstSelectable()
+        }
     }
     function openSetup() { refreshSetup(false); mode = "setup" }
     // Esc / B / the DONE rows / the DONE button: leave the setup page for the main screen.
@@ -251,6 +267,12 @@ Window {
     }
     // ---- generic list pages: help, fix my game, add a Windows game
     function openPage(name) {
+        if (mode === "setup") {
+            pageBack = "setup"
+            var row = setupList.model[setupList.currentIndex]
+            setupFocusKey = setupRowKey(row)
+        } else if (mode === "emulators") pageBack = "emulators"
+        else if (mode !== "page") pageBack = "library"
         pageName = name
         pageList.model = backend.pageRows(name)
         pageList.firstSelectable()
@@ -265,9 +287,13 @@ Window {
     }
     function leavePage() {
         if (pageName === "winwork") backend.pageActivate("winwork", "cancel")
-        mode = "library"
-        buildLists()
-        area = grid.count > 0 ? "grid" : "tiles"
+        if (pageBack === "setup") { refreshSetup(true); mode = "setup" }
+        else if (pageBack === "emulators") { refreshEmus(true); mode = "emulators" }
+        else {
+            mode = "library"
+            buildLists()
+            area = grid.count > 0 ? "grid" : "tiles"
+        }
     }
     function handleAction(a) {
         if (a === "" || a === undefined) return
@@ -1632,7 +1658,9 @@ Window {
             }
             MenuList {
                 id: setupList
+                objectName: "setupList"
                 u: win.u
+                textScale: 1.15
                 anchors.top: ntfs.bottom
                 anchors.topMargin: 14 * win.u
                 anchors.bottom: parent.bottom
@@ -1798,7 +1826,10 @@ Window {
             }
             Connections {
                 target: backend
-                function onPageChanged() { if (win.mode === "page") win.refreshPage(true) }
+                function onPageChanged() {
+                    if (win.mode === "page") win.refreshPage(true)
+                    else if (win.mode === "setup") win.refreshSetup(true)
+                }
                 function onPageRequested(name) {
                     if (name === "close") { if (win.mode === "page" || win.mode === "browse") win.leavePage() }
                     else win.openPage(name)

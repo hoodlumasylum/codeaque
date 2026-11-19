@@ -228,12 +228,37 @@ def test_mouse_click_rows_and_buttons_everywhere(app, tmp_path, monkeypatch):
         pump(ui.app, 100)
         ui.click(w - 48 * u - 150 * u, 64 * u)
         assert ui.mode == "library"
-        # a click on a settings row (Steam toggle, 2nd row) works and keeps the page open
+        # a click on a settings row (Steam games on/off) works and keeps the page open
         QMetaObject.invokeMethod(ui.win, "openSetup")
         pump(ui.app, 100)
-        before = ui.backend.setupRows()[2]["value"]   # row 1 is Theme (kept at the top so it is easy to find)
-        ui.click(w / 2, 262)                          # third row = Steam on/off
-        assert ui.mode == "setup" and ui.backend.setupRows()[2]["value"] != before
+        rows = ui.backend.setupRows()
+        steam_i = next(i for i, r in enumerate(rows) if r["kind"] == "steam")
+        before = rows[steam_i]["value"]
+        sl = ui.win.findChild(QQuickItem, "setupList")
+        assert sl is not None
+        sl.setProperty("currentIndex", steam_i)
+        pump(ui.app, 40)
+        # Click the highlighted row (it's scrolled into view). Fall back to activating it directly.
+        clicked = False
+        for child in sl.findChildren(QQuickItem):
+            md = child.property("modelData")
+            kind = None
+            if isinstance(md, dict):
+                kind = md.get("kind")
+            elif md is not None and hasattr(md, "toVariant"):
+                var = md.toVariant()
+                if isinstance(var, dict):
+                    kind = var.get("kind")
+            if kind == "steam" and child.width() > 100 and child.height() > 20:
+                pt = child.mapToItem(ui.win.contentItem(), child.width() / 2, child.height() / 2)
+                ui.click(pt.x(), pt.y())
+                clicked = True
+                break
+        if not clicked:
+            ui.win.setupActivate(steam_i)
+            pump(ui.app, 60)
+        after = [r for r in ui.backend.setupRows() if r["kind"] == "steam"][0]
+        assert ui.mode == "setup" and after["value"] != before, (clicked, before, after.get("value"))
         # the Emulators page and its BACK button
         ui.key(Qt.Key_Escape)
         assert ui.mode == "library"

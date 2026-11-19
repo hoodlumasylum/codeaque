@@ -1613,11 +1613,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.76") && NovaAppVer.CODE == 176, "shipping version is 0.10.76");
-        check(NovaAppVer.label().equals("CodeAque 0.10.76")
-                && NovaAppVer.label("0.10.76").equals("CodeAque 0.10.76")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.76")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.76"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.77") && NovaAppVer.CODE == 177, "shipping version is 0.10.77");
+        check(NovaAppVer.label().equals("CodeAque 0.10.77")
+                && NovaAppVer.label("0.10.77").equals("CodeAque 0.10.77")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.77")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.77"), "version label for Chat and Nova's tab");
 
         // 0.10.76: adult top-bar camera (B612 via Play Store only); hidden in Kids mode.
         check(CameraApp.PKG.equals("com.linecorp.b612.android"), "B612 package id");
@@ -1666,7 +1666,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "a slow Heart synth does not get an extra wait");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.76") && NovaAppVer.CODE == 176, "shipping version is 0.10.76");
+        check(NovaAppVer.NAME.equals("0.10.77") && NovaAppVer.CODE == 177, "shipping version is 0.10.77");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1864,7 +1864,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.76") && NovaAppVer.CODE == 176, "shipping version is 0.10.76");
+        check(NovaAppVer.NAME.equals("0.10.77") && NovaAppVer.CODE == 177, "shipping version is 0.10.77");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

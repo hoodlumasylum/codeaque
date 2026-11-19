@@ -708,10 +708,13 @@ class Backend(QObject):
 
     def _rec_rows(self) -> list:
         why = recorder.why_not(self.cfg)
-        return [
-            {"kind": "recnow", "title": "Stop recording" if self._rec.active else "Start recording (F9)",
+        recnow = {"kind": "recnow", "title": "Stop recording" if self._rec.active else "Start recording (F9)",
              "value": "ON" if self._rec.active else ("" if not why else "Needs setup"),
-             "detail": why or "Records the whole screen to an MP4. F9 (or Guide + X on a controller) starts and stops it, even inside a game."},
+             "detail": why or "Records the whole screen to an MP4. F9 (or Guide + X on a controller) starts and stops it, even inside a game."}
+        if self._rec_needs_program(why):
+            recnow["needsInstall"] = True
+        return [
+            recnow,
             {"kind": "recaudio", "title": "Recording sound", "value": recorder.AUDIO_LABELS.get(self.cfg.rec_audio, self.cfg.rec_audio),
              "detail": "Press Enter to change: none, game / desktop sound, microphone, or both."},
             {"kind": "recquality", "title": "Recording quality", "value": self.cfg.rec_quality.title(),
@@ -1000,6 +1003,21 @@ class Backend(QObject):
             elif not appinstall.is_installed(t, cfg=self.cfg):
                 specs.append(i)
         return specs
+
+    def _essentials_missing(self) -> bool:
+        """True when at least one essential emulator program is not installed yet."""
+        for i in installer.ESSENTIAL_IDS:
+            t = appinstall.TARGETS.get(i)
+            if t is not None and not appinstall.is_installed(t, cfg=self.cfg):
+                return True
+        return False
+
+    def _rec_needs_program(self, why: str | None = None) -> bool:
+        """True when recording cannot start because ffmpeg or wf-recorder still needs installing."""
+        if why is None:
+            why = recorder.why_not(self.cfg)
+        low = (why or "").lower()
+        return "ffmpeg is not installed" in low or "wf-recorder" in low
 
     @Slot()
     def installEssentials(self) -> None:
@@ -6362,11 +6380,17 @@ class Backend(QObject):
         rows.append({"kind": "sgdbkey", "title": "SteamGridDB key (optional, for more covers)",
                      "value": "Set" if self.cfg.steamgriddb_key else "Not set",
                      "detail": "Free at steamgriddb.com > Preferences > API. Type it here with the keyboard, or put it in config.toml under [covers]. Leave empty to skip."})
-        rows.append({"kind": "installmenu", "title": "Install emulators and apps", "value": "",
-                     "detail": "One press: essentials only, or everything. Missing programs also show INSTALL on their own tile."})
-        rows.append({"kind": "steampage", "title": "Steam: install, rescan, drives",
+        inst = {"kind": "installmenu", "title": "Install emulators and apps", "value": "",
+                     "detail": "One press: essentials only, or everything. Missing programs also show INSTALL on their own tile."}
+        if self._essentials_missing():
+            inst["needsInstall"] = True
+        rows.append(inst)
+        steam_row = {"kind": "steampage", "title": "Steam: install, rescan, drives",
                      "value": "Installed" if self.steam_installed() else "Not installed",
-                     "detail": "Installs Steam for you, rescans your Steam games, and says where to keep them."})
+                     "detail": "Installs Steam for you, rescans your Steam games, and says where to keep them."}
+        if not self.steam_installed():
+            steam_row["needsInstall"] = True
+        rows.append(steam_row)
         rows += self._intro_rows()
         rows.append({"kind": "wifipage", "title": "WiFi", "value": self.wifi.summary or "",
                      "detail": "Find a network, type its password with the on-screen keyboard, see if it connected, or forget a network. "
@@ -6433,6 +6457,14 @@ class Backend(QObject):
             rows.append({"kind": "system", "id": sc.id, "title": sc.name,
                          "value": (f"{n} game" + ("" if n == 1 else "s")) if have else "",
                          "detail": folder})
+        body = rows[1:]
+        need = [r for r in body if r.get("needsInstall")]
+        rest = [r for r in body if not r.get("needsInstall")]
+        rows = [self._done_row()]
+        if need:
+            rows.append({"kind": "heading", "title": "Needs installing"})
+            rows.extend(need)
+        rows.extend(rest)
         rows.append(self._done_row())
         return rows
 

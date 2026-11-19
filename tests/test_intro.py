@@ -540,7 +540,7 @@ def test_choose_intro_video_with_the_big_button_picker(app, tmp_path, monkeypatc
         assert ui.mode == "setup"
         rows = ui.backend.setupRows()
         target = next(i for i, r in enumerate(rows) if r["kind"] == "introchoose")
-        for _ in range(sum(1 for r in rows[:target] if r["kind"] != "info")):         # walk down with the keyboard
+        for _ in range(sum(1 for r in rows[:target] if r["kind"] not in ("info", "heading", "progress"))):  # walk down (skip headings)
             ui.key(Qt.Key_Down, 20)
         ui.key(Qt.Key_Return)
         assert ui.mode == "browse"

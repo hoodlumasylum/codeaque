@@ -41,6 +41,6 @@ def test_page_tabs(app, tmp_path, monkeypatch):
         side = side.toVariant() if hasattr(side, "toVariant") else side
         keys = [s["key"] for s in side]
         assert "__world" in keys and "__theme" in keys
-        assert b.setupRows()[1]["kind"] == "themepage"
+        assert any(r.get("kind") == "themepage" for r in b.setupRows())
     finally:
         ui.close()

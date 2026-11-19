@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.77
+
+**The first-run setup screen (and Settings) now groups anything that still needs installing at the top.** Rows whose program is missing — Start recording (F9) when ffmpeg (or wf-recorder on Wayland) is not installed, Install emulators and apps while an essential emulator is missing, and Steam: install, rescan, drives when Steam is not installed — sit under a small **Needs installing** heading, each in a yellow box with a clear **INSTALL** tag. Rows that are already fine stay in their usual order below.
+
+**The focused row stays obvious, even on a yellow box.** A white inner ring sits inside the yellow outline so the cursor is still easy to see. After an install finishes, that row drops the yellow box and returns to its normal place, and the cursor stays on it rather than jumping. Setup text is a little larger so it is easier to read. Controller and keyboard up/down still skip the heading and work as before.
+
+Untested: unit tests passed and an offscreen preview of the setup screen was rendered here. This has not been run on Code's PC, a living-room TV, or with a real controller. Please try this install and see that missing items are grouped at the top with a yellow INSTALL box, that the highlight is clear on a yellow row, that a finished install puts the row back in its normal place without the cursor jumping, and that you can still move with the pad or keyboard and leave with DONE / CONTINUE or Esc / B.
+
 ## What's new in 0.10.76
 
 **A camera icon sits in the top bar, next to Wi-Fi.** In adult mode, tap it to open the B612 camera app if it is already installed. If it is not installed, it opens B612's Google Play page (never a sideload or a bundled APK). The glyph is a generic camera, not B612's logo. Size and placement match the existing Wi-Fi icon, and the tab-strip geometry from the 0.10.66 jitter fix is unchanged.
