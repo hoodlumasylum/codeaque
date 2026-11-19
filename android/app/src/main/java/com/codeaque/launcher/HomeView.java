@@ -1808,6 +1808,13 @@ public class HomeView extends View {
             case "phone":
                 ir.set(x0 + 7 * u, y0 + 2 * u, x0 + 17 * u, y0 + 22 * u); c.drawRoundRect(ir, 3 * u, 3 * u, stroke);
                 c.drawLine(x0 + 10 * u, y0 + 18 * u, x0 + 14 * u, y0 + 18 * u, stroke); break;
+            case "chat":   // generic speech bubble; not a third-party logo
+                ir.set(x0 + 3 * u, y0 + 4 * u, x0 + 21 * u, y0 + 16 * u); c.drawRoundRect(ir, 2.5f * u, 2.5f * u, stroke);
+                path.moveTo(x0 + 7 * u, y0 + 16 * u); path.lineTo(x0 + 5 * u, y0 + 21 * u); path.lineTo(x0 + 11 * u, y0 + 16 * u);
+                c.drawPath(path, stroke);
+                c.drawCircle(x0 + 8 * u, y0 + 10 * u, 1.1f * u, stroke);
+                c.drawCircle(cx, y0 + 10 * u, 1.1f * u, stroke);
+                c.drawCircle(x0 + 16 * u, y0 + 10 * u, 1.1f * u, stroke); break;
             default:
                 c.drawCircle(cx, cy, 8 * u, stroke);
         }

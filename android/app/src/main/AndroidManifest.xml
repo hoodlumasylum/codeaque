@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    android:versionCode="182" android:versionName="0.10.82">
+    android:versionCode="183" android:versionName="0.10.85">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -39,6 +39,8 @@
         <package android:name="org.proninyaroslav.libretorrent" />
         <!-- 0.10.76: see B612 if installed so the camera icon can open it (Play Store only, no QUERY_ALL_PACKAGES) -->
         <package android:name="com.linecorp.b612.android" />
+        <!-- 0.10.85: see Grok Bot if installed so the tile can open it (Play Store only, no QUERY_ALL_PACKAGES) -->
+        <package android:name="ai.x.grok.bot" />
         <!-- 0.9.4: installed apps and games are found through these entries (no QUERY_ALL_PACKAGES) -->
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>

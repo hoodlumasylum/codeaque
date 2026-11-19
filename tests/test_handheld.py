@@ -34,8 +34,12 @@ def test_my_games_has_installed_pc_games_and_all_apps_has_apps():
     st = cats["steam"]["tiles"]
     modes = [t for t in st if str(t.get("key", "")).startswith("mode:")]
     rest = st[len(modes):]
-    assert rest[0]["gid"] == "app:steam" and all(t["gid"].startswith("steam:") for t in rest[1:-1]) and len(rest) > 1
-    assert all(t.get("gid", "").startswith(("app:", "tool:", "studio:")) for t in cats["apps"]["tiles"])
+    assert rest[0]["gid"] == "app:steam"
+    assert rest[1]["action"] == "grokbot" and rest[1]["title"] == "Grok Bot" and rest[1]["icon"] == "chat"
+    assert all(t["gid"].startswith("steam:") for t in rest[2:-1]) and len(rest) > 2
+    apps = cats["apps"]["tiles"]
+    assert apps[0]["action"] == "grokbot"
+    assert all(t.get("gid", "").startswith(("app:", "tool:", "studio:")) for t in apps[1:])
 
 
 def test_installed_emulators_become_tiles(monkeypatch):

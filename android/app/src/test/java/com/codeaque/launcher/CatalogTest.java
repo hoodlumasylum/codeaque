@@ -525,6 +525,29 @@ public class CatalogTest {
         // 0.10.32 mode tiles, Roblox places, Box Set (adult; hidden in Kids)
         check(c.get(0).items.contains(Catalog.TRILOGY_MODE) && c.get(0).items.contains(Catalog.BOXSET_MODE)
                 && c.get(0).items.contains(Catalog.ROBLOX_MODE), "mode tiles on Featured (after existing tiles)");
+        // 0.10.85: Grok Bot tile on Featured and the default adult home; hidden in Kids mode
+        check(c.get(0).items.contains(Catalog.GROK_BOT) && "Grok Bot".equals(Catalog.GROK_BOT.label)
+                && "chat".equals(Catalog.GROK_BOT.icon)
+                && "ai.x.grok.bot".equals(Catalog.GROK_BOT.storePackage())
+                && Catalog.GROK_BOT.webUrl == null, "Grok Bot on Featured, Play Store package only");
+        check(Catalog.opensStore(Catalog.GROK_BOT, false) && !Catalog.opensStore(Catalog.GROK_BOT, true),
+                "uninstalled Grok Bot opens Play Store, installed app does not");
+        check(Catalog.kidsBlocked(Catalog.GROK_BOT) && Catalog.grokBotPkg("ai.x.grok.bot")
+                && !Catalog.grokBotPkg("com.example.other"), "Grok Bot blocked in Kids mode");
+        check(Catalog.indexOf(Catalog.kidsMode(), "grokbot") < 0
+                && Catalog.indexOf(Catalog.kidsMode(), "steam") < 0, "Kids mode has no Grok Bot row or Featured");
+        java.util.List<Catalog.Category> adult85 = Catalog.adultBrowse(java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(), false, false, null);
+        check(Catalog.indexOf(adult85, "grokbot") >= 0
+                && adult85.get(Catalog.indexOf(adult85, "grokbot")).items.contains(Catalog.GROK_BOT),
+                "default adult home has a Grok Bot row");
+        Catalog.Item grokDevice = Catalog.deviceApp("Grok Bot", "ai.x.grok.bot", "ai.x.grok.bot.Main");
+        java.util.Set<String> approved = new java.util.HashSet<>();
+        approved.add("ai.x.grok.bot");
+        for (Catalog.Category k : Catalog.kidsMode(java.util.List.of(), java.util.List.of(grokDevice), approved)) {
+            check(!k.items.contains(grokDevice) && !k.items.contains(Catalog.GROK_BOT)
+                    && (k.items.isEmpty() || k.items.stream().noneMatch(it -> Catalog.grokBotPkg(it.pkg) || it.packages.contains("ai.x.grok.bot"))),
+                    "Kids mode never lists the Grok Bot package, even if approved");
+        }
         check(Catalog.indexOf(c, "trilogies") > 0 && Catalog.indexOf(c, "coop") > 0 && Catalog.indexOf(c, "roblox") > 0, "Trilogies, Co-op, Roblox tabs");
         check(Catalog.TRILOGY_ITEMS.length >= 40 && Catalog.COOP_ITEMS.length >= 20 && Catalog.ROBLOX_ITEMS.length == 12, "verified lists");
         boolean piggy = false, strucid = false;

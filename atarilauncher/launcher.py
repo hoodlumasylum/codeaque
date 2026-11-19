@@ -359,6 +359,9 @@ def run_game(cfg: Config, game: Game, on_started: Callable[[], None],
         return _run_windows(cfg, game, on_started)
     if game.gid.startswith("free:"):
         return _run_free(cfg, game, on_started)
+    if game.gid == "app:grokbot":
+        from . import grokbot
+        return grokbot.run_installed(on_started)
     if (game.gid.startswith("web:") or game.gid.startswith("fav:")
             or bool((getattr(game, "meta", None) or {}).get("browse_url"))):
         return _run_web(cfg, game, on_started)

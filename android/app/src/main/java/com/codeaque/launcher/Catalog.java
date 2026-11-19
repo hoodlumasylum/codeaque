@@ -195,6 +195,9 @@ public final class Catalog {
 
     /** 0.10.1: the Play Store itself on the Featured row (its own installed icon). */
     public static final Item PLAY_STORE = app("Play Store", "grid", "com.android.vending");
+    /** 0.10.85: official Grok Bot Android app (Play Store package ai.x.grok.bot). Hidden in Kids mode.
+     *  Generic chat glyph, no third-party logo. Play Store page if the app is not installed. */
+    public static final Item GROK_BOT = app("Grok Bot", "chat", "ai.x.grok.bot");
 
     /** 0.10.2: GeForce NOW on Featured: the app when installed, else its Play page (the Cloud row keeps the web version). */
     public static final Item GEFORCE_NOW = app("GeForce NOW", "cloud", "com.nvidia.geforcenow");
@@ -319,6 +322,8 @@ public final class Catalog {
         if (it.isRom()) return true;
         if (cloudGaming(it)) return true;
         if (it == PLAY_STORE) return true;   // 0.10.37: no Play Store tile or shortcut in Kids mode
+        if (it == GROK_BOT || grokBotPkg(it.pkg)) return true;   // 0.10.85: Grok Bot is hidden in Kids mode
+        for (String p : it.packages) if (grokBotPkg(p)) return true;
         if ("allapps".equals(it.action) || "downloads".equals(it.action) || "filemgr".equals(it.action) || "settings".equals(it.action) || "browser".equals(it.action) || "addfav".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
         if (it.action != null && it.action.startsWith("favopen:")) return true;
         if (it.webUrl != null && it.webUrl.toLowerCase(java.util.Locale.ROOT).contains("duckduckgo.com")) return true;
@@ -328,6 +333,9 @@ public final class Catalog {
         if (it.isDeviceApp() && (streamingPkg(it.pkg) || ScreenTime.blockedKidPackage(it.pkg))) return true;
         for (String p : it.packages) if (streamingPkg(p) || ScreenTime.blockedKidPackage(p)) return true;
         return false;
+    }
+    public static boolean grokBotPkg(String pkg) {
+        return pkg != null && pkg.equals("ai.x.grok.bot");
     }
     public static boolean emuAllowed(Item it, java.util.Set<String> allowed) {
         if (it == null || allowed == null || allowed.isEmpty()) return false;
@@ -579,6 +587,7 @@ public final class Catalog {
                 continue;
             }
             if (cloudGaming(a)) continue;
+            if (grokBotPkg(a.pkg)) continue;   // 0.10.85: never in Kids mode, even if a parent approved the package
             if (!kidsBlocked(a, allowedEmus) || (a.isDeviceApp() && approved.contains(a.pkg))) newGames.add(a);
         }
         if (!newGames.isEmpty()) c.add(new Category("kadded", "My New Games", "pad", newGames.toArray(new Item[0])));
@@ -594,6 +603,7 @@ public final class Catalog {
                                             boolean projector, boolean bootanim, Item[] robloxItems) {
         List<Category> c = new ArrayList<>();
         addGameTabs(c, KidsPlay.ADULT, robloxItems != null ? robloxItems : ROBLOX_ITEMS, true);
+        c.add(new Category("grokbot", "Grok Bot", "chat", GROK_BOT));   // 0.10.85: default adult home (Featured is skipped here)
         List<Category> full = categories(games, apps, emus, roms, projector, bootanim);
         for (Category row : full) {
             if ("steam".equals(row.id) || "kids".equals(row.id) || "roblox".equals(row.id) || "cloud".equals(row.id)) continue;
@@ -796,7 +806,7 @@ public final class Catalog {
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
         c.add(new Category("steam", "Featured", "display", KIDS_ON, SETTINGS_TILE, INSTALL_KIDS, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community"),
-                TRILOGY_MODE, COOP_MODE, ROBLOX_MODE, BOXSET_MODE));
+                TRILOGY_MODE, COOP_MODE, ROBLOX_MODE, BOXSET_MODE, GROK_BOT));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.
         c.add(new Category("kids", "Kids", "pad", KIDS));

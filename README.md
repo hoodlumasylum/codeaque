@@ -31,7 +31,20 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.85
+
+**A Grok Bot tile on the PC console home and the Android launcher.** The tile uses CodeAque's own chat glyph (not a third-party logo). It is hidden in Kids mode on both platforms. CodeAque never handles a Grok Bot login or API key — you sign in inside the official app yourself.
+
+On the PC (Linux Mint), the tile sits on the console home (the Steam / first row, after Steam Big Picture) and at the start of All Apps. If the official Linux app is installed (`grok-bot`, from the official `.deb` at [cursor.com/download/bot](https://cursor.com/download/bot)), the tile opens it. If it is not installed, the official Linux download page opens in the browser, with a short message that there is no official web chat app. Linux packages are official: `.deb`, `.rpm` and AppImage.
+
+On Android, the tile is on the Featured row (classic home) and on its own Grok Bot row on the default adult (kids-style) home. If the official app is installed (package `ai.x.grok.bot`), the tile opens it. If it is not, it opens the official [Google Play page](https://play.google.com/store/apps/details?id=ai.x.grok.bot) so you can install it from Play Store only.
+
+The Android APK in this release is 0.10.85 (versionCode 183).
+
+Untested: unit tests for the official URLs, finding the Linux command, the home tile (and Kids mode hiding it), launching the installed app or opening the download page, and the Android catalogue / Kids mode checks passed here. An offscreen preview of the PC home row was rendered here. This has not been run on Code's PC, Win600, or Android phone, has not opened a live Grok Bot install or Play Store session, and has not been tried in Kids mode on his machines.
+
 ## What's new in 0.10.84
+
 
 **CodeAque-only mode now starts CodeAque itself, not the Mint desktop.** The 0.10.83 update could write the LightDM auto-login file correctly, yet after a restart you were still on the desktop. The usual one-command update built the session program from the extracted folder in `/tmp`; once that folder was gone, the session could not find CodeAque and started Cinnamon instead. The session now looks up the installed start script (`~/.local/share/atari-launcher/run.sh`) at runtime and skips leftover `/tmp` paths. It also starts a session bus (so a browser can open), and writes Mint's saved session (`AccountsService` and `~/.dmrc`) to "CodeAque" so a leftover "Cinnamon" choice cannot win. If the files say CodeAque-only but this login is still the Linux desktop, Start mode says so and will repair it (it will not claim "already set"). Every logo-tap and every Yes / No / Cancel on the confirm page is written to `~/.local/share/codeaque/mode.log` and shown on screen.
 

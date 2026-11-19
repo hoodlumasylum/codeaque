@@ -3569,6 +3569,23 @@ class Backend(QObject):
                                platform_name="Fav Sites", meta={"browse_url": url}, note=url))
 
     @Slot()
+    def openGrokBot(self) -> None:
+        """Open the official Grok Bot Linux app, or its official download page if it is not installed."""
+        from . import grokbot
+        if self.kids_mode_on():
+            self.show_toast("Grok Bot is hidden in Kids mode.", 4000)
+            return
+        if self._running:
+            self.show_toast("Something is already open. Come back first, then try Grok Bot again.", 6000)
+            return
+        if grokbot.installed_command():
+            self._launch_game(Game(gid="app:grokbot", title="Grok Bot", platform="apps",
+                                   platform_name="Grok Bot", note="Official Grok Bot desktop app"))
+            return
+        self.show_toast(grokbot.NOT_INSTALLED_TOAST, 8000)
+        self._open_browse_url(grokbot.DOWNLOAD_URL, "Grok Bot", "web:grokbot")
+
+    @Slot()
     def openDuckDuckGo(self) -> None:
         if self._fav_blocked():
             return

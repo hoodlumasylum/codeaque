@@ -147,6 +147,11 @@ GET_GAMES = {"key": "getgames", "title": "Get Games", "icon": "download", "kind"
 # 0.10.80: legal-only search (Internet Archive, itch.io free games, official Linux ISOs). Hidden in Kids mode.
 FREE_LEGAL = {"key": "freelegal", "title": "Free & Legal", "icon": "search", "kind": "action",
               "action": "freelegal", "items": [], "hue": 0.42}
+# 0.10.85: official Grok Bot Linux app (cursor.com/download/bot). Hidden in Kids mode.
+# Generic chat glyph — not a third-party logo.
+GROK_BOT = {"key": "grokbot", "title": "Grok Bot", "icon": "chat", "kind": "action",
+            "action": "grokbot", "items": [], "hue": 0.55,
+            "note": "Opens the official Grok Bot Linux app if it is installed, or the official download page in the browser."}
 # 0.9.6 Accounts: each platform's own app, where you sign in yourself (CodeAque never sees a password)
 ACCOUNTS = (("app:steam", "Steam"), ("app:heroic", "Epic · GOG · Amazon (Heroic)"), ("web:xcloud", "Xbox (Cloud Gaming)"),
             ("app:eaapp", "EA app"))
@@ -334,7 +339,10 @@ def categories(games, store=None, cfg=None, home=None, kids_mode=False, fav_root
         elif key == "steam":      # 0.9.5: Steam at the top: Big Picture, then the Steam games installed here (with their pictures)
             st = sorted((g for g in games if is_pc_game(g) and g.platform == "steam"), key=lambda g: g.title.lower())
             tiles = mode_tiles() + [{"key": "app:steam", "title": "Steam Big Picture", "icon": "monitor", "kind": "launch", "gid": "app:steam",
-                      "items": [], "hue": 0.6}] + [_launch_tile(g, "monitor") for g in st] + [GET_GAMES]
+                      "items": [], "hue": 0.6}]
+            if not kids_mode:
+                tiles.append(dict(GROK_BOT))
+            tiles += [_launch_tile(g, "monitor") for g in st] + [GET_GAMES]
         elif key == "pcgames":   # Lutris, Heroic (Epic / GOG / Amazon) and Windows games installed here
             tiles = [_launch_tile(g, "c_pc") for g in sorted((g for g in games if is_pc_game(g) and g.platform != "steam"),
                                                            key=lambda g: g.title.lower())] + [GET_GAMES]
@@ -348,7 +356,7 @@ def categories(games, store=None, cfg=None, home=None, kids_mode=False, fav_root
             tiles = my_games(games, store, cfg, home) or [{"key": "addgames", "title": "Add games", "icon": "usb", "kind": "action",
                                                            "action": "addgames", "items": []}]
         elif key == "apps":
-            tiles = all_apps(games)
+            tiles = ([dict(GROK_BOT)] if not kids_mode else []) + all_apps(games)
         elif key == "games":
             tiles = [cloud_tile] + systems
         elif key == "cloud":
