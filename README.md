@@ -31,6 +31,22 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.81
+
+**Backup & Restore in Settings** copies what you have set up onto a USB stick, so you can move it to another CodeAque computer (such as the Win600) without doing the setup again. One big button writes a single file named `CodeAque-Backup-YYYY-MM-DD.tar.gz`. If no stick is plugged in, you can save it to Downloads. A progress bar shows while it works, and the final file size is shown at the end.
+
+The backup includes CodeAque settings, tiles, layout, covers, Fav Sites (with site icons, when you have them), emulator saves and save states (RetroArch and the other emulators CodeAque knows), Steam game saves that live in Proton folders (for games that do not use Steam Cloud), and a list of installed apps and emulators so the other computer can reinstall them.
+
+**Games, ROM files, BIOS, firmware, Steam game folders, passwords, keys, tokens and browser logins are left out.** Steam games still need to be downloaded again on the other computer (sign in to Steam there). Steam Cloud already keeps many Steam saves. The Xbox (xemu) hard-disk image and the Ask CodeAque model are not copied (they are large; set Ask CodeAque up again if you use it).
+
+**Restore** finds the backup on the stick, asks you to confirm, saves a safety copy of what is already on that computer first, then puts your files back. If the user name or home folder is different, paths in settings are pointed at this computer. After that, a button can install the same programs (it asks first, and uses the usual password box). The page is built for a 1280×720 screen and works with a controller only.
+
+Kids mode hides Backup & Restore (leave Kids mode with the parent PIN first). A terminal fallback is also included: `bash scripts/codeaque-backup.sh backup` and `bash scripts/codeaque-backup.sh restore FILE`.
+
+The Android APK attached to this release is unchanged. This PC update does not change the Android app.
+
+Untested: unit tests for what is included and left out (saves in, BIOS/ROMs/games/secrets/Steam libraries out), path rewriting when the home folder changes, the safety copy before restore, refusing unsafe archive paths, the Settings row (including hiding it in Kids mode), and the confirm / progress page wiring passed here. This has not been run on Code's desktop or Win600, has not written to a real USB stick, has not restored onto a second Linux Mint user, has not reinstalled apps with a real pkexec password box, and has not been tried with a controller on a 1280×720 screen. Please try this install and see that Settings > Backup & Restore can write a backup file, that the progress bar and final size appear, that Restore asks before it starts, and that your settings and saves show up on the Win600 after you plug the stick in and confirm.
+
 ## What's new in 0.10.80
 
 **A Free & Legal search sits on the PC console home** (the Downloads row, and also on Games Store). It is a big, readable, on-screen-keyboard search: type with a real keyboard, or move the pad on the keys and press A. Mouse and touch work the same as on the other pages. It queries only three legal sources:
