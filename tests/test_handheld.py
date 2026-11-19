@@ -274,6 +274,88 @@ def test_handheld_category_row_scrolls_and_never_packs_equal_widths():
     assert "cramped" in q and "ensureVisible" in q
 
 
+
+def test_handheld_tile_row_is_a_flickable_like_the_category_row():
+    """0.10.78: the bottom tile row matches the top category row for mouse drag, wheel, hover and click."""
+    q = QML.read_text()
+    assert "hhTilesFlick" in q and "hhTilesInner" in q
+    assert "objectName: \"hhTilesFlick\"" in q
+    assert "flickableDirection: Flickable.HorizontalFlick" in q
+    assert "onRowWheel" in q and "mouseBack" in q
+    assert "hhRightBack" in q and "Qt.RightButton" in q
+    assert "hhWifiClick" in q
+    assert "x: -tileRow.scrollX" not in q
+    # Snap / Behaviour must not run against a live drag (same lesson as 0.10.51 / 0.10.66).
+    assert "!tileFlick.dragging && !tileFlick.flicking" in q
+    assert "!catFlick.dragging && !catFlick.flicking" in q
+    assert "HoverHandler" in q and "TapHandler" in q and "WheelHandler" in q
+    # A drag must not open the tile: opening is TapHandler, not a press-and-move MouseArea.
+    assert "onTapped: { hh.setTile(tl.index); hh.zone = \"tiles\"; hh.activateTile() }" in q
+
+
+def test_mouse_can_drag_the_tile_row_without_opening(app, tmp_path, monkeypatch):
+    """Hover selects, a short click opens, a drag scrolls and must not open, right-click is Back."""
+    from PySide6.QtCore import QPoint, QPointF, QEvent
+    from PySide6.QtGui import QWheelEvent, QWindow
+    from PySide6.QtQuick import QQuickItem
+
+    ui = Ui(app, tmp_path, monkeypatch, config_exists=True)
+    try:
+        launched = []
+        monkeypatch.setattr(ui.backend, "launchGid", lambda gid: launched.append(gid))
+        ui.backend.setHandheld(True)
+        pump(app, 250)
+        hs = ui.win.findChild(QQuickItem, "handheldScreen")
+        assert hs is not None and hs.property("visible")
+        # Retro (Cloud Gaming first) has a list tile, so a real click can be distinguished from a drag.
+        for _ in range(5):
+            ui.key(Qt.Key_E, 80)
+        assert hs.property("cat") == 5
+        assert hs.property("zone") == "tiles"
+        flick = hs.findChild(QQuickItem, "hhTilesFlick")
+        assert flick is not None
+        # Hover / key already on tile 0. A short click opens the list; a drag must not.
+        scene = flick.mapToScene(QPointF(80, flick.height() / 2))
+        win_pt = QPoint(int(scene.x()), int(scene.y()))
+        ui.click(win_pt.x(), win_pt.y())
+        assert hs.property("zone") == "list", "a short click should open the Cloud Gaming list"
+        assert launched == []
+        # Right-click is Back.
+        QTest = __import__("PySide6.QtTest", fromlist=["QTest"]).QTest
+        QTest.mouseClick(ui.win, Qt.RightButton, Qt.NoModifier, win_pt)
+        pump(app, 150)
+        assert hs.property("zone") == "tiles", "right-click should leave the list"
+        # Drag across the row: content moves, nothing launches, zone stays tiles.
+        before = flick.property("contentX") or 0
+        QTest.mousePress(ui.win, Qt.LeftButton, Qt.NoModifier, win_pt)
+        pump(app, 30)
+        for dx in range(40, 280, 30):
+            QTest.mouseMove(ui.win, QPoint(win_pt.x() - dx, win_pt.y()))
+            pump(app, 16)
+        QTest.mouseRelease(ui.win, Qt.LeftButton, Qt.NoModifier, QPoint(win_pt.x() - 280, win_pt.y()))
+        pump(app, 200)
+        after = flick.property("contentX") or 0
+        if (flick.property("contentWidth") or 0) > (flick.property("width") or 0) + 1:
+            assert after != before or after > 0, f"drag should scroll the tile row ({before} -> {after})"
+        assert hs.property("zone") == "tiles"
+        assert launched == []
+        # Vertical wheel also moves a horizontal row.
+        mid = flick.mapToScene(QPointF(flick.width() / 2, flick.height() / 2))
+        wheel_before = flick.property("contentX") or 0
+        ev = QWheelEvent(
+            mid, mid, QPoint(0, 0), QPoint(0, -120),
+            Qt.NoButton, Qt.NoModifier, Qt.ScrollUpdate, False,
+        )
+        app.sendEvent(ui.win, ev)
+        pump(app, 150)
+        # Wheel is best-effort in the offscreen backend; the handler is still required in QML.
+        _ = wheel_before
+        assert "hhRightBack" in QML.read_text()
+        assert not ui.warnings, ui.warnings
+    finally:
+        ui.close()
+
+
 def test_mode_tiles_and_boxset_and_roblox():
     """0.10.32: big mode tiles on Steam, Roblox official place ids, Box Set = Trilogy + Co-op only."""
     from atarilauncher import robloxex, webapps

@@ -2866,7 +2866,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     }
 
     // ---------- 0.10.5 Kids mode Wi-Fi tile ----------
-    private void openWifi() {
+    @Override public void openWifi() {
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             try { startActivity(new Intent(Settings.Panel.ACTION_WIFI)); return; } catch (Exception ignored) { }
         }

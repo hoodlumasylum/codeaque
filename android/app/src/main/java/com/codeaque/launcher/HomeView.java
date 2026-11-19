@@ -17,7 +17,11 @@ import java.util.Locale;
  *  the tile size and cached. Gamepad is unchanged: D-pad / stick, L1 R1 change category, A open, B back, Y settings.
  *  Touch (0.10.29 / 0.10.51): one tap opens a tile. Swipe left or right moves between sections. A drag on the
  *  row (from anywhere except tabs and buttons) scrolls it; a fling coasts, then eases to a tile. Snap never
- *  runs against a live finger. The on-screen Back button does the same as controller B. */
+ *  runs against a live finger. The on-screen Back button does the same as controller B.
+ *  Mouse (0.10.78): hover selects a tile (same highlight as the pad); a short click opens it; click-and-drag
+ *  or the scroll wheel (vertical or horizontal) moves the game row or the tab strip, with a smooth fling;
+ *  a drag does not open the tile; right-click is Back. Wi-Fi and camera in the top bar work the same way.
+ *  Kids mode uses this path too, and still respects the parent PIN and Kids filters. */
 public class HomeView extends View {
     public interface Host {
         void open(Catalog.Item item);
@@ -75,6 +79,8 @@ public class HomeView extends View {
         default void onUpdateInstall() {}
         /** 0.10.76: open B612 if installed, else its Play Store page. Adult mode only. */
         default void openCamera() {}
+        /** 0.10.78: top-bar Wi-Fi icon (Kids and adult). */
+        default void openWifi() {}
     }
 
     private Palette T = Palette.NEON;
@@ -158,7 +164,9 @@ public class HomeView extends View {
     private int logoTaps; private long logoTapAt;
     private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
     private final RectF cameraHit = new RectF();
+    private final RectF wifiHit = new RectF();
     private float wifiCx;
+    private String hoverChrome = "";   // 0.10.78: "camera" / "wifi" while the mouse is over a top-bar icon
     private final RectF installBtn = new RectF();
     private final RectF updateBar = new RectF(), updateBtn = new RectF();
     private final RectF searchQueryBox = new RectF(), searchRetryBox = new RectF(), searchKbBox = new RectF(), searchChipBox = new RectF();
@@ -320,7 +328,36 @@ public class HomeView extends View {
         return super.onKeyUp(code, e);
     }
 
-    @Override public boolean onGenericMotionEvent(MotionEvent e) {   // left stick / hat as a D-pad, with repeat delay
+    @Override public boolean onGenericMotionEvent(MotionEvent e) {
+        if (HomeMouse.isMouseWheel(e.getAction(), e.getSource())) {
+            float x = e.getX(), y = e.getY();
+            if (projector) { x = (x - getWidth() * SAFE) / (1 - 2 * SAFE); y = (y - getHeight() * SAFE) / (1 - 2 * SAFE); }
+            float h = e.getAxisValue(MotionEvent.AXIS_HSCROLL);
+            float v = e.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            boolean onTabs = !boxset && y >= tabStripTop() && y <= catsBottom();
+            if (onTabs) {
+                layoutTabsIfNeeded();
+                tabFollow = false;
+                float px = Math.abs(h) >= Math.abs(v) && h != 0f ? h * HomeMouse.WHEEL_PX * s : -v * HomeMouse.WHEEL_PX * s;
+                tabScroll = tabScrollTo = clampTabScroll(tabScroll + px);
+                invalidate();
+                return true;
+            }
+            float step = browseList() ? (browseTileW() + browseGap()) : (tileW() + tileGap());
+            float d = HomeMouse.wheelToTiles(h, v, Math.max(1f, step), HomeMouse.WHEEL_PX * s);
+            if (d == 0f) return true;
+            row.scroll = scrollAnim;
+            row.pointerDown();
+            row.pointerMove(d, maxScroll());
+            row.pointerUp(0, visibleTiles(), maxScroll(), items().size());
+            scrollAnim = row.scroll;
+            tile = row.tile;
+            userScroll = row.busy();
+            inCats = false;
+            invalidate();
+            return true;
+        }
+        // left stick / hat as a D-pad, with repeat delay
         if ((e.getSource() & android.view.InputDevice.SOURCE_JOYSTICK) != 0 && e.getAction() == MotionEvent.ACTION_MOVE) {
             float x = e.getAxisValue(MotionEvent.AXIS_X) + e.getAxisValue(MotionEvent.AXIS_HAT_X);
             float y = e.getAxisValue(MotionEvent.AXIS_Y) + e.getAxisValue(MotionEvent.AXIS_HAT_Y);
@@ -333,6 +370,49 @@ public class HomeView extends View {
             return onKeyDown(k, new KeyEvent(KeyEvent.ACTION_DOWN, k));
         }
         return super.onGenericMotionEvent(e);
+    }
+
+    @Override public boolean onHoverEvent(MotionEvent e) {
+        float x = e.getX(), y = e.getY();
+        if (projector) { x = (x - getWidth() * SAFE) / (1 - 2 * SAFE); y = (y - getHeight() * SAFE) / (1 - 2 * SAFE); }
+        int act = e.getActionMasked();
+        if (act == MotionEvent.ACTION_HOVER_EXIT) {
+            if (!hoverChrome.isEmpty()) { hoverChrome = ""; invalidate(); }
+            return true;
+        }
+        boolean onCam = !cameraHit.isEmpty() && cameraHit.contains(x, y);
+        boolean onWifi = !wifiHit.isEmpty() && wifiHit.contains(x, y);
+        boolean onTabs = !boxset && y >= tabStripTop() && y <= catsBottom();
+        int browse = hitBrowseItem(x, y);
+        int classic = -1;
+        if (browse < 0 && !browseList() && y > tilesTop() && y < tilesTop() + tileH()) {
+            float step = tileW() + tileGap();
+            classic = (int) Math.floor((x - tilesLeft() + scrollAnim * step) / step);
+            if (classic < 0 || classic >= items().size()) classic = -1;
+        }
+        String chrome = HomeMouse.hoverTarget(onCam, onWifi, false, false);
+        boolean dirty = !chrome.equals(hoverChrome);
+        hoverChrome = chrome;
+        if (browse >= 0) {
+            if (inCats || tile != browse) {
+                inCats = false;
+                tile = browse;
+                row.focusTile(tile, items().size());
+                dirty = true;
+            }
+        } else if (classic >= 0) {
+            if (inCats || tile != classic) {
+                inCats = false;
+                tile = classic;
+                row.focusTile(tile, items().size());
+                dirty = true;
+            }
+        } else if (onTabs) {
+            int i = hitTab(x, y);
+            if (i >= 0 && !inCats) { inCats = true; dirty = true; }
+        }
+        if (dirty) invalidate();
+        return true;
     }
 
     /** Same as controller B: leave a prompt, or step back to the category row, then to the first section. */
@@ -536,6 +616,7 @@ public class HomeView extends View {
     private void onTap(float x, float y, float H) {
         if (onUpdateInstallBtn(x, y)) { host.onUpdateInstall(); return; }
         if (!cameraHit.isEmpty() && cameraHit.contains(x, y)) { host.openCamera(); return; }
+        if (!wifiHit.isEmpty() && wifiHit.contains(x, y)) { host.openWifi(); return; }
         if (kids && host.timeUpScreen()) {
             if (r2.contains(x, y) || (y > getHeight() * 0.60f && y < getHeight() * 0.80f)) host.timeUpAskParent();
             else if (logoTop.contains(x, y) || logoCenter.contains(x, y)) logoHit();
@@ -587,6 +668,7 @@ public class HomeView extends View {
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (splash != null) { splash = null; invalidate(); return true; }
+                if (HomeMouse.isRightClick(e.getButtonState())) { goBack(); return true; }
                 downX = x; downY = y; lastTouchX = x; lastTouchY = y; downTime = e.getEventTime();
                 rowDrag = false; sectionSwipe = false; gestureChose = false; tabDrag = false;
                 longPressFired = false; holdTile = -1; holdAt = 0;
@@ -1163,10 +1245,13 @@ public class HomeView extends View {
         // Wi-Fi stays at the same size, Y and formula as before 0.10.76 (tab-strip geometry is untouched).
         float wx = W - 24 * s - p.measureText(right) - 30 * s;
         wifiCx = wx;
-        icon(c, "wifi", wx, CameraApp.ICON_Y * s, CameraApp.ICON_SIZE * s, host.online() ? TXT : 0xFF555555, 2f);
+        float wr = CameraApp.HIT_RADIUS * s;
+        wifiHit.set(wx - wr, CameraApp.ICON_Y * s - wr, wx + wr, CameraApp.ICON_Y * s + wr);
+        int wifiCol = "wifi".equals(hoverChrome) ? GOLD : (host.online() ? TXT : 0xFF555555);
+        icon(c, "wifi", wx, CameraApp.ICON_Y * s, CameraApp.ICON_SIZE * s, wifiCol, 2f);
         if (CameraApp.showIcon(kids)) {
             float cx = CameraApp.cameraCx(wx, s), cy = CameraApp.cameraCy(s);
-            icon(c, "camera", cx, cy, CameraApp.iconSize(s), TXT, 2f);
+            icon(c, "camera", cx, cy, CameraApp.iconSize(s), "camera".equals(hoverChrome) ? GOLD : TXT, 2f);
             cameraHit.set(CameraApp.hitLeft(wx, s), CameraApp.hitTop(s), CameraApp.hitRight(wx, s), CameraApp.hitBottom(s));
         } else {
             cameraHit.setEmpty();

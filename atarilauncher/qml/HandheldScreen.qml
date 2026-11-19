@@ -4,7 +4,8 @@ import QtQuick.Effects
 // CodeAque Handheld Edition (0.7.0): a home made for a small handheld screen (laid out for 1280x720).
 // Top: status bar. A row of categories (the chosen one bigger and glowing), a big glowing CODEAQUE wordmark over a flowing
 // green wave, and a row of tiles for the chosen category at the bottom (Games: Cloud Gaming first, then your retro systems).
-// A tile with games opens a sliding list. Everything by controller; plain text system names and CodeAque's own line drawings,
+// A tile with games opens a sliding list. Mouse: hover selects a tile, click opens it, drag or the scroll wheel moves the row
+// (a drag does not open), right-click is Back. Controller and D-pad still work; plain text system names and CodeAque's own line drawings,
 // no company logos and no console maker's button symbols. Light on weak chips: no shaders unless effects are on, a fixed
 // pool of list rows for any number of games, fewer light motes with Reduce effects, nothing moves with Reduce animations.
 FocusScope {
@@ -33,7 +34,10 @@ FocusScope {
     Timer { interval: 20000; running: hh.visible; repeat: true; triggeredOnStart: true; onTriggered: hh.refreshStatus() }
 
     function snd(n) { backend.playSound(n) }
-    function setTile(v) { var a = tileIdx.slice(); a[cat] = v; tileIdx = a }
+    function setTile(v) {
+        var a = tileIdx.slice(); a[cat] = v; tileIdx = a
+        Qt.callLater(function() { if (tileRow && tileRow.ensureVisible) tileRow.ensureVisible() })
+    }
     function moveCat(d) {
         var n = Math.max(0, Math.min(cats.length - 1, cat + d))
         if (n === cat) return
@@ -98,6 +102,30 @@ FocusScope {
         else if (k === Qt.Key_Up || k === Qt.Key_Escape || k === Qt.Key_B || k === Qt.Key_Backspace) { zone = "cats"; snd(k === Qt.Key_Up ? "hhmove" : "hhback") }
         else if (k === Qt.Key_Return || k === Qt.Key_Enter) activateTile()
         else if (k === Qt.Key_F && tile && tile.kind === "launch") backend.toggleFavoriteGid(tile.gid)
+    }
+    // 0.10.78: right-click is the same as controller B / Esc.
+    function mouseBack() {
+        if (zone === "list") { zone = "tiles"; snd("hhback") }
+        else if (zone === "tiles") { zone = "cats"; snd("hhback") }
+    }
+    // Vertical or horizontal wheel moves a horizontal row smoothly (pixelDelta on a touchpad, notches on a wheel).
+    function onRowWheel(flick, event) {
+        if (!flick) return
+        var dx = 0
+        if (event.pixelDelta && (Math.abs(event.pixelDelta.x) > 0 || Math.abs(event.pixelDelta.y) > 0))
+            dx = event.pixelDelta.x !== 0 ? event.pixelDelta.x : event.pixelDelta.y
+        else {
+            var ad = event.angleDelta
+            var notches = ((ad.x !== 0 ? ad.x : ad.y) / 120)
+            dx = notches * 80 * hh.s
+        }
+        if (dx === 0) return
+        var max = Math.max(0, flick.contentWidth - flick.width)
+        var x = flick.contentX - dx
+        if (x < 0) x = 0
+        if (x > max) x = max
+        flick.contentX = x
+        event.accepted = true
     }
     NumberAnimation { id: slideAnim; target: hh; property: "slide"; to: 0; duration: 170; easing.type: Easing.OutCubic }
 
@@ -175,7 +203,22 @@ FocusScope {
                 onClicked: hh.menuAction("update")
             }
         }
-        Icon { name: "wifi"; size: 26 * hh.s; color: hh.status.online ? "white" : "#6c7175"; anchors.verticalCenter: parent.verticalCenter }
+        Item {
+            objectName: "hhWifi"
+            width: 26 * hh.s; height: 26 * hh.s
+            anchors.verticalCenter: parent.verticalCenter
+            Icon { anchors.centerIn: parent; name: "wifi"; size: 26 * hh.s
+                   color: wifiMouse.containsMouse ? "#ffffff" : (hh.status.online ? "white" : "#6c7175") }
+            MouseArea {
+                id: wifiMouse
+                objectName: "hhWifiClick"
+                anchors.fill: parent
+                anchors.margins: -8 * hh.s
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: hh.menuAction("wifi")
+            }
+        }
         Row {
             visible: hh.status.hasBattery
             spacing: 8 * hh.s
@@ -227,7 +270,7 @@ FocusScope {
         }
         Connections {
             target: hh
-            function onCatChanged() { Qt.callLater(catRow.ensureVisible) }
+            function onCatChanged() { Qt.callLater(catRow.ensureVisible); Qt.callLater(function() { if (tileRow && tileRow.ensureVisible) tileRow.ensureVisible() }) }
         }
         Text { x: -40 * hh.s; anchors.verticalCenter: parent.verticalCenter; text: "\u2039"; color: hh.cat > 0 ? "white" : "#444"
                font.pixelSize: 54 * hh.s }
@@ -243,7 +286,11 @@ FocusScope {
             boundsBehavior: Flickable.StopAtBounds
             contentWidth: catInner.width
             contentHeight: height
-            Behavior on contentX { enabled: hh.anim; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Behavior on contentX { enabled: hh.anim && !catFlick.dragging && !catFlick.flicking; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            WheelHandler {
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: (event) => hh.onRowWheel(catFlick, event)
+            }
             Row {
                 id: catInner
                 objectName: "hhCatsInner"
@@ -291,7 +338,12 @@ FocusScope {
                             anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom
                             width: Math.min(parent.width - 8 * hh.s, 54 * hh.s); height: 3 * hh.s; radius: height / 2; color: hh.glow
                         }
-                        MouseArea { anchors.fill: parent; onClicked: { hh.cat = ci.index; hh.zone = "tiles" } }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { hh.cat = ci.index; hh.zone = "tiles" }
+                        }
                     }
                 }
             }
@@ -423,7 +475,13 @@ FocusScope {
                                    font.pixelSize: 10 * hh.s; font.weight: Font.Bold }
                         }
                     }
-                    MouseArea { anchors.fill: parent; onClicked: { hh.setTile(ht.index); hh.zone = "tiles"; hh.activateTile() } }
+                    HoverHandler {
+                        onHoveredChanged: if (hovered) { hh.setTile(ht.index); hh.zone = "tiles" }
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        onTapped: { hh.setTile(ht.index); hh.zone = "tiles"; hh.activateTile() }
+                    }
                 }
             }
         }
@@ -464,14 +522,44 @@ FocusScope {
         Behavior on opacity { enabled: hh.anim; NumberAnimation { duration: 200 } }
         readonly property real tw: (hh.covers ? 136 : 112) * hh.s
         readonly property real gap: 10 * hh.s
-        readonly property real full: hh.tiles.length * (tw + gap) - gap
-        readonly property real scrollX: full <= width ? 0
-                                        : Math.max(0, Math.min(full - width, hh.ti * (tw + gap) - width / 2 + tw / 2))
-        Row {
-            x: -tileRow.scrollX
-            Behavior on x { enabled: hh.anim; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-            spacing: tileRow.gap
-            Repeater {
+        // 0.10.78: a Flickable like the category row — drag, fling, and wheel, without snapping against a live drag.
+        function ensureVisible() {
+            if (!tileFlick || !tileInner) return
+            if (tileFlick.dragging || tileFlick.flicking) return
+            var item = null
+            var kids = tileInner.children
+            for (var i = 0; i < kids.length; i++) {
+                if (kids[i].index === hh.ti) { item = kids[i]; break }
+            }
+            if (!item) return
+            var left = item.x
+            var right = item.x + item.width
+            var viewL = tileFlick.contentX
+            var viewR = viewL + tileFlick.width
+            if (left < viewL) tileFlick.contentX = Math.max(0, left - 12 * hh.s)
+            else if (right > viewR) tileFlick.contentX = Math.min(Math.max(0, tileFlick.contentWidth - tileFlick.width), right - tileFlick.width + 12 * hh.s)
+        }
+        Flickable {
+            id: tileFlick
+            objectName: "hhTilesFlick"
+            anchors.fill: parent
+            clip: false
+            interactive: contentWidth > width + 1
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: Math.max(width, tileInner.width)
+            contentHeight: height
+            Behavior on contentX { enabled: hh.anim && !tileFlick.dragging && !tileFlick.flicking; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+            WheelHandler {
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: (event) => hh.onRowWheel(tileFlick, event)
+            }
+            Row {
+                id: tileInner
+                objectName: "hhTilesInner"
+                height: parent.height
+                spacing: tileRow.gap
+                Repeater {
                 model: hh.tiles
                 Item {
                     id: tl
@@ -570,9 +658,18 @@ FocusScope {
                             text: tl.modelData.items.length; color: "#9fb2b7"; font.pixelSize: 14 * hh.s
                         }
                     }
-                    MouseArea { anchors.fill: parent; onClicked: { hh.setTile(tl.index); hh.zone = "tiles"; hh.activateTile() } }
+                    HoverHandler {
+                        enabled: hh.zone !== "list"
+                        onHoveredChanged: if (hovered) { hh.setTile(tl.index); hh.zone = "tiles" }
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        enabled: hh.zone !== "list"
+                        onTapped: { hh.setTile(tl.index); hh.zone = "tiles"; hh.activateTile() }
+                    }
                 }
             }
+        }
         }
         Text {
             objectName: "hhEmptyRow"
@@ -597,6 +694,19 @@ FocusScope {
         y: catRow.y + catRow.height + 14 * hh.s
         height: tileRow.y - y - 14 * hh.s
         clip: true
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: (event) => {
+                var d = 0
+                if (event.pixelDelta && (Math.abs(event.pixelDelta.y) > 0 || Math.abs(event.pixelDelta.x) > 0))
+                    d = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.pixelDelta.x
+                else
+                    d = event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x
+                if (d > 0) hh.moveList(-1)
+                else if (d < 0) hh.moveList(1)
+                event.accepted = true
+            }
+        }
         readonly property real rowH: 58 * hh.s
         readonly property real selH: 92 * hh.s
         readonly property real selY: rowH * 1.4
@@ -649,6 +759,20 @@ FocusScope {
                                          : ""
                            color: "#9debff"; font.pixelSize: 20 * hh.s }
                 }
+                HoverHandler {
+                    enabled: slot.it !== null
+                    onHoveredChanged: if (hovered && slot.it) hh.listIdx = slot.i
+                }
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    enabled: slot.it !== null
+                    onTapped: {
+                        if (!slot.it) return
+                        hh.listIdx = slot.i
+                        hh.snd("hhselect")
+                        backend.launchGid(slot.it.gid)
+                    }
+                }
             }
         }
         Text {
@@ -680,5 +804,12 @@ FocusScope {
         spacing: 10 * hh.s
         Icon { name: "globe"; size: 28 * hh.s; color: hh.status.online ? hh.glow : "#6c7175"; anchors.verticalCenter: parent.verticalCenter }
         Text { text: hh.status.online ? "Online" : "Offline"; color: "#e5ebec"; font.pixelSize: 21 * hh.s; anchors.verticalCenter: parent.verticalCenter }
+    }
+
+    // 0.10.78: right-click anywhere on the home is Back (same as B / Esc).
+    TapHandler {
+        objectName: "hhRightBack"
+        acceptedButtons: Qt.RightButton
+        onTapped: hh.mouseBack()
     }
 }

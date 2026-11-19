@@ -166,6 +166,7 @@ public class CatalogTest {
             check(SafeContacts.add(people, "Nan", "07700900456") && !SafeContacts.update(people, 1, "Nan2", "07700900999".substring(0, 0) + people.get(0).number), "cannot steal another number");
         }
         homeScrollChecks();
+        homeMouseChecks();
         coverFitChecks();
         novaAndInstallPinChecks();
         System.out.println("CatalogTest: all checks passed");
@@ -961,6 +962,39 @@ public class CatalogTest {
                 + " ms simulated at 60 Hz), cpu " + (b.cpuNs / 1_000_000f) + " ms on this machine, final tile " + b.finalTile);
     }
 
+    static void homeMouseChecks() {
+        check(HomeMouse.clickOpens(false, false, 0, 0, 1f), "a still click opens");
+        check(HomeMouse.clickOpens(false, false, 10, 10, 1f), "movement under the slop still opens");
+        check(!HomeMouse.clickOpens(false, false, 40, 0, 1f), "a drag past the slop must not open");
+        check(!HomeMouse.clickOpens(true, false, 0, 0, 1f), "a chosen gesture must not open");
+        check(!HomeMouse.clickOpens(false, true, 0, 0, 1f), "a long-press must not open as a click");
+        check(HomeMouse.isDrag(28.1f, 0, 1f) && !HomeMouse.isDrag(27.9f, 0, 1f), "slop is 28 design units");
+        // vertical wheel down (negative vScroll) moves to later tiles; horizontal right does the same
+        float down = HomeMouse.wheelToTiles(0, -1f, 100f, 100f);
+        float up = HomeMouse.wheelToTiles(0, 1f, 100f, 100f);
+        float right = HomeMouse.wheelToTiles(1f, 0, 100f, 100f);
+        check(down > 0 && up < 0 && Math.abs(down + up) < 0.0001f, "vertical wheel moves the row both ways");
+        check(right > 0 && Math.abs(right - 1f) < 0.0001f, "horizontal wheel uses the tile step");
+        check(Math.abs(HomeMouse.wheelToTiles(0.2f, 0.1f, 100f, 100f) - 0.2f) < 0.0001f, "horizontal axis wins when it is larger");
+        check(HomeMouse.isRightClick(HomeMouse.BUTTON_SECONDARY) && !HomeMouse.isRightClick(1), "right button");
+        check(HomeMouse.isMouseWheel(HomeMouse.ACTION_SCROLL, HomeMouse.SOURCE_CLASS_POINTER)
+                && !HomeMouse.isMouseWheel(2, HomeMouse.SOURCE_CLASS_POINTER)
+                && !HomeMouse.isMouseWheel(HomeMouse.ACTION_SCROLL, HomeMouse.SOURCE_JOYSTICK), "wheel vs stick");
+        check(HomeMouse.isJoystick(HomeMouse.SOURCE_JOYSTICK) && !HomeMouse.isJoystick(HomeMouse.SOURCE_CLASS_POINTER), "joystick mask");
+        check("tile".equals(HomeMouse.hoverTarget(false, false, false, true))
+                && "wifi".equals(HomeMouse.hoverTarget(false, true, true, true))
+                && "camera".equals(HomeMouse.hoverTarget(true, true, true, true))
+                && "".equals(HomeMouse.hoverTarget(false, false, false, false)), "hover prefers camera, then wifi, then a tile");
+        // A wheel tick must not leave a drag "held" — HomeView uses down/move/up(0).
+        HomeScroll s = new HomeScroll();
+        s.reset(0, 0);
+        s.pointerDown();
+        s.pointerMove(HomeMouse.wheelToTiles(0, -1f, 100f, 200f), 10);
+        s.pointerUp(0, 3, 10, 12);
+        check(!s.dragging, "wheel lift must not leave the row in a live drag");
+        check(s.tile != 0 || s.scroll > 0, "wheel moves the row");
+    }
+
     static void coverFitChecks() {
         int[] src = CoverFit.coverSrc(200, 100, 188, 136);
         // 200x100 into 188x136: fill height, crop width. srcH=100, srcW=100*188/136=138, left=(200-138)/2=31
@@ -1613,11 +1647,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.77") && NovaAppVer.CODE == 177, "shipping version is 0.10.77");
-        check(NovaAppVer.label().equals("CodeAque 0.10.77")
-                && NovaAppVer.label("0.10.77").equals("CodeAque 0.10.77")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.77")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.77"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.78") && NovaAppVer.CODE == 178, "shipping version is 0.10.78");
+        check(NovaAppVer.label().equals("CodeAque 0.10.78")
+                && NovaAppVer.label("0.10.78").equals("CodeAque 0.10.78")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.78")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.78"), "version label for Chat and Nova's tab");
 
         // 0.10.76: adult top-bar camera (B612 via Play Store only); hidden in Kids mode.
         check(CameraApp.PKG.equals("com.linecorp.b612.android"), "B612 package id");
@@ -1666,7 +1700,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "a slow Heart synth does not get an extra wait");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.77") && NovaAppVer.CODE == 177, "shipping version is 0.10.77");
+        check(NovaAppVer.NAME.equals("0.10.78") && NovaAppVer.CODE == 178, "shipping version is 0.10.78");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1864,7 +1898,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.77") && NovaAppVer.CODE == 177, "shipping version is 0.10.77");
+        check(NovaAppVer.NAME.equals("0.10.78") && NovaAppVer.CODE == 178, "shipping version is 0.10.78");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

@@ -31,6 +31,14 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.78
+
+**A USB or Bluetooth mouse can now move the tiles on the Android-style home (the bottom row as well as the top).** The category strip at the top already scrolled with a mouse drag. The game and app row at the bottom now works the same way: hover over a tile to select it (the same highlight as the controller), left-click to open it, click-and-drag to scroll the row with a smooth fling, and use the scroll wheel (vertical or horizontal). A short click still opens the tile; a drag does not. Right-click is Back, the same as the B button. The same mouse actions work on the top-bar icons (Wi-Fi, and the camera icon in adult mode) and in the list that opens from a tile.
+
+**Kids mode is included, and the pad still works.** The parent PIN and Kids filters are unchanged. Touch, the controller and the D-pad keep their existing behaviour. The row does not fight a live drag (the same jitter-free rule as 0.10.51 / 0.10.66), and the locked top-bar geometry from 0.10.66 is unchanged.
+
+Untested: unit tests passed, a live offscreen mouse test of the console home ran here, and the APK was built here. This has not been tried with a real USB or Bluetooth mouse on Code's PC, a phone, a K56, or a Win600. Please try this install and see that you can drag the bottom tile row like the top category row, that the wheel moves the row, that hover highlights a tile, that a short click opens it, that a drag does not, and that right-click goes back. Please also check that a controller or finger still works as before.
+
 ## What's new in 0.10.77
 
 **The first-run setup screen (and Settings) now groups anything that still needs installing at the top.** Rows whose program is missing — Start recording (F9) when ffmpeg (or wf-recorder on Wayland) is not installed, Install emulators and apps while an essential emulator is missing, and Steam: install, rescan, drives when Steam is not installed — sit under a small **Needs installing** heading, each in a yellow box with a clear **INSTALL** tag. Rows that are already fine stay in their usual order below.
