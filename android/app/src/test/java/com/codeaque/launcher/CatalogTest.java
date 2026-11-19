@@ -1613,11 +1613,29 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.75") && NovaAppVer.CODE == 175, "shipping version is 0.10.75");
-        check(NovaAppVer.label().equals("CodeAque 0.10.75")
-                && NovaAppVer.label("0.10.75").equals("CodeAque 0.10.75")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.75")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.75"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.76") && NovaAppVer.CODE == 176, "shipping version is 0.10.76");
+        check(NovaAppVer.label().equals("CodeAque 0.10.76")
+                && NovaAppVer.label("0.10.76").equals("CodeAque 0.10.76")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.76")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.76"), "version label for Chat and Nova's tab");
+
+        // 0.10.76: adult top-bar camera (B612 via Play Store only); hidden in Kids mode.
+        check(CameraApp.PKG.equals("com.linecorp.b612.android"), "B612 package id");
+        check(CameraApp.MARKET.equals("market://details?id=com.linecorp.b612.android"), "Play market uri");
+        check(CameraApp.PLAY_HTTPS.equals("https://play.google.com/store/apps/details?id=com.linecorp.b612.android"), "Play https fallback");
+        check(CameraApp.showIcon(false) && !CameraApp.showIcon(true), "camera icon is hidden in Kids mode");
+        check(CameraApp.shouldOfferInstall(false, false, false)
+                && !CameraApp.shouldOfferInstall(true, false, false)
+                && !CameraApp.shouldOfferInstall(false, true, false)
+                && !CameraApp.shouldOfferInstall(false, false, true), "one-time adult Play Store offer only if not installed");
+        check(CameraApp.ICON_SIZE == 22f && CameraApp.ICON_Y == 29f, "camera glyph matches the Wi-Fi icon size and Y");
+        check(CameraApp.ICON_GAP == 30f, "camera uses the existing Wi-Fi-to-clock spacing");
+        check(CameraApp.cameraCx(100f, 1f) == 70f && CameraApp.cameraCy(1f) == 29f, "camera sits left of an unchanged Wi-Fi centre");
+        check(CameraApp.hit(70f, 29f, 100f, 1f)
+                && !CameraApp.hit(100f, 29f, 100f, 1f)
+                && !CameraApp.hit(70f, 80f, 100f, 1f), "camera hit target does not cover the Wi-Fi centre");
+        check(CameraApp.PREF_OFFER.equals("cameraOfferShown"), "offer pref name");
+
         check(NovaListenPick.showBuiltinButton(false, false)
                 && !NovaListenPick.showBuiltinButton(true, false)
                 && !NovaListenPick.showBuiltinButton(false, true), "Get built-in listening stays visible until the pack is ready or downloading");
@@ -1648,7 +1666,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "a slow Heart synth does not get an extra wait");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.75") && NovaAppVer.CODE == 175, "shipping version is 0.10.75");
+        check(NovaAppVer.NAME.equals("0.10.76") && NovaAppVer.CODE == 176, "shipping version is 0.10.76");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1846,7 +1864,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.75") && NovaAppVer.CODE == 175, "shipping version is 0.10.75");
+        check(NovaAppVer.NAME.equals("0.10.76") && NovaAppVer.CODE == 176, "shipping version is 0.10.76");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.76
+
+**A camera icon sits in the top bar, next to Wi-Fi.** In adult mode, tap it to open the B612 camera app if it is already installed. If it is not installed, it opens B612's Google Play page (never a sideload or a bundled APK). The glyph is a generic camera, not B612's logo. Size and placement match the existing Wi-Fi icon, and the tab-strip geometry from the 0.10.66 jitter fix is unchanged.
+
+**Kids mode hides the icon.** B612 has social and sharing features, so the simpler safe option is to hide the button in Kids mode rather than asking for the parent PIN.
+
+**Adult first-run can install it in one tap.** There is no bundled installer. On first run, or the first time you are in adult mode after this update, if B612 is not installed, CodeAque shows a one-time "Install camera app" prompt that opens the same Play Store page. The top-bar icon keeps that Play Store fallback afterwards.
+
+Untested: unit tests passed and the APK was built here. This has not been run on a real phone, a K56, or a Win600. Please try this install and see that the camera icon appears next to Wi-Fi in adult mode, opens B612 or its Play page, stays hidden in Kids mode, and that the first-run prompt appears once in adult mode when B612 is not installed. Please also check that the top bar does not jitter when you swipe the game row.
+
 ## What's new in 0.10.75
 
 **The Listening / Mic button no longer flickers in a loop.** On 0.10.74 the right-hand button flipped between "Listening" and "Mic" several times a second, the meter flashed, and nothing was ever transcribed — even with no screen recorder. The cause was in the app: after a recognizer error (often an instant CLIENT or BUSY from cancelling and starting in the same moment, or the offline recognizer failing at once), the hands-free loop restarted immediately and never gave up. Starting also cancelled an idle recognizer and started it again, which races and fails instantly.

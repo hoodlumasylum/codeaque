@@ -73,6 +73,8 @@ public class HomeView extends View {
         default boolean updateReady() { return false; }
         default String updateReadyLabel() { return "Update ready"; }
         default void onUpdateInstall() {}
+        /** 0.10.76: open B612 if installed, else its Play Store page. Adult mode only. */
+        default void openCamera() {}
     }
 
     private Palette T = Palette.NEON;
@@ -155,6 +157,8 @@ public class HomeView extends View {
     private VelocityTracker velocity;
     private int logoTaps; private long logoTapAt;
     private final RectF logoTop = new RectF(), logoCenter = new RectF(), backBtn = new RectF();
+    private final RectF cameraHit = new RectF();
+    private float wifiCx;
     private final RectF installBtn = new RectF();
     private final RectF updateBar = new RectF(), updateBtn = new RectF();
     private final RectF searchQueryBox = new RectF(), searchRetryBox = new RectF(), searchKbBox = new RectF(), searchChipBox = new RectF();
@@ -531,6 +535,7 @@ public class HomeView extends View {
 
     private void onTap(float x, float y, float H) {
         if (onUpdateInstallBtn(x, y)) { host.onUpdateInstall(); return; }
+        if (!cameraHit.isEmpty() && cameraHit.contains(x, y)) { host.openCamera(); return; }
         if (kids && host.timeUpScreen()) {
             if (r2.contains(x, y) || (y > getHeight() * 0.60f && y < getHeight() * 0.80f)) host.timeUpAskParent();
             else if (logoTop.contains(x, y) || logoCenter.contains(x, y)) logoHit();
@@ -738,7 +743,13 @@ public class HomeView extends View {
     }
     // 0.10.2 Kids mode: bigger tiles and labels (readable at 640x480), hold Select to reach the grown-up switch
     private boolean kids;
-    public void setKids(boolean k) { kids = k; invalidate(); }
+    public void setKids(boolean k) {
+        if (kids == k) return;
+        kids = k;
+        cameraHit.setEmpty();
+        chromeReady = false;   // top-bar camera icon is adult-only; rebuild the frozen chrome
+        invalidate();
+    }
     static final float KIDS_SCALE = 1.7f;
     private float big() { return kids ? KIDS_SCALE : 1f; }
     private boolean covers() {
@@ -1149,8 +1160,17 @@ public class HomeView extends View {
         String right = clockTxt + (st.isEmpty() ? "" : "   " + st);
         text(c, right, W - 24 * s, 36 * s, 20 * s, TXT, Paint.Align.RIGHT, false);
         p.setTextSize(20 * s);
+        // Wi-Fi stays at the same size, Y and formula as before 0.10.76 (tab-strip geometry is untouched).
         float wx = W - 24 * s - p.measureText(right) - 30 * s;
-        icon(c, "wifi", wx, 29 * s, 22 * s, host.online() ? TXT : 0xFF555555, 2f);
+        wifiCx = wx;
+        icon(c, "wifi", wx, CameraApp.ICON_Y * s, CameraApp.ICON_SIZE * s, host.online() ? TXT : 0xFF555555, 2f);
+        if (CameraApp.showIcon(kids)) {
+            float cx = CameraApp.cameraCx(wx, s), cy = CameraApp.cameraCy(s);
+            icon(c, "camera", cx, cy, CameraApp.iconSize(s), TXT, 2f);
+            cameraHit.set(CameraApp.hitLeft(wx, s), CameraApp.hitTop(s), CameraApp.hitRight(wx, s), CameraApp.hitBottom(s));
+        } else {
+            cameraHit.setEmpty();
+        }
         if (kids) {
             String ban = host.kidsBanner();
             if (ban != null && !ban.isEmpty())
@@ -1625,6 +1645,12 @@ public class HomeView extends View {
             case "wifi":
                 for (int i = 1; i <= 3; i++) { float rr = i * 3.6f * u; ir.set(cx - rr, cy + 6 * u - rr, cx + rr, cy + 6 * u + rr); c.drawArc(ir, 225, 90, false, stroke); }
                 p.setColor(col); c.drawCircle(cx, cy + 6 * u, 1.4f * u, p); break;
+            case "camera":   // generic camera glyph; not a third-party logo
+                ir.set(x0 + 3 * u, y0 + 7 * u, x0 + 21 * u, y0 + 20 * u); c.drawRoundRect(ir, 2 * u, 2 * u, stroke);
+                c.drawCircle(cx, y0 + 13.5f * u, 4 * u, stroke);
+                c.drawCircle(cx, y0 + 13.5f * u, 1.6f * u, stroke);
+                ir.set(x0 + 8 * u, y0 + 4 * u, x0 + 16 * u, y0 + 7 * u); c.drawRoundRect(ir, 1.2f * u, 1.2f * u, stroke);
+                break;
             case "bt":
                 path.moveTo(x0 + 7 * u, y0 + 7 * u); path.lineTo(x0 + 17 * u, y0 + 16 * u); path.lineTo(cx, y0 + 21 * u); path.lineTo(cx, y0 + 3 * u);
                 path.lineTo(x0 + 17 * u, y0 + 8 * u); path.lineTo(x0 + 7 * u, y0 + 17 * u); c.drawPath(path, stroke); break;

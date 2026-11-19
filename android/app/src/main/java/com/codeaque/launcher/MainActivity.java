@@ -193,6 +193,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         int storeGen = parentStoreGen;
         int updateGen = parentUpdateGen;
         resumeStoreQueue();   // may open the next PIN-approved Play Store page (bumps parentStoreGen)
+        scheduleCameraOffer();
         if (prefs.getBoolean("kidsMode", false)) {
             if (pendingUpdateConfirm) {
                 pendingUpdateConfirm = false;   // installer confirm just launched; keep the update window
@@ -1636,6 +1637,41 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         } else {
             start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://f-droid.org/packages/" + pkg + "/")));
         }
+    }
+
+    @Override public void openCamera() {
+        if (prefs.getBoolean("kidsMode", false)) return;   // icon is hidden in Kids mode
+        Intent launch = null;
+        try { launch = getPackageManager().getLaunchIntentForPackage(CameraApp.PKG); } catch (Exception ignored) { }
+        if (launch != null) { start(launch); return; }
+        store(CameraApp.PKG);
+    }
+
+    private boolean cameraOfferScheduled;
+
+    /** Adult first-run / first return after this update: one-time Play Store prompt if B612 is missing. */
+    private void scheduleCameraOffer() {
+        if (cameraOfferScheduled || prefs.getBoolean("kidsMode", false)) return;
+        if (prefs.getBoolean(CameraApp.PREF_OFFER, false) || pkgInstalled(CameraApp.PKG)) return;
+        cameraOfferScheduled = true;
+        if (view != null) view.postDelayed(this::maybeOfferCameraOnce, 2300);
+        else maybeOfferCameraOnce();
+    }
+
+    private void maybeOfferCameraOnce() {
+        if (!CameraApp.shouldOfferInstall(prefs.getBoolean("kidsMode", false),
+                pkgInstalled(CameraApp.PKG), prefs.getBoolean(CameraApp.PREF_OFFER, false))) return;
+        if (!hasWindowFocus()) {
+            cameraOfferScheduled = false;   // try again on the next resume
+            return;
+        }
+        prefs.edit().putBoolean(CameraApp.PREF_OFFER, true).apply();
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Install camera app")
+                .setMessage("A free camera app with filters (B612) is not installed. Open its Google Play page to install it? CodeAque never copies or sideloads other apps.")
+                .setPositiveButton("Open Play Store", (d, w) -> store(CameraApp.PKG))
+                .setNegativeButton("Not now", null)
+                .show();
     }
 
     private void store(String pkg) { store(pkg, null); }
