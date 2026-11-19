@@ -16,12 +16,12 @@ def _cats():
 
 def test_categories_match_the_layout_and_games_starts_with_cloud_gaming():
     cats = handheld.categories(demo_library().games)
-    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "World Games", "My Games", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Trilogies", "Co-op", "Roblox", "Downloads",
+    assert [c["title"] for c in cats] == ["Steam", "PC Games", "Games Store", "World Games", "My Games", "Fav Sites", "Retro", "Cloud", "Emulators", "Streams", "Media", "Music", "Trilogies", "Co-op", "Roblox", "Downloads",
                                           "All Apps", "Accounts", "Settings"]
-    games = cats[5]["tiles"]
+    games = cats[6]["tiles"]
     assert games[0]["title"] == "Cloud Gaming" and games[0]["kind"] == "list" and games[0]["items"]
     assert all(t["icon"].startswith("g_") for t in games[1:])          # original generic pictures, never logos
-    hub = cats[7]["tiles"]
+    hub = cats[8]["tiles"]
     from atarilauncher import emulators
     assert len(hub) == len(emulators.SYSTEMS) and all(t["icon"].startswith("g_") for t in hub)
 
@@ -97,8 +97,8 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         hs = ui.win.findChild(QQuickItem, "handheldScreen")
         assert hs.property("visible") and ui.mode == "library"
         assert hs.property("zone") == "tiles" and hs.property("cat") == 0     # Steam
-        for _ in range(5): ui.key(Qt.Key_E, 100)
-        assert hs.property("cat") == 5   # Retro: Cloud Gaming first
+        for _ in range(6): ui.key(Qt.Key_E, 100)
+        assert hs.property("cat") == 6   # Retro: Cloud Gaming first (Fav Sites sits after My Games)
         ui.key(Qt.Key_Return, 100)                       # Cloud Gaming -> its list
         assert hs.property("zone") == "list"
         ui.key(Qt.Key_Return, 100)
@@ -106,10 +106,10 @@ def test_pad_navigation_opens_a_list_and_launches(app, tmp_path, monkeypatch):
         ui.key(Qt.Key_Escape, 100)
         assert hs.property("zone") == "tiles"
         ui.key(Qt.Key_E, 100)                            # RB: next category (Cloud)
-        assert hs.property("cat") == 6
+        assert hs.property("cat") == 7
         ui.key(Qt.Key_Up, 100); assert hs.property("zone") == "cats"
-        ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 7
-        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 17  # Y: Settings (0.10.32: Trilogies + Co-op + Roblox)
+        ui.key(Qt.Key_Right, 100); assert hs.property("cat") == 8
+        ui.key(Qt.Key_F10, 100); assert hs.property("cat") == 18  # Y: Settings (Fav Sites + Trilogies + Co-op + Roblox)
         ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100); ui.key(Qt.Key_Left, 100)   # tiles: back to Wi-Fi
         for _ in range(7):
             ui.key(Qt.Key_Right, 60)                     # ... Leave Handheld (0.10.32: Box Set Mode tile)
@@ -308,9 +308,9 @@ def test_mouse_can_drag_the_tile_row_without_opening(app, tmp_path, monkeypatch)
         hs = ui.win.findChild(QQuickItem, "handheldScreen")
         assert hs is not None and hs.property("visible")
         # Retro (Cloud Gaming first) has a list tile, so a real click can be distinguished from a drag.
-        for _ in range(5):
+        for _ in range(6):
             ui.key(Qt.Key_E, 80)
-        assert hs.property("cat") == 5
+        assert hs.property("cat") == 6
         assert hs.property("zone") == "tiles"
         flick = hs.findChild(QQuickItem, "hhTilesFlick")
         assert flick is not None

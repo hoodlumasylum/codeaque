@@ -10,8 +10,18 @@ public class CatalogTest {
 
     public static void main(String[] a) {
         List<Catalog.Category> c = Catalog.categories();
-        check(c.get(0).id.equals("steam") && c.get(1).id.equals("kids") && c.get(2).id.equals("mygames") && c.get(3).id.equals("games") && c.get(3).items.get(0).action.equals("goto:cloud"), "Featured, Kids, My Games, then Games with Cloud Gaming");
-        check(Catalog.indexOf(c, "cloud") == 4 && Catalog.indexOf(c, "retro") == 5, "Cloud then Retro");
+        check(c.get(0).id.equals("steam") && c.get(1).id.equals("kids") && c.get(2).id.equals("mygames")
+                && c.get(3).id.equals("favsites") && c.get(3).label.equals("Fav Sites")
+                && c.get(4).id.equals("games") && c.get(4).items.get(0).action.equals("goto:cloud"),
+                "Featured, Kids, My Games, Fav Sites, then Games with Cloud Gaming");
+        check(Catalog.indexOf(c, "cloud") == 5 && Catalog.indexOf(c, "retro") == 6, "Cloud then Retro");
+        check(c.get(3).items.get(0) == Catalog.DUCKDUCKGO && "https://duckduckgo.com/".equals(Catalog.DUCKDUCKGO.webUrl)
+                && c.get(3).items.get(1) == Catalog.ADD_FAV && "addfav".equals(Catalog.ADD_FAV.action),
+                "Fav Sites starts with DuckDuckGo and Add fav site");
+        check(Catalog.indexOf(Catalog.kidsMode(), "favsites") < 0
+                && Catalog.kidsBlocked(Catalog.DUCKDUCKGO) && Catalog.kidsBlocked(Catalog.ADD_FAV)
+                && Catalog.kidsBlocked(Catalog.favItem("x", "https://example.com/", "x", null)),
+                "Kids mode hides Fav Sites and blocks DuckDuckGo / add / open");
         List<Catalog.Category> pj = Catalog.categories(List.of(), List.of(), List.of(), List.of(), true);
         check(pj.get(0).id.equals("cloud") && pj.get(1).id.equals("media") && pj.size() == c.size(), "projector order");
         check(Catalog.indexOf(c, "store") > 0 && Catalog.indexOf(c, "accounts") > 0, "Games Store and Accounts");
@@ -1647,11 +1657,11 @@ public class CatalogTest {
                 && !NovaListenBeepGate.duckSucceeded(NovaListenBeepGate.MODE_NORMAL), "only silent counts as a successful duck");
 
         // 0.10.64: Chat always offers built-in listening; busy/silent system rec falls over sooner.
-        check(NovaAppVer.NAME.equals("0.10.78") && NovaAppVer.CODE == 178, "shipping version is 0.10.78");
-        check(NovaAppVer.label().equals("CodeAque 0.10.78")
-                && NovaAppVer.label("0.10.78").equals("CodeAque 0.10.78")
-                && NovaAppVer.label(null).equals("CodeAque 0.10.78")
-                && NovaAppVer.label("?").equals("CodeAque 0.10.78"), "version label for Chat and Nova's tab");
+        check(NovaAppVer.NAME.equals("0.10.82") && NovaAppVer.CODE == 182, "shipping version is 0.10.82");
+        check(NovaAppVer.label().equals("CodeAque 0.10.82")
+                && NovaAppVer.label("0.10.82").equals("CodeAque 0.10.82")
+                && NovaAppVer.label(null).equals("CodeAque 0.10.82")
+                && NovaAppVer.label("?").equals("CodeAque 0.10.82"), "version label for Chat and Nova's tab");
 
         // 0.10.76: adult top-bar camera (B612 via Play Store only); hidden in Kids mode.
         check(CameraApp.PKG.equals("com.linecorp.b612.android"), "B612 package id");
@@ -1700,7 +1710,7 @@ public class CatalogTest {
                 && !NovaSpeakGate.extendHeartWait(false, false, true, false), "a slow Heart synth does not get an extra wait");
 
         // 0.10.65: instant canned greeting, short replies, real mic meter, built-in default, 8s listen.
-        check(NovaAppVer.NAME.equals("0.10.78") && NovaAppVer.CODE == 178, "shipping version is 0.10.78");
+        check(NovaAppVer.NAME.equals("0.10.82") && NovaAppVer.CODE == 182, "shipping version is 0.10.82");
         check(NovaConvo.statusLine(NovaConvo.SPEAKING, null).equals(NovaConvo.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.SPEAKING, "").equals(NovaReplyQuick.SPEAKING_TEXT)
                 && NovaConvo.statusLine(NovaConvo.THINKING, "hello").equals(NovaConvo.THINKING_TEXT)
@@ -1898,7 +1908,7 @@ public class CatalogTest {
                 && NovaSpeakGate.allowInstantPhone(false, false), "the greeting may use the phone voice only while Heart is still loading");
 
         // 0.10.66: category strip is a fixed-height, pixel-aligned row (Kids and adult).
-        check(NovaAppVer.NAME.equals("0.10.78") && NovaAppVer.CODE == 178, "shipping version is 0.10.78");
+        check(NovaAppVer.NAME.equals("0.10.82") && NovaAppVer.CODE == 182, "shipping version is 0.10.82");
         check(HomeTabs.snap(10.4f) == 10f && HomeTabs.snap(10.5f) == 11f, "tab Y snaps to the pixel grid");
         check(HomeTabs.iconY(720) == HomeTabs.snap(720 * HomeTabs.ICON_Y)
                 && HomeTabs.stripTop(720) == HomeTabs.snap(720 * HomeTabs.STRIP_TOP)

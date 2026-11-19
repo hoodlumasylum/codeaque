@@ -77,6 +77,9 @@ FocusScope {
         var k = e.key
         if (k === Qt.Key_Q) { moveCat(-1); return }
         if (k === Qt.Key_E) { moveCat(1); return }
+        if (hh.tile && hh.tile.removable && hh.tile.favid && (k === Qt.Key_Y || k === Qt.Key_F10)) {
+            backend.askRemoveFavSite(hh.tile.favid); return
+        }
         if (k === Qt.Key_F10 || k === Qt.Key_Menu || k === Qt.Key_O || k === Qt.Key_Tab) {     // Y / Start: Settings
             cat = cats.length - 1; zone = "tiles"; snd("hhcat"); return
         }
@@ -670,6 +673,10 @@ FocusScope {
                         acceptedButtons: Qt.LeftButton
                         enabled: hh.zone !== "list"
                         onTapped: { hh.setTile(tl.index); hh.zone = "tiles"; hh.activateTile() }
+                        onLongPressed: {
+                            hh.setTile(tl.index); hh.zone = "tiles"
+                            if (tl.modelData.removable && tl.modelData.favid) backend.askRemoveFavSite(tl.modelData.favid)
+                        }
                     }
                 }
             }
@@ -811,9 +818,13 @@ FocusScope {
     }
 
     // 0.10.78: right-click anywhere on the home is Back (same as B / Esc).
+    // Fav Sites: right-click a saved site asks to remove it (a confirm page, not an instant delete).
     TapHandler {
         objectName: "hhRightBack"
         acceptedButtons: Qt.RightButton
-        onTapped: hh.mouseBack()
+        onTapped: {
+            if (hh.zone !== "list" && hh.tile && hh.tile.removable && hh.tile.favid) backend.askRemoveFavSite(hh.tile.favid)
+            else hh.mouseBack()
+        }
     }
 }

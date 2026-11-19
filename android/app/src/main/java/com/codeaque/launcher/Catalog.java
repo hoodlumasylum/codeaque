@@ -21,14 +21,20 @@ public final class Catalog {
         }
         /** 0.10.52: PEGI-like age from the catalogue or an age-filtered Play search (0 = unknown). */
         public final int pegi;
+        /** 0.10.80: local favicon path for a Fav Site (empty/null = globe). */
+        public final String art;
         public Item(String label, String icon, String[] packages, String webUrl, String action, String pkg, String cls, String uri) {
             this(label, icon, packages, webUrl, action, pkg, cls, uri, 0);
         }
         public Item(String label, String icon, String[] packages, String webUrl, String action, String pkg, String cls, String uri, int pegi) {
+            this(label, icon, packages, webUrl, action, pkg, cls, uri, pegi, null);
+        }
+        public Item(String label, String icon, String[] packages, String webUrl, String action, String pkg, String cls, String uri, int pegi, String art) {
             this.label = label; this.icon = icon; this.webUrl = webUrl; this.action = action;
             this.packages = Collections.unmodifiableList(Arrays.asList(packages));
             this.pkg = pkg; this.cls = cls; this.uri = uri;
             this.pegi = pegi < 0 ? 0 : pegi;
+            this.art = art;
         }
         public boolean isDeviceApp() { return pkg != null && cls != null; }
         public boolean isRom() { return uri != null; }
@@ -260,6 +266,16 @@ public final class Catalog {
      *  Never a link to a ROM, piracy or IPTV site. Hidden from Kids mode (see kidsBlocked). */
     public static final String LIBRETORRENT = "org.proninyaroslav.libretorrent";
     public static final Item DOWNLOADS = act("Downloads", "download", "downloads");
+    public static final Item DUCKDUCKGO = web("DuckDuckGo", "globe", "https://duckduckgo.com/");
+    public static final Item ADD_FAV = act("Add fav site", "plus", "addfav");
+    public static Item favItem(String label, String url, String id, String art) {
+        return new Item(label, "globe", new String[0], url, "favopen:" + id, null, null, null, 0, art);
+    }
+    public static String favId(Item it) {
+        if (it == null || it.action == null || !it.action.startsWith("favopen:")) return null;
+        return it.action.substring("favopen:".length());
+    }
+    public static boolean favSaved(Item it) { return favId(it) != null; }
     /** 0.10.23: does opening this tile go to the Play Store (the Play Store tile, or "Get" on a game that isn't installed)? */
     public static boolean opensStore(Item it, boolean installed) {
         if (it == null || it.isAction() || it.isRom() || it.isDeviceApp()) return false;
@@ -303,7 +319,9 @@ public final class Catalog {
         if (it.isRom()) return true;
         if (cloudGaming(it)) return true;
         if (it == PLAY_STORE) return true;   // 0.10.37: no Play Store tile or shortcut in Kids mode
-        if ("allapps".equals(it.action) || "downloads".equals(it.action) || "filemgr".equals(it.action) || "settings".equals(it.action) || "browser".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
+        if ("allapps".equals(it.action) || "downloads".equals(it.action) || "filemgr".equals(it.action) || "settings".equals(it.action) || "browser".equals(it.action) || "addfav".equals(it.action) || "goto:media".equals(it.action) || "goto:streams".equals(it.action)) return true;
+        if (it.action != null && it.action.startsWith("favopen:")) return true;
+        if (it.webUrl != null && it.webUrl.toLowerCase(java.util.Locale.ROOT).contains("duckduckgo.com")) return true;
         if ("boxset".equals(it.action) || "boxsetboot".equals(it.action) || "goto:trilogies".equals(it.action) || "goto:coop".equals(it.action)) return true;
         if (it.action != null && it.action.startsWith("steamstore:")) return true;
         if (kidsEmulator(it)) return !emuAllowed(it, allowedEmus);
@@ -783,6 +801,7 @@ public final class Catalog {
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.
         c.add(new Category("kids", "Kids", "pad", KIDS));
         c.add(new Category("mygames", "My Games", "pad", mine.toArray(new Item[0])));
+        c.add(new Category("favsites", "Fav Sites", "globe", DUCKDUCKGO, ADD_FAV));
         c.add(new Category("games", "Games", "cloud",
                 act("Cloud Gaming", "cloud", "goto:cloud"), XBOX, GFN, LUNA, RETROARCH, MINECRAFT, ROBLOX));
         c.add(new Category("cloud", "Cloud", "cloud", XBOX, GFN, LUNA, BOOST));

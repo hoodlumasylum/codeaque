@@ -25,6 +25,8 @@ import java.util.Locale;
 public class HomeView extends View {
     public interface Host {
         void open(Catalog.Item item);
+        void askRemoveFav(Catalog.Item item);
+        void addFavSite();
         boolean installed(Catalog.Item item);
         void sound(String name);
         String scanNote(String catId);   // 0.10.9
@@ -177,7 +179,7 @@ public class HomeView extends View {
     private static final int SF_BOX = 0, SF_CHIPS = 1, SF_KEYS = 2, SF_TILES = 3;
     private int searchFocus = SF_BOX;
     private final java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
-    private long holdAt; private int holdTile = -1; private boolean longPressFired, activateHeld;
+    private long holdAt; private int holdTile = -1; private boolean longPressFired, activateHeld, holdFav;
     private final RectF promptOpen = new RectF(), promptBack = new RectF(), pill = new RectF();
     private long clockAt; private String clockTxt = "";
 
@@ -219,6 +221,11 @@ public class HomeView extends View {
     }
     public boolean boxSet() { return boxset; }
     private List<Catalog.Item> items() { return boxset ? boxItems : cats.get(cat).items; }
+    private Catalog.Item currentItem() {
+        List<Catalog.Item> l = items();
+        if (l.isEmpty() || tile < 0 || tile >= l.size()) return null;
+        return l.get(tile);
+    }
 
     private void setCat(int c) {
         c = (c + cats.size()) % cats.size();
@@ -296,6 +303,7 @@ public class HomeView extends View {
                 goBack(); return true;    // a home screen never closes
             case KeyEvent.KEYCODE_BUTTON_Y: case KeyEvent.KEYCODE_MENU: case KeyEvent.KEYCODE_BUTTON_SELECT:
                 if (boxset || kids) { if (e.getRepeatCount() == 0) e.startTracking(); return true; }   // Box Set: hold to leave (no PIN). Kids: hold for grown-up switch.
+                if (!inCats && Catalog.favSaved(currentItem())) { host.askRemoveFav(currentItem()); return true; }
                 setCat(Catalog.indexOf(cats, "settings")); inCats = false; return true;
         }
         return super.onKeyDown(code, e);
@@ -668,10 +676,14 @@ public class HomeView extends View {
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (splash != null) { splash = null; invalidate(); return true; }
-                if (HomeMouse.isRightClick(e.getButtonState())) { goBack(); return true; }
+                if (HomeMouse.isRightClick(e.getButtonState())) {
+                    int fi = hitHomeTile(x, y);
+                    if (fi >= 0 && Catalog.favSaved(items().get(fi))) { inCats = false; tile = fi; host.askRemoveFav(items().get(fi)); return true; }
+                    goBack(); return true;
+                }
                 downX = x; downY = y; lastTouchX = x; lastTouchY = y; downTime = e.getEventTime();
                 rowDrag = false; sectionSwipe = false; gestureChose = false; tabDrag = false;
-                longPressFired = false; holdTile = -1; holdAt = 0;
+                longPressFired = false; holdTile = -1; holdAt = 0; holdFav = false;
                 if (velocity != null) velocity.recycle();
                 velocity = VelocityTracker.obtain();
                 velocity.addMovement(e);
@@ -682,6 +694,10 @@ public class HomeView extends View {
                 if (!onInstallBtn(x, y) && !onUpdateInstallBtn(x, y)) {
                     int hi = hitBrowseItem(x, y);
                     if (hi >= 0) { holdTile = hi; holdAt = e.getEventTime() + 450; postInvalidateDelayed(450); }
+                    else {
+                        int fi = hitHomeTile(x, y);
+                        if (fi >= 0 && Catalog.favSaved(items().get(fi))) { holdTile = fi; holdFav = true; holdAt = e.getEventTime() + 450; postInvalidateDelayed(450); }
+                    }
                 }
                 return true;
             case MotionEvent.ACTION_MOVE:
@@ -1312,12 +1328,21 @@ public class HomeView extends View {
         else if (!covers()) spaced(c, "GAMING  •  CLOUD  •  EMULATION  •  STREAMING", cx, ty + 30 * s, 15 * s, 0xFFCFE0D6, Paint.Align.CENTER);
     }
 
+    private int hitHomeTile(float x, float y) {
+        if (y <= tilesTop() || y >= tilesTop() + tileH()) return -1;
+        float step = tileW() + tileGap();
+        int i = (int) Math.floor((x - tilesLeft() + scrollAnim * step) / step);
+        if (i >= 0 && i < items().size()) return i;
+        return -1;
+    }
     private void fireTileHold() {
         if (holdTile < 0 || holdAt == 0 || longPressFired) return;
         if (android.os.SystemClock.uptimeMillis() < holdAt) return;
         int i = holdTile;
         holdTile = -1; holdAt = 0; longPressFired = true; gestureChose = true;
         inCats = false; tile = i;
+        if (holdFav && Catalog.favSaved(currentItem())) { holdFav = false; host.askRemoveFav(currentItem()); return; }
+        holdFav = false;
         togglePick(i);
     }
     private void confirmInstall() {
@@ -1727,6 +1752,8 @@ public class HomeView extends View {
             case "globe":
                 c.drawCircle(cx, cy, 9 * u, stroke); ir.set(cx - 4 * u, cy - 9 * u, cx + 4 * u, cy + 9 * u); c.drawOval(ir, stroke);
                 c.drawLine(cx - 9 * u, cy, cx + 9 * u, cy, stroke); break;
+            case "plus":
+                c.drawLine(cx, y0 + 4 * u, cx, y0 + 20 * u, stroke); c.drawLine(x0 + 4 * u, cy, x0 + 20 * u, cy, stroke); break;
             case "wifi":
                 for (int i = 1; i <= 3; i++) { float rr = i * 3.6f * u; ir.set(cx - rr, cy + 6 * u - rr, cx + rr, cy + 6 * u + rr); c.drawArc(ir, 225, 90, false, stroke); }
                 p.setColor(col); c.drawCircle(cx, cy + 6 * u, 1.4f * u, p); break;

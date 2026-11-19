@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.82
+
+**DuckDuckGo is back on the home screen, under a new Fav Sites row.** On the PC console home the web browser tile had been easy to miss: it lived only in the classic Streaming list, under the name "Web Browser". It is now a clear **DuckDuckGo** tile on the Fav Sites row (and still opens DuckDuckGo in a normal browser window — CodeAque does not have its own in-page browser). On Android the DuckDuckGo tile had been dropped; the leftover "browser" action even opened Google. That is restored: DuckDuckGo opens https://duckduckgo.com/.
+
+**You can save websites to Fav Sites.** Because browsing happens in the computer's (or phone's) own browser, there is no star button on the web page itself. On the Fav Sites row, choose **Add fav site**, then type or paste the address. On the PC, after you come back from DuckDuckGo with Esc twice, CodeAque can also offer to save the last site you visited in that window. Each saved site is a tile with the site's own icon (fetched once and kept on the device; a globe is used if none is found) and the site name underneath. Opening a tile opens that site in the browser.
+
+**Long-press, right-click, or Y removes a saved site** (a confirm page asks first). Mouse, touch and the controller all work. **Kids mode hides the whole Fav Sites row**, including DuckDuckGo and Add fav site — there is no bypass. Fav Sites are included in Backup & Restore (0.10.81) automatically.
+
+Untested: unit tests for add/remove, favicon cache, reading the last DuckDuckGo site from a browser profile, Kids hiding the row, and the handheld category layout passed here. The Android APK was rebuilt here. This has not been tried on Code's PC, a living-room TV, a real controller, a phone, a K56 or a Win600, and has not used a live favicon download or a real Chrome/Firefox history after a DuckDuckGo session. Please try this install and see that the Fav Sites row is on the home screen, that DuckDuckGo opens from it, that you can add a site (and, on the PC, save the last site you visited), that the tile shows an icon and opens the site, that long-press / right-click / Y can remove it after a confirm, and that the row is gone in Kids mode.
+
 ## What's new in 0.10.81
 
 **Backup & Restore in Settings** copies what you have set up onto a USB stick, so you can move it to another CodeAque computer (such as the Win600) without doing the setup again. One big button writes a single file named `CodeAque-Backup-YYYY-MM-DD.tar.gz`. If no stick is plugged in, you can save it to Downloads. A progress bar shows while it works, and the final file size is shown at the end.

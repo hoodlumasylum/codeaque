@@ -235,6 +235,10 @@ class Backend(QObject):
         self._fl_opener = None          # tests inject a fake urlopen
         self._fl_msg = ""
         self._fl_need_transmission = False
+        self._fav_remove_id = ""
+        self._fav_offer_url = ""
+        self._fav_offer_title = ""
+        self._fav_browse_open = False
         # the welcome/setup screen shows only once: not if a config exists, nor if it was already dismissed
         self._first_run = bool(self.cfg.first_run and not self.store.get_pref("setup_done", False)) and not demo
         self._gamepad_proc: QProcess | None = None
@@ -3536,6 +3540,161 @@ class Backend(QObject):
         except Exception:
             return ""
 
+    def _fav_blocked(self) -> bool:
+        if self.kids_mode_on():
+            self.show_toast("Fav Sites is hidden in Kids mode.", 5000)
+            return True
+        return False
+
+    def _open_browse_url(self, url: str, title: str, gid: str = "web:browser") -> None:
+        """Open a site in the same browser window/profile as DuckDuckGo. Esc twice comes back."""
+        if self._running:
+            return
+        self._fav_browse_open = True
+        self._launch_game(Game(gid=gid, title=title or "Site", platform=webapps.STREAMING,
+                               platform_name="Fav Sites", meta={"browse_url": url}, note=url))
+
+    @Slot()
+    def openDuckDuckGo(self) -> None:
+        if self._fav_blocked():
+            return
+        if self._running:
+            return
+        wa = webapps.BY_ID.get("browser")
+        if wa is None:
+            self.show_toast(webapps.HELP_TEXT, 8000)
+            return
+        self._fav_browse_open = True
+        self._launch_game(Game(gid=wa.gid, title=wa.title, platform=webapps.STREAMING,
+                               platform_name=webapps.STREAMING_NAME, note=wa.note))
+
+    @Slot(str)
+    def openFavSite(self, sid: str) -> None:
+        if self._fav_blocked():
+            return
+        from . import favsites
+        s = favsites.get(sid)
+        if s is None:
+            self.show_toast("That fav site is no longer saved.", 5000)
+            self.statsChanged.emit()
+            return
+        self._open_browse_url(s.url, s.title, "fav:" + s.id)
+
+    def _favadd_rows(self) -> list:
+        from . import favsites
+        rows = [self._info(
+            "Save a website to the Fav Sites row on the home screen. Open DuckDuckGo, find the page, come back with Esc twice, "
+            "then choose Save the last site — or type / paste the address here. The site's own icon is fetched once and kept here "
+            "(a globe is used if none is found).")]
+        last = favsites.last_site()
+        if last:
+            url, title = last
+            label = (title or favsites.default_title(url)).strip()
+            rows.append({"kind": "done", "id": "favlast", "title": "Save the last site: " + label,
+                         "detail": url})
+        else:
+            rows.append(self._info("No last site was found yet. Open DuckDuckGo, visit a page, then come back here."))
+        rows.append({"kind": "item", "id": "favtype", "title": "Type or paste a website address"})
+        rows.append({"kind": "item", "id": "back", "title": "Back"})
+        return rows
+
+    def _favremove_rows(self) -> list:
+        from . import favsites
+        s = favsites.get(getattr(self, "_fav_remove_id", ""))
+        if s is None:
+            return [self._info("That fav site is no longer saved."), {"kind": "item", "id": "back", "title": "Back"}]
+        return [self._info('Remove "' + s.title + '" from Fav Sites? This does not affect the website itself.'),
+                {"kind": "done", "id": "favyes", "title": "Yes, remove it", "tone": "warn", "value": "CONFIRM"},
+                {"kind": "item", "id": "back", "title": "No, keep it"}]
+
+    def _favoffer_rows(self) -> list:
+        url = getattr(self, "_fav_offer_url", "")
+        title = getattr(self, "_fav_offer_title", "") or url
+        if not url:
+            return [self._info("There is no site to save right now."), {"kind": "item", "id": "back", "title": "Back"}]
+        return [self._info('Save "' + title + '" to Fav Sites? It will show on the home Fav Sites row with its icon.'),
+                {"kind": "done", "id": "favyes", "title": "Yes, save this site"},
+                {"kind": "item", "id": "back", "title": "No, thanks"}]
+
+    def _fav_save(self, url: str, title: str = "") -> str:
+        from . import favsites
+        if self._fav_blocked():
+            return ""
+        site = favsites.add(url, title)
+        if site is None:
+            self.show_toast("That does not look like a website address.", 6000)
+            return ""
+        self.show_toast("Saved to Fav Sites: " + site.title, 6000, big=True)
+        self.statsChanged.emit()
+        # fetch the icon in the background if it was not stored yet
+        if not site.icon:
+            def work():
+                favsites.add(site.url, site.title, fetch=True)
+                self.statsChanged.emit()
+            threading.Thread(target=work, daemon=True, name="atari-favicon").start()
+        return "back"
+
+    def _fav_maybe_offer(self) -> None:
+        from . import favsites
+        last = favsites.last_site()
+        if not last:
+            return
+        url, title = last
+        if favsites.get(favsites.site_id(url)):
+            return
+        self._fav_offer_url = url
+        self._fav_offer_title = title or favsites.default_title(url)
+        self.pageRequested.emit("favoffer")
+
+    def _fav_activate(self, name: str, rid: str) -> str:
+        from . import favsites
+        if self._fav_blocked():
+            return "back"
+        if name == "favadd":
+            if rid == "favlast":
+                last = favsites.last_site()
+                if not last:
+                    self.show_toast("No last site was found. Open DuckDuckGo first, then come back.", 6000)
+                    return "refresh"
+                return self._fav_save(last[0], last[1])
+            if rid == "favtype":
+                def cb(text):
+                    if text:
+                        self._fav_save(text)
+                self.ask_text("WEBSITE ADDRESS", "Type or paste the website (for example wikipedia.org).", False, "", "", cb)
+                return ""
+            return ""
+        if name == "favremove" and rid == "favyes":
+            sid = getattr(self, "_fav_remove_id", "")
+            if favsites.remove(sid):
+                self.show_toast("Removed from Fav Sites.", 5000)
+                self.statsChanged.emit()
+            self._fav_remove_id = ""
+            return "close"
+        if name == "favoffer" and rid == "favyes":
+            ev = self._fav_save(getattr(self, "_fav_offer_url", ""), getattr(self, "_fav_offer_title", ""))
+            self._fav_offer_url = self._fav_offer_title = ""
+            return ev
+        return ""
+
+    @Slot()
+    def startAddFavSite(self) -> None:
+        if self._fav_blocked():
+            return
+        self.pageRequested.emit("favadd")
+
+    @Slot(str)
+    def askRemoveFavSite(self, sid: str) -> None:
+        if self._fav_blocked():
+            return
+        from . import favsites
+        if favsites.get(sid) is None:
+            self.show_toast("That fav site is no longer saved.", 5000)
+            self.statsChanged.emit()
+            return
+        self._fav_remove_id = sid
+        self.pageRequested.emit("favremove")
+
     def _modetap_needs_pin(self) -> bool:
         # Only leaving CodeAque-only (switching to the Linux desktop) is gated.
         return self.kids_mode_on() and getattr(self, "_mt_want", "") == "desktop"
@@ -5214,6 +5373,10 @@ class Backend(QObject):
         if err and (gid == "app:steam" or str(gid).startswith("steam:")) and self._steam_fail_looks_fixable(err):
             self._stfix_state = "idle"
             self.pageRequested.emit("steamfix")
+        if str(gid) in ("web:browser",) or str(gid).startswith("fav:") or (getattr(self, "_fav_browse_open", False)):
+            self._fav_browse_open = False
+            if not self.kids_mode_on():
+                self._fav_maybe_offer()
 
     @Slot()
     def toggleFullscreen(self) -> None:
@@ -6839,7 +7002,7 @@ class Backend(QObject):
                 "winchoose": "WHICH PROGRAM STARTS THE GAME?", "winwork": "OPENING THE ARCHIVE",
                 "install": "INSTALL", "installmenu": "INSTALL EMULATORS & APPS", "steam": "STEAM",
                 "recordings": "RECORDINGS", "coverpick": "PICK A COVER", "nocovers": "COVERS NOT FOUND",
-                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "modetap": "SWITCH START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "backup": "BACKUP & RESTORE", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM", "freelegal": "FREE & LEGAL",
+                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "modetap": "SWITCH START MODE", "favadd": "ADD FAV SITE", "favremove": "REMOVE FAV SITE", "favoffer": "SAVE TO FAV SITES", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "backup": "BACKUP & RESTORE", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM", "freelegal": "FREE & LEGAL",
                 "ask": "ASK CODEAQUE", "dlsystem": "WHICH SYSTEM IS THIS FILE FOR?", "files": "MY FILES", "fileact": "WHAT TO DO WITH IT", "deletegame": "DELETE GAME", "about": "ABOUT CODEAQUE"}.get(name, name.upper())
 
     @Property(str, notify=padStyleChanged)
@@ -6877,6 +7040,9 @@ class Backend(QObject):
                 "steamfix": "Enter / A on Run fix.  Esc / B = back.",
                 "downloads": "Enter / A on a finished file adds it to your games.  Esc / B = back.",
                 "freelegal": "Type a search, or pick a result. Enter / A opens it.  Esc / B = back.",
+                "favadd": "Type or paste a website, or save the last site you opened in DuckDuckGo.  Esc / B = back.",
+                "favremove": "Enter / A removes this site from Fav Sites.  Esc / B keeps it.",
+                "favoffer": "Save the last site you opened? Enter / A saves it.  Esc / B = no.",
                 "files": "Downloads, Games, Videos.  Enter / A opens;  Esc / B goes up.",
                 "fileact": "Enter / A on the button you want.  Esc / B = back to the list.",
                 "about": "Esc / B = back.",
@@ -7235,6 +7401,12 @@ class Backend(QObject):
             return self._startmode_rows()
         if name == "modetap":
             return self._modetap_rows()
+        if name == "favadd":
+            return self._favadd_rows()
+        if name == "favremove":
+            return self._favremove_rows()
+        if name == "favoffer":
+            return self._favoffer_rows()
         if name == "xemusetup":
             return self._xemu_rows()
         if name == "brightness":
@@ -7681,6 +7853,8 @@ class Backend(QObject):
             return self._downloads_activate(rid)
         if name == "freelegal":
             return self._freelegal_activate(rid)
+        if name in ("favadd", "favremove", "favoffer"):
+            return self._fav_activate(name, rid)
         if name == "files":
             return self._files_activate(rid)
         if name == "fileact":

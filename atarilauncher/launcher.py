@@ -761,6 +761,13 @@ def _run_background(cfg: Config, cmd: list[str], name: str, on_started, logfh, w
 def _run_web(cfg: Config, game: Game, on_started):
     """A web app (YouTube, Netflix, ...) in a full-screen browser window with its own profile. Blocks until it closes."""
     wa = webapps.BY_ID.get(game.gid.split(":", 1)[-1])
+    # Fav Sites / "open this URL in DuckDuckGo's browser window": same profile, a different address.
+    browse_url = ""
+    if getattr(game, "meta", None):
+        browse_url = str(game.meta.get("browse_url") or "")
+    if browse_url:
+        wa = webapps.WebApp((wa.id if wa else "browser"), game.title or (wa.title if wa else "Site"),
+                            browse_url, browse=True, note=(wa.note if wa else ""))
     if wa is None:
         raise LaunchError(f"Unknown web app '{game.title}'.")
     cmd, name = webapps.build_command(cfg, wa)

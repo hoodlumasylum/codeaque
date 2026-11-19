@@ -7,8 +7,8 @@ package com.codeaque.launcher;
 public final class NovaAppVer {
     private NovaAppVer() {}
 
-    public static final String NAME = "0.10.78";
-    public static final int CODE = 178;
+    public static final String NAME = "0.10.82";
+    public static final int CODE = 182;
 
     public static String label() { return "CodeAque " + NAME; }
 

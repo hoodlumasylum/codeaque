@@ -857,6 +857,9 @@ Window {
                 else if (id === "settings") win.openSetup()
                 else if (id === "downloads") win.openPage("downloads")
                 else if (id === "freelegal") win.openPage("freelegal")
+                else if (id === "duckduckgo") backend.openDuckDuckGo()
+                else if (id === "addfav") backend.startAddFavSite()
+                else if (id.indexOf("favopen:") === 0) backend.openFavSite(id.substring(8))
                 else if (id === "power") { backend.powerReset(); win.openPage("power") }
                 else if (id === "leave") backend.setHandheld(false)
                 else if (id === "update") win.openUpdate("library")

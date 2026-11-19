@@ -43,8 +43,8 @@ class WebApp:
 DRM_NOTE = ("Needs Widevine DRM (Google Chrome has it; in Firefox accept its \"Play DRM content\" prompt). "
             "On Linux this streams at about 720p, not 4K.")
 WEBAPPS: list[WebApp] = [
-    WebApp("browser", "Web Browser", "https://duckduckgo.com/", browse=True,
-           note="A normal browser window with an address bar and back / forward buttons, starting at a neutral search engine. "
+    WebApp("browser", "DuckDuckGo", "https://duckduckgo.com/", browse=True,
+           note="A normal browser window with an address bar and back / forward buttons, starting at DuckDuckGo. "
                 "Press Esc twice (or hold Guide + B on a controller) to return to CodeAque. Files you download land in ~/Downloads - "
                 "Options > Downloads moves them into your games. CodeAque does not recommend or link any download site."),
     WebApp("twitchlive", "Twitch (go live)", "https://dashboard.twitch.tv/stream-manager", browse=True,

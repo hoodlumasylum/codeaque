@@ -380,6 +380,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 }
             }
         }
+        if (!kidsOn) cs = Catalog.replaceItems(cs, "favsites", FavSites.items(favRoot()));
         view.setCategories(cs);
         if (view.boxSet() && !kidsOn) view.setBoxSet(true, java.util.Arrays.asList(Catalog.boxSetItems()));
         else if (kidsOn) view.setBoxSet(false, java.util.Collections.emptyList());
@@ -395,7 +396,84 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
         }
     }
 
+
+    private java.io.File favRoot() { return new java.io.File(getFilesDir(), "favsites"); }
+
+    private android.graphics.Bitmap favIcon(Catalog.Item it) {
+        if (it == null) return null;
+        String path = it.art;
+        if (path == null || path.isEmpty()) {
+            String id = Catalog.favId(it);
+            if (id == null) return null;
+            java.io.File f = FavSites.iconFile(favRoot(), id);
+            if (!f.isFile()) return null;
+            path = f.getAbsolutePath();
+        }
+        final String fp = path;
+        String k = "favico:" + fp;
+        if (coverCache.containsKey(k)) return coverCache.get(k);
+        java.io.File f = new java.io.File(fp);
+        if (!f.isFile()) return null;
+        return decodeLater(coverCache, k, () -> decodeCover(f));
+    }
+
+    @Override public void addFavSite() {
+        if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }
+        android.widget.EditText e = new android.widget.EditText(this);
+        e.setHint("example.com");
+        e.setSingleLine(true);
+        e.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        AlertDialog dlg = dlg().setTitle("Add fav site")
+                .setMessage("Type or paste a website address. It will appear on the Fav Sites row with its icon.")
+                .setView(e)
+                .setPositiveButton("Save", (d, w) -> saveFav(e.getText() == null ? "" : e.getText().toString(), null))
+                .setNegativeButton("Cancel", null)
+                .create();
+        dlg.show();
+    }
+
+    @Override public void askRemoveFav(Catalog.Item it) {
+        if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }
+        final String id = Catalog.favId(it);
+        if (id == null) return;
+        String name = it.label;
+        dlg().setTitle("Remove fav site")
+                .setMessage("Remove \"" + name + "\" from Fav Sites? This does not change the website itself.")
+                .setPositiveButton("Remove", (d, w) -> {
+                    FavSites.remove(favRoot(), id);
+                    toast("Removed from Fav Sites.");
+                    rescan();
+                })
+                .setNegativeButton("Keep", null)
+                .show();
+    }
+
+    private void saveFav(String url, String title) {
+        if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }
+        FavSites.Site s = FavSites.add(favRoot(), url, title);
+        if (s == null) { toast("That does not look like a website address."); return; }
+        toast("Saved to Fav Sites: " + s.title);
+        rescan();
+        final String sid = s.id, surl = s.url;
+        new Thread(() -> {
+            FavSites.fetchIcon(favRoot(), surl, sid);
+            FavSites.add(favRoot(), surl, s.title); // refresh icon path in the store
+            runOnUiThread(this::rescan);
+        }, "fav-icon").start();
+    }
+
+    private void openFav(Catalog.Item it) {
+        if (prefs.getBoolean("kidsMode", false)) { toast("Not available in Kids mode."); return; }
+        String id = Catalog.favId(it);
+        FavSites.Site s = id == null ? null : FavSites.get(favRoot(), id);
+        String url = s != null ? s.url : it.webUrl;
+        if (url == null || url.isEmpty()) { toast("That fav site is no longer saved."); return; }
+        start(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+    }
+
     @Override public android.graphics.Bitmap appIcon(Catalog.Item it) {
+        android.graphics.Bitmap fav = favIcon(it);
+        if (fav != null) return fav;
         if (it == Catalog.MARVEL_RIVALS) return rivalsHeader();
         android.graphics.Bitmap inst = installedIcon(it);
         if (inst != null) return inst;
@@ -554,6 +632,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private final java.util.Set<String> fetching = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
     @Override public android.graphics.Bitmap cover(Catalog.Item it) {
+        android.graphics.Bitmap fav = favIcon(it);
+        if (fav != null) return fav;
         String k = it.key();
         if (coverCache.containsKey(k)) return coverCache.get(k);
         android.graphics.Bitmap store = storeArt(it);
@@ -1826,6 +1906,7 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
     private void action(String a) {
         if (a != null && a.startsWith("steamstore:")) { openSteamStore(a.substring(11)); return; }
         if (a != null && a.startsWith("roblox:")) { openRobloxPlace(a.substring(7)); return; }
+        if (a != null && a.startsWith("favopen:")) { openFav(Catalog.favItem("", "", a.substring(8), null)); return; }
         switch (a) {
             case "wifi": openWifi(); break;
             case "scandetails": if (!prefs.getBoolean("kidsMode", false)) showScanDetails(); break;
@@ -1842,7 +1923,8 @@ public class MainActivity extends Activity implements HomeView.Host, ArtLoader.L
                 openSystemSettings(new Intent(Settings.ACTION_SETTINGS), null); break;
             case "homeapp": case "home":
                 openSystemSettings(new Intent(Settings.ACTION_HOME_SETTINGS), new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)); break;
-            case "browser": start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))); break;
+            case "browser": start(new Intent(Intent.ACTION_VIEW, Uri.parse("https://duckduckgo.com/"))); break;
+            case "addfav": addFavSite(); break;
             case "effects": {
                 String n = Catalog.nextEffects(effects());
                 prefs.edit().putString("effects", n).apply();

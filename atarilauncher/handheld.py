@@ -17,7 +17,9 @@ from . import emulators, webapps
 
 VIDEO_IDS = ("netflix", "youtube", "disney", "prime", "twitch")
 MUSIC_IDS = ("spotify",)
-CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("store", "Games Store", "cart"), ("world", "World Games", "pad"), ("mygames", "My Games", "pad"), ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
+CATEGORIES = (("steam", "Steam", "monitor"), ("pcgames", "PC Games", "c_pc"), ("store", "Games Store", "cart"), ("world", "World Games", "pad"), ("mygames", "My Games", "pad"),
+              ("favsites", "Fav Sites", "globe"),
+              ("games", "Retro", "invader"), ("cloud", "Cloud", "c_cloud"), ("emulators", "Emulators", "invader"),
               ("streams", "Streams", "stream"), ("media", "Media", "film"), ("music", "Music", "music"),
               ("trilogies", "Trilogies", "pad"), ("coop", "Co-op", "pad"), ("roblox", "Roblox", "pad"), ("downloads", "Downloads", "download"), ("apps", "All Apps", "grid"), ("accounts", "Accounts", "app"), ("settings", "Settings", "gear"))
 # 0.9.4: PC games already installed on this machine (shown in My Games); retro ROMs, web pages and apps are elsewhere
@@ -291,7 +293,29 @@ def boxset_tiles() -> list:
     return trilogy_tiles() + coop_tiles()
 
 
-def categories(games, store=None, cfg=None, home=None, kids_mode=False) -> list:
+
+def fav_tiles(root=None) -> list:
+    """Fav Sites row: DuckDuckGo, Add fav site, then the user's bookmarks with cached favicons."""
+    from . import favsites
+    from PySide6.QtCore import QUrl
+    tiles = [
+        {"key": "duckduckgo", "title": "DuckDuckGo", "icon": "globe", "kind": "action",
+         "action": "duckduckgo", "items": [], "hue": 0.22, "fit": False,
+         "note": "Opens the DuckDuckGo search page in a browser window. Esc twice comes back."},
+        {"key": "addfav", "title": "Add fav site", "icon": "plus", "kind": "action",
+         "action": "addfav", "items": [], "hue": 0.12, "fit": False,
+         "note": "Type or paste a website address, or save the last site you opened in DuckDuckGo."},
+    ]
+    for i, s in enumerate(favsites.list_sites(root)):
+        art = QUrl.fromLocalFile(s.icon).toString() if s.icon else ""
+        tiles.append({"key": "fav:" + s.id, "title": s.title, "icon": "globe", "kind": "action",
+                      "action": "favopen:" + s.id, "items": [], "hue": 0.18 + (i % 10) * 0.07,
+                      "art": art, "fit": True, "removable": True, "favid": s.id,
+                      "note": s.url})
+    return tiles
+
+
+def categories(games, store=None, cfg=None, home=None, kids_mode=False, fav_root=None) -> list:
     games = list(games)
     cloud = sorted((g for g in games if is_cloud(g)), key=lambda g: [w.id for w in webapps.WEBAPPS].index(g.gid[4:])
                    if g.gid[4:] in [w.id for w in webapps.WEBAPPS] else 99)
@@ -303,7 +327,11 @@ def categories(games, store=None, cfg=None, home=None, kids_mode=False) -> list:
     media = [g for g in games if g.gid in ("app:kodi", "tool:recordings")]
     out = []
     for key, title, icon in CATEGORIES:
-        if key == "steam":      # 0.9.5: Steam at the top: Big Picture, then the Steam games installed here (with their pictures)
+        if key == "favsites":
+            if kids_mode:
+                continue
+            tiles = fav_tiles(fav_root)
+        elif key == "steam":      # 0.9.5: Steam at the top: Big Picture, then the Steam games installed here (with their pictures)
             st = sorted((g for g in games if is_pc_game(g) and g.platform == "steam"), key=lambda g: g.title.lower())
             tiles = mode_tiles() + [{"key": "app:steam", "title": "Steam Big Picture", "icon": "monitor", "kind": "launch", "gid": "app:steam",
                       "items": [], "hue": 0.6}] + [_launch_tile(g, "monitor") for g in st] + [GET_GAMES]
