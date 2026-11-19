@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import Property, QObject, QProcess, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QKeyEvent, QWindow
 
-from . import xbox, usbdrive, padstyle, protondb, modetap, brightness, worldgames, bootscreen, create, steam, simtycoon, themes, biosfind, findgames, bluetooth, padbattery, pads, screentv, xemuconfig, branding, donate, gamedelete, gamesroot, power, rootauth, files, steamfix, downloads, golive, icons, inputfix, intro, kiosk, quietboot, sober, studio_fix, appinstall, apps, bios, controls, covers, diagnose, recorder, emulators, exitwatch, freegames, freelegal, importer, installer, launcher, paths, roms, updater, webapps, windows
+from . import xbox, usbdrive, backup, padstyle, protondb, modetap, brightness, worldgames, bootscreen, create, steam, simtycoon, themes, biosfind, findgames, bluetooth, padbattery, pads, screentv, xemuconfig, branding, donate, gamedelete, gamesroot, power, rootauth, files, steamfix, downloads, golive, icons, inputfix, intro, kiosk, quietboot, sober, studio_fix, appinstall, apps, bios, controls, covers, diagnose, recorder, emulators, exitwatch, freegames, freelegal, importer, installer, launcher, paths, roms, updater, webapps, windows
 from . import __version__
 from .config import Config, load_config, save_config
 from .import_model import ImportModel
@@ -2042,7 +2042,10 @@ class Backend(QObject):
 
     @Slot()
     def _on_bg_done(self) -> None:
-        if any(self._page_visible(n) for n in ("btpair", "screentv", "winform", "biosfind", "findgames", "simtycoon", "boot", "xemusetup")) or self._ct_page_visible():
+        refresh_bk = getattr(self, "_bk_refresh", False)
+        if refresh_bk:
+            self._bk_refresh = False
+        if refresh_bk or any(self._page_visible(n) for n in ("btpair", "screentv", "winform", "biosfind", "findgames", "simtycoon", "boot", "xemusetup", "backup")) or self._ct_page_visible():
             self.pageChanged.emit()
 
     # ----- Themes ------------------------------------------------------------------------------
@@ -6663,6 +6666,11 @@ class Backend(QObject):
         rows.append({"kind": "makeusbpage", "title": "Make a CodeAque USB", "value": "",
                      "detail": "Gets a USB stick ready for your games (folders + README; nothing is erased). Plug it into any "
                                "CodeAque computer and the games show by themselves."})
+        if not self.kids_mode_on():
+            rows.append({"kind": "backuppage", "title": "Backup & Restore", "value": "",
+                         "detail": "Save your settings, tiles, Fav Sites and game saves to a USB stick, then restore them on another "
+                                   "computer (such as the Win600). Games and Steam games are not copied — they need downloading again. "
+                                   "Steam Cloud already keeps many Steam saves. Hidden in Kids mode."})
         rows.append({"kind": "findgamespage", "title": "Find my games",
                      "detail": "Your own games and backups from Downloads, Desktop, Documents and drives, sorted by console."})
         rows.append({"kind": "biosfindpage", "title": "Find my BIOS files",
@@ -6831,7 +6839,7 @@ class Backend(QObject):
                 "winchoose": "WHICH PROGRAM STARTS THE GAME?", "winwork": "OPENING THE ARCHIVE",
                 "install": "INSTALL", "installmenu": "INSTALL EMULATORS & APPS", "steam": "STEAM",
                 "recordings": "RECORDINGS", "coverpick": "PICK A COVER", "nocovers": "COVERS NOT FOUND",
-                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "modetap": "SWITCH START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM", "freelegal": "FREE & LEGAL",
+                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "modetap": "SWITCH START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "backup": "BACKUP & RESTORE", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM", "freelegal": "FREE & LEGAL",
                 "ask": "ASK CODEAQUE", "dlsystem": "WHICH SYSTEM IS THIS FILE FOR?", "files": "MY FILES", "fileact": "WHAT TO DO WITH IT", "deletegame": "DELETE GAME", "about": "ABOUT CODEAQUE"}.get(name, name.upper())
 
     @Property(str, notify=padStyleChanged)
@@ -7231,6 +7239,8 @@ class Backend(QObject):
             return self._xemu_rows()
         if name == "brightness":
             return self._br_rows()
+        if name == "backup":
+            return self._backup_rows()
         if name == "makeusb":
             rows = [self._info("Make a CodeAque USB: adds a CodeAque folder with a folder for each console, a BIOS folder and a "
                                "README to a USB stick. It does NOT format or erase the stick - your files stay. Put only your own "
@@ -7289,8 +7299,166 @@ class Backend(QObject):
                     {"kind": "item", "id": "cancel", "title": "Cancel"}]
         return []
 
+    def _backup_rows(self) -> list:
+        """Settings > Backup & Restore: one big backup button, a confirm page, then a progress bar."""
+        from . import backup as bk
+        self._page_seen("backup")
+        st = getattr(self, "_bk_state", "idle")
+        if st == "running":
+            title = getattr(self, "_bk_title", "") or "Working..."
+            detail = getattr(self, "_bk_detail", "") or ""
+            frac = float(getattr(self, "_bk_frac", -1) or -1)
+            pct = "" if frac < 0 else f"{int(round(frac * 100))}%"
+            rows = [self._info("This can take a few minutes. You can leave this screen; it keeps going.")]
+            rows.append({"kind": "progress", "title": title, "fraction": frac, "value": pct, "detail": detail, "big": True})
+            rows.append({"kind": "item", "id": "bkcancel", "title": "Stop"})
+            rows.append({"kind": "item", "id": "back", "title": "Hide this screen"})
+            return rows
+        if st == "done":
+            rows = [self._info(getattr(self, "_bk_msg", "Done."))]
+            size = int(getattr(self, "_bk_size", 0) or 0)
+            if size:
+                rows.append(self._info("Backup file size: " + bk.human_size(size) + "."))
+            if getattr(self, "_bk_mode", "") == "restore":
+                missing = getattr(self, "_bk_missing", []) or []
+                if missing:
+                    rows.append({"kind": "done", "id": "bkinstall",
+                                 "title": "Install the programs from the backup",
+                                 "detail": "CodeAque will ask before anything is installed. " +
+                                           ", ".join((a.get("title") or a.get("id") or "") for a in missing[:8]) +
+                                           (" and more." if len(missing) > 8 else ".")})
+            rows.append({"kind": "item", "id": "bkagain", "title": "Back to Backup & Restore"})
+            rows.append({"kind": "item", "id": "back", "title": "Back"})
+            return rows
+        if st == "confirm":
+            path = getattr(self, "_bk_archive", "") or ""
+            rows = [self._info("Restore this backup onto this computer? Your settings and saves that are here now are "
+                               "copied to a safety file first, so you can undo it if something looks wrong.")]
+            rows.append(self._info(bk.describe(Path(path)) if path else "No backup is selected."))
+            rows.append(self._info("Games, ROMs, BIOS and passwords are not in the backup. Steam games still need "
+                                   "downloading again (sign in to Steam here). Steam Cloud already keeps many Steam saves. "
+                                   "If this computer uses a different user name, folders are pointed at this home folder."))
+            rows.append({"kind": "done", "id": "bkrestoreyes", "title": "Yes, restore this backup"})
+            rows.append({"kind": "item", "id": "bkagain", "title": "Not now"})
+            return rows
+        rows = [self._info("Save what you have set up — settings, tiles, Fav Sites, covers, emulator saves, and Steam "
+                           "saves that are not on Steam Cloud — into one file on a USB stick. On the Win600 (or any other "
+                           "CodeAque computer) plug the stick in and press Restore. Games themselves and Steam games are "
+                           "not copied, so they need downloading again. BIOS files, passwords, keys and browser logins "
+                           "are left out.")]
+        drives = bk.find_drives()
+        if drives:
+            for i, d in enumerate(drives):
+                label = d.label or Path(d.path).name or "USB stick"
+                rows.append({"kind": "done", "id": f"bkusb:{i}",
+                             "title": f"Back up to USB stick “{label}”",
+                             "detail": (d.detail if getattr(d, "detail", "") else d.path) +
+                                       "  ·  One file, named CodeAque-Backup and today's date."})
+        else:
+            rows.append(self._info("No USB stick is plugged in. Plug one in and it shows here, or save to Downloads."))
+        rows.append({"kind": "item", "id": "bkdownloads", "title": "Back up to Downloads",
+                     "detail": "Saves the file in your Downloads folder if you have no stick handy."})
+        found = bk.find_backups(drives=drives, home=Path.home())
+        if found:
+            rows.append({"kind": "heading", "title": "Restore from a backup"})
+            for i, path in enumerate(found[:12]):
+                rows.append({"kind": "item", "id": f"bkpick:{i}", "title": "Restore " + path.name,
+                             "detail": bk.describe(path)})
+        else:
+            rows.append(self._info("No backup file has been found yet on a USB stick or in Downloads."))
+        rows.append({"kind": "item", "id": "back", "title": "Back"})
+        self._bk_found = found
+        self._bk_drives = drives
+        return rows
+
+    def _backup_activate(self, rid: str) -> str:
+        from . import backup as bk
+        if rid == "bkagain":
+            self._bk_state, self._bk_msg, self._bk_archive = "idle", "", ""
+            return "refresh"
+        if rid == "bkcancel":
+            ev = getattr(self, "_bk_cancel", None)
+            if ev is not None:
+                ev.set()
+            return "refresh"
+        if rid == "bkinstall":
+            missing = getattr(self, "_bk_missing", []) or []
+            specs = [a["id"] for a in missing if a.get("id")]
+            if specs:
+                self.begin_install(specs, what="programs from the backup")
+            return ""
+        if rid == "bkdownloads":
+            self._backup_start("backup", bk.default_downloads())
+            return "refresh"
+        if rid.startswith("bkusb:"):
+            drives = getattr(self, "_bk_drives", None) or bk.find_drives()
+            try:
+                d = drives[int(rid.split(":", 1)[1])]
+            except (ValueError, IndexError, TypeError):
+                return "refresh"
+            self._backup_start("backup", Path(d.path))
+            return "refresh"
+        if rid.startswith("bkpick:"):
+            found = getattr(self, "_bk_found", None) or bk.find_backups()
+            try:
+                path = found[int(rid.split(":", 1)[1])]
+            except (ValueError, IndexError, TypeError):
+                return "refresh"
+            self._bk_archive = str(path)
+            self._bk_state = "confirm"
+            return "refresh"
+        if rid == "bkrestoreyes":
+            path = getattr(self, "_bk_archive", "") or ""
+            if not path:
+                return "refresh"
+            self._backup_start("restore", Path(path))
+            return "refresh"
+        return ""
+
+    def _backup_start(self, mode: str, target: Path) -> None:
+        """Run backup or restore in a background thread, with a live progress bar."""
+        from . import backup as bk
+        if getattr(self, "_bk_busy", False):
+            return
+        self._bk_busy = True
+        self._bk_mode = mode
+        self._bk_state = "running"
+        self._bk_frac, self._bk_title, self._bk_detail = -1.0, "Starting...", ""
+        self._bk_msg, self._bk_size, self._bk_missing = "", 0, []
+        self._bk_cancel = threading.Event()
+
+        def say(frac, title, detail):
+            self._bk_frac, self._bk_title, self._bk_detail = frac, title, detail
+            self._bk_refresh = True
+            self._bgDone.emit()
+
+        def work():
+            try:
+                if mode == "backup":
+                    res = bk.write_backup(target, extra_libraries=self.cfg.steam_extra_libraries,
+                                          cfg=self.cfg, progress=say, cancel=self._bk_cancel.is_set)
+                else:
+                    res = bk.restore_backup(target, progress=say, cancel=self._bk_cancel.is_set)
+                self._bk_msg = res.message
+                self._bk_size = int(res.size or 0)
+                if res.ok and mode == "restore":
+                    self._bk_missing = bk.missing_apps(res.apps, cfg=self.cfg)
+                elif res.ok:
+                    self._bk_missing = []
+                self._bk_state = "done"
+            except Exception as exc:  # pragma: no cover
+                self._bk_msg = f"Something went wrong: {exc}"
+                self._bk_state = "done"
+            finally:
+                self._bk_busy = False
+                self._bk_refresh = True
+                self._bgDone.emit()
+
+        threading.Thread(target=work, daemon=True, name="atari-backup").start()
+
     def _info(self, text: str) -> dict:
         return {"kind": "info", "title": text}
+
 
     def _help_rows(self) -> list:
         n_games = self._real_count()
@@ -7475,6 +7643,8 @@ class Backend(QObject):
             return "back" if rid == "back" else ""
         if name == "brightness":
             return self._br_activate(rid)
+        if name == "backup":
+            return self._backup_activate(rid)
         if name == "makeusb":
             if rid.startswith("mu:"):
                 ds = usbdrive.drives()

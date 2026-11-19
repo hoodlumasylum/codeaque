@@ -649,6 +649,7 @@ Window {
         else if (r.kind === "screentvpage") openPage("screentv")
         else if (r.kind === "findgamespage") openPage("findgames")
         else if (r.kind === "makeusbpage") openPage("makeusb")
+        else if (r.kind === "backuppage") openPage("backup")
         else if (r.kind === "themepage") openPage("theme")
         else if (r.kind === "bootpage") openPage("boot")
         else if (r.kind === "steamboot") { backend.toggleSteamBoot(); refreshSetup(true) }
