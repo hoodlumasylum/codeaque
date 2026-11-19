@@ -266,6 +266,10 @@ Window {
         else emuList.firstSelectable()
     }
     // ---- generic list pages: help, fix my game, add a Windows game
+    function applyLogoTap() {
+        var a = backend.logoTap()
+        if (a && a.indexOf("page:") === 0) openPage(a.substring(5))
+    }
     function openPage(name) {
         if (mode === "setup") {
             pageBack = "setup"
@@ -449,10 +453,16 @@ Window {
         if (k === Qt.Key_F) { toggleFav(); return }
         if (area === "tabs") {
             if (tabFocus > 7 && !backend.media.active) tabFocus = 7
-            if (k === Qt.Key_Left) tabFocus = Math.max(0, tabFocus - 1)
-            else if (k === Qt.Key_Right) tabFocus = Math.min(backend.media.active ? 10 : 7, tabFocus + 1)
+            if (k === Qt.Key_Left) tabFocus = Math.max(-1, tabFocus - 1)
+            else if (k === Qt.Key_Right) {
+                if (tabFocus < 0) tabFocus = 0
+                else tabFocus = Math.min(backend.media.active ? 10 : 7, tabFocus + 1)
+            }
             else if (k === Qt.Key_Down) area = "tiles"
-            else if (isEnter(k) || k === Qt.Key_Space) activateTab(tabFocus)
+            else if (isEnter(k) || k === Qt.Key_Space) {
+                if (tabFocus === -1) applyLogoTap()
+                else activateTab(tabFocus)
+            }
             return
         }
         if (area === "tiles") {
@@ -865,8 +875,10 @@ Window {
             anchors.right: parent.right
             height: 64 * win.u
             activeTab: win.activeTab
-            focusIndex: win.area === "tabs" && win.mode === "library" ? win.tabFocus : -1
+            focusIndex: win.area === "tabs" && win.mode === "library" && win.tabFocus >= 0 ? win.tabFocus : -1
+            logoHot: win.area === "tabs" && win.mode === "library" && win.tabFocus === -1
             onActivated: function (i) { win.area = "tabs"; win.tabFocus = i; win.activateTab(i) }
+            onLogoActivated: win.applyLogoTap()
             onUpdateRequested: win.openUpdate("library")
         }
 
@@ -1386,13 +1398,13 @@ Window {
             id: toast
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: hints.top
-            anchors.bottomMargin: 18 * win.u
-            width: Math.min(parent.width - 80 * win.u, toastText.implicitWidth + 60 * win.u)
-            height: toastText.implicitHeight + 28 * win.u
-            radius: 12 * win.u
+            anchors.bottomMargin: (backend.toastBig ? 36 : 18) * win.u
+            width: Math.min(parent.width - (backend.toastBig ? 40 : 80) * win.u, toastText.implicitWidth + (backend.toastBig ? 80 : 60) * win.u)
+            height: toastText.implicitHeight + (backend.toastBig ? 44 : 28) * win.u
+            radius: (backend.toastBig ? 18 : 12) * win.u
             color: "#f0101320"
             border.color: Theme.red
-            border.width: 2.5 * win.u
+            border.width: (backend.toastBig ? 4 : 2.5) * win.u
             opacity: backend.toast !== "" ? 1 : 0
             visible: opacity > 0
             z: 20
@@ -1400,12 +1412,13 @@ Window {
             Text {
                 id: toastText
                 anchors.centerIn: parent
-                width: Math.min(implicitWidth, toast.parent.width - 140 * win.u)
+                width: Math.min(implicitWidth, toast.parent.width - (backend.toastBig ? 80 : 140) * win.u)
                 text: backend.toast
                 wrapMode: Text.Wrap
                 horizontalAlignment: Text.AlignHCenter
                 color: Theme.text
-                font.pixelSize: 24 * win.u
+                font.pixelSize: (backend.toastBig ? 40 : 24) * win.u
+                font.bold: backend.toastBig
             }
         }
 

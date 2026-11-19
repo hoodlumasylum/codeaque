@@ -8,6 +8,8 @@ Item {
     property int focusIndex: -1      // 0-4 tabs, 5 Add Games, 6 search, 7 WiFi, 8 previous, 9 play/pause, 10 next (music); -1 = nothing focused
     signal activated(int index)
     signal updateRequested()
+    signal logoActivated()
+    property bool logoHot: false      // the CodeAque wordmark is highlighted (controller / D-pad)
     // 0 = everything at full size; each step makes the right-hand side (and at 4+ the tab labels) smaller so nothing overlaps
     property int squeeze: 0
     readonly property real gap: 24 * u
@@ -67,6 +69,39 @@ Item {
         anchors.left: parent.left
         anchors.leftMargin: 28 * tb.u
         anchors.verticalCenter: parent.verticalCenter
+    }
+    // the wordmark is drawn at scale 0.6, so the click / focus ring matches the visible logo, not the unscaled box
+    Item {
+        id: logoHit
+        objectName: "codeaqueLogo"
+        z: 2
+        anchors.left: wm.left
+        anchors.verticalCenter: wm.verticalCenter
+        width: wm.width * wm.scale
+        height: wm.height * wm.scale
+        Rectangle {
+            visible: tb.logoHot
+            anchors.fill: parent
+            anchors.margins: -6 * tb.u
+            radius: 10 * tb.u
+            color: "transparent"
+            border.width: 3 * tb.u
+            border.color: Theme.accent
+        }
+        Rectangle {
+            visible: tb.logoHot
+            anchors.fill: parent
+            anchors.margins: -10 * tb.u
+            radius: 14 * tb.u
+            color: "transparent"
+            border.width: 3 * tb.u
+            border.color: Theme.accentGlow
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: tb.logoActivated()
+        }
     }
 
     Row {

@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import Property, QObject, QProcess, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QKeyEvent, QWindow
 
-from . import xbox, usbdrive, padstyle, protondb, brightness, worldgames, bootscreen, create, steam, simtycoon, themes, biosfind, findgames, bluetooth, padbattery, pads, screentv, xemuconfig, branding, donate, gamedelete, gamesroot, power, rootauth, files, steamfix, downloads, golive, icons, inputfix, intro, kiosk, quietboot, sober, studio_fix, appinstall, apps, bios, controls, covers, diagnose, recorder, emulators, exitwatch, freegames, importer, installer, launcher, paths, roms, updater, webapps, windows
+from . import xbox, usbdrive, padstyle, protondb, modetap, brightness, worldgames, bootscreen, create, steam, simtycoon, themes, biosfind, findgames, bluetooth, padbattery, pads, screentv, xemuconfig, branding, donate, gamedelete, gamesroot, power, rootauth, files, steamfix, downloads, golive, icons, inputfix, intro, kiosk, quietboot, sober, studio_fix, appinstall, apps, bios, controls, covers, diagnose, recorder, emulators, exitwatch, freegames, importer, installer, launcher, paths, roms, updater, webapps, windows
 from . import __version__
 from .config import Config, load_config, save_config
 from .import_model import ImportModel
@@ -223,6 +223,13 @@ class Backend(QObject):
         self._running = False
         self._running_title = ""
         self._toast = ""
+        self._toast_big = False
+        self._logo_taps = modetap.Counter()
+        self._logo_taps_now = None      # tests stamp the 5s window; None = wall clock
+        self._mt_want = ""              # "desktop" / "console" while the logo-tap confirm is open
+        self._mt_pin_ok = False
+        self._kids_mode = None          # None = read the pref; tests set True/False
+        self._kids_pin = None
         # the welcome/setup screen shows only once: not if a config exists, nor if it was already dismissed
         self._first_run = bool(self.cfg.first_run and not self.store.get_pref("setup_done", False)) and not demo
         self._gamepad_proc: QProcess | None = None
@@ -3503,6 +3510,104 @@ class Backend(QObject):
             return "refresh"
         return ""
 
+    # ----- Logo 10-tap: toggle CodeAque-only / Linux desktop (same path as Start mode) --
+    def kids_mode_on(self) -> bool:
+        """PC Kids mode is optional; a test (or a future pref) can turn it on. None = read the pref."""
+        if getattr(self, "_kids_mode", None) is not None:
+            return bool(self._kids_mode)
+        try:
+            return bool(self.store.get_pref("kids_mode", False))
+        except Exception:
+            return False
+
+    def kids_parent_pin(self) -> str:
+        if getattr(self, "_kids_pin", None) is not None:
+            return str(self._kids_pin)
+        try:
+            return str(self.store.get_pref("kids_pin", "") or "")
+        except Exception:
+            return ""
+
+    def _modetap_needs_pin(self) -> bool:
+        # Only leaving CodeAque-only (switching to the Linux desktop) is gated.
+        return self.kids_mode_on() and getattr(self, "_mt_want", "") == "desktop"
+
+    def _modetap_rows(self) -> list:
+        want = getattr(self, "_mt_want", "") or "desktop"
+        label = "Linux desktop mode" if want == "desktop" else "CodeAque-only mode"
+        other = "CodeAque-only (console session, no Mint desktop)" if want == "desktop" else "the Linux Mint desktop"
+        rows: list = [self._info(
+            "Switch this computer to " + label + "? It will leave " + other + ". Your games, saves and settings are never touched. "
+            "The change uses the same Start mode path as Settings, and takes effect after you log out or restart.")]
+        if self._modetap_needs_pin():
+            if getattr(self, "_mt_pin_ok", False):
+                rows.append(self._info("Kids mode: the parent PIN was accepted. Press Yes to switch."))
+            else:
+                rows.append(self._info("Kids mode is on. Enter the parent PIN to leave CodeAque-only."))
+                rows.append({"kind": "item", "id": "mtpin", "title": "Enter the parent PIN",
+                             "detail": "Required before leaving CodeAque-only while Kids mode is on."})
+        rows.append({"kind": "done", "id": "mtyes",
+                     "title": "Yes, switch to " + ("Linux mode" if want == "desktop" else "CodeAque-only mode"),
+                     "tone": "warn", "value": "CONFIRM",
+                     "detail": "Asks for your computer password once, the same as Settings > Start mode."})
+        rows.append({"kind": "item", "id": "mtno", "title": "No, stay as I am"})
+        return rows
+
+    def _modetap_ask_pin(self) -> None:
+        expected = self.kids_parent_pin()
+        if not expected:
+            self.show_toast("Kids mode is on. A parent PIN must be set before leaving CodeAque-only.", 8000, big=True)
+            return
+
+        def cb(text):
+            if text is None:
+                return
+            if text == expected:
+                self._mt_pin_ok = True
+                self.show_toast("Parent PIN accepted. Press Yes to switch.", 6000, big=True)
+                self.pageChanged.emit()
+            else:
+                self._mt_pin_ok = False
+                self.show_toast("That parent PIN is not right.", 5000, big=True)
+        self.ask_text("PARENT PIN", "Kids mode: enter the parent PIN to leave CodeAque-only.", True, "", "", cb)
+
+    def _modetap_activate(self, rid: str) -> str:
+        if rid == "mtno":
+            return "back"
+        if rid == "mtpin":
+            self._modetap_ask_pin()
+            return ""
+        if rid == "mtyes":
+            if self._modetap_needs_pin() and not getattr(self, "_mt_pin_ok", False):
+                self._modetap_ask_pin()
+                return ""
+            want = getattr(self, "_mt_want", "")
+            ev = self._startmode_activate("smdesktop" if want == "desktop" else "smconsole")
+            return "page:startmode" if ev == "refresh" else ev
+        return ""
+
+    @Slot(result=str)
+    def logoTap(self) -> str:
+        """One click / tap / controller A on the home-screen CodeAque logo. Ten in ~5s opens the confirm page."""
+        if getattr(self, "_logo_taps", None) is None:
+            self._logo_taps = modetap.Counter()
+        now = getattr(self, "_logo_taps_now", None)
+        if now is None:
+            now = time.time()
+        nxt = kiosk.read_mode(self._kiosk_layout)["next"]
+        ev = self._logo_taps.tap(now, nxt)
+        if ev["action"] == "broken":
+            self.show_toast("Start mode is unclear. Open Settings > Start mode to fix it before switching.", 8000, big=True)
+            return "page:startmode"
+        if ev["action"] == "toast":
+            self.show_toast(ev["text"], 5000, big=True)
+            return ""
+        if ev["action"] == "confirm":
+            self._mt_want = ev["want"]
+            self._mt_pin_ok = False
+            return "page:modetap"
+        return ""
+
     # ----- Power menu ------------------------------------------------------------------
     @Slot()
     def powerReset(self) -> None:
@@ -3858,6 +3963,10 @@ class Backend(QObject):
     def toast(self):
         return self._toast
 
+    @Property(bool, notify=toastChanged)
+    def toastBig(self):
+        return bool(getattr(self, "_toast_big", False))
+
     @Property(bool, notify=firstRunChanged)
     def firstRun(self):
         return self._first_run
@@ -3934,7 +4043,8 @@ class Backend(QObject):
         self._toast = msg
         self.toastChanged.emit()
 
-    def show_toast(self, msg: str, ms: int = 5000) -> None:
+    def show_toast(self, msg: str, ms: int = 5000, big: bool = False) -> None:
+        self._toast_big = bool(big)
         self._set_toast(msg)
         self._toast_timer.start(ms)
 
@@ -6716,7 +6826,7 @@ class Backend(QObject):
                 "winchoose": "WHICH PROGRAM STARTS THE GAME?", "winwork": "OPENING THE ARCHIVE",
                 "install": "INSTALL", "installmenu": "INSTALL EMULATORS & APPS", "steam": "STEAM",
                 "recordings": "RECORDINGS", "coverpick": "PICK A COVER", "nocovers": "COVERS NOT FOUND",
-                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM",
+                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "modetap": "SWITCH START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM",
                 "ask": "ASK CODEAQUE", "dlsystem": "WHICH SYSTEM IS THIS FILE FOR?", "files": "MY FILES", "fileact": "WHAT TO DO WITH IT", "deletegame": "DELETE GAME", "about": "ABOUT CODEAQUE"}.get(name, name.upper())
 
     @Property(str, notify=padStyleChanged)
@@ -6770,6 +6880,7 @@ class Backend(QObject):
                 "nocovers": "Games that no cover was found for.  Esc / B = back.",
                 "addgames": "Up/Down to choose, Enter / A or a click to press.  Esc / B = back.",
                 "startmode": "Choose one. Esc / B = back.",
+                "modetap": "Yes confirms the switch. Esc / B = cancel. Kids mode needs the parent PIN to leave CodeAque-only.",
                 "xemusetup": "Esc / B = back. Your own Xbox files only - nothing is bundled.",
                 "controllers": "Up/Down to choose, Enter / A to press.  Esc / B = back.",
                 "btpair": "Pairing mode on the pad first, then Search.  Esc / B = back.",
@@ -7005,6 +7116,8 @@ class Backend(QObject):
             return self._kiosk_rows()
         if name == "startmode":
             return self._startmode_rows()
+        if name == "modetap":
+            return self._modetap_rows()
         if name == "xemusetup":
             return self._xemu_rows()
         if name == "brightness":
@@ -7322,6 +7435,8 @@ class Backend(QObject):
             return self._kiosk_activate(rid)
         if name == "startmode":
             return self._startmode_activate(rid)
+        if name == "modetap":
+            return self._modetap_activate(rid)
         if name == "xemusetup":
             return self._xemu_activate(rid)
         if name == "controllers":

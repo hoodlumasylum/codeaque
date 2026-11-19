@@ -31,6 +31,7 @@ FocusScope {
     signal menuAction(string id)
 
     function refreshStatus() { status = backend.handheldStatus() }
+    function logoTapped() { win.applyLogoTap() }
     Timer { interval: 20000; running: hh.visible; repeat: true; triggeredOnStart: true; onTriggered: hh.refreshStatus() }
 
     function snd(n) { backend.playSound(n) }
@@ -184,6 +185,7 @@ FocusScope {
         width: 150 * hh.s; height: 50 * hh.s
         Image { anchors.fill: parent; source: Qt.resolvedUrl("../assets/codeaque-logo.png"); fillMode: Image.PreserveAspectFit
                 sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); smooth: true; mipmap: true }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: hh.logoTapped() }
     }
     Row {
         objectName: "hhStatus"
@@ -384,6 +386,7 @@ FocusScope {
             visible: !hh.covers
             color: "#e6ecee"; font.pixelSize: 16 * hh.s; font.letterSpacing: 4 * hh.s; font.weight: Font.Medium
         }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: hh.logoTapped() }
     }
 
     // ------------------------------------------------------------ Emulators: the Retro Emulators hub (every supported system)
@@ -414,6 +417,7 @@ FocusScope {
             width: 186 * hh.s; height: 62 * hh.s
             source: Qt.resolvedUrl("../assets/codeaque-logo.png"); fillMode: Image.PreserveAspectFit
             sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2)); smooth: true; mipmap: true
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: hh.logoTapped() }
         }
         Text { id: hubSub; anchors.horizontalCenter: parent.horizontalCenter; anchors.top: hubTitle.bottom; anchors.topMargin: 0
                text: "RETRO EMULATORS HUB"; color: "#c4e6f1"; font.pixelSize: 15 * hh.s; font.letterSpacing: 6 * hh.s; font.weight: Font.DemiBold }
