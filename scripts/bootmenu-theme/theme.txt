@@ -1,0 +1,36 @@
+# CodeAque boot menu (scripts/install-bootmenu.sh)
+title-text: ""
+desktop-image: "background.png"
+desktop-image-scale-method: "crop"
+desktop-color: "#050507"
+terminal-font: "CodeAque Regular 20"
+terminal-box: "terminal_box_*.png"
+
++ boot_menu {
+    left = 27%
+    top = 63%
+    width = 46%
+    height = 27%
+    item_font = "CodeAque Regular 36"
+    selected_item_font = "CodeAque Regular 36"
+    item_color = "#e8eaf2"
+    selected_item_color = "#ffffff"
+    item_height = 52
+    item_padding = 18
+    item_spacing = 10
+    icon_width = 0
+    icon_height = 0
+    selected_item_pixmap_style = "select_*.png"
+    scrollbar = false
+}
+
++ label {
+    id = "__timeout__"
+    left = 10%
+    top = 93%
+    width = 80%
+    align = "center"
+    color = "#ff8a8a"
+    font = "CodeAque Regular 24"
+    text = "Starting CodeAque in %ds"
+}

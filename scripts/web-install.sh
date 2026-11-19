@@ -34,12 +34,19 @@ P
     done
     if [ -n "$MISSING" ]; then
       step "Adding a few system parts (a password box may appear) ..." 55
-      have pkexec && pkexec apt-get install -y $MISSING || fail "Could not add:$MISSING. Install them with the Software Manager, then run this again."
+      if have pkexec && pkexec apt-get install -y $MISSING; then
+        :
+      else
+        fail "Could not add:$MISSING.\n\nOpen Terminal and run:\n\nsudo apt update\nsudo apt install -y$MISSING\n\nThen run this installer again."
+      fi
     fi
   fi
   step "Installing CodeAque $VER (a few minutes) ..." 65
   tar -xzf "$W/atari-$VER.tar.gz" -C "$W" || fail "Could not unpack the download."
-  (cd "$W/atari" && bash install.sh --yes --no-system-packages) || fail "The installer stopped."
+  if [ -f "$W/atari-$VER/install.sh" ]; then SRC="$W/atari-$VER/install.sh"
+  else SRC=$(find "$W" -maxdepth 3 -type f -name install.sh | head -n 1); fi
+  [ -n "$SRC" ] || fail "The download did not contain the installer."
+  (cd "$(dirname "$SRC")" && bash install.sh --yes --no-system-packages) || fail "The installer stopped."
   rm -rf "$W"
   step "Done!" 100
 }
