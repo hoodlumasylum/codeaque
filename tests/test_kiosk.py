@@ -588,3 +588,64 @@ def test_mode_log_records_enable_and_never_raises(tmp_path):
     text = p.read_text()
     assert "tap 1 of 10" in text and "enable ok: done" in text
     kiosk.mode_log("never", home=Path("/proc/nope"))  # must not raise
+
+
+
+def test_session_script_prefers_the_installed_run_sh_over_a_tmp_extract(tmp_path):
+    """install.sh used to bake RUN=/tmp/atari-0.10.83/run.sh; after /tmp was cleaned the session started the desktop."""
+    home = tmp_path / "home"
+    inst = home / ".local/share/atari-launcher"
+    inst.mkdir(parents=True)
+    good = inst / "run.sh"
+    good.write_text("#!/bin/sh\necho GOOD >> \"$HOME/out\"\nexit 64\n")
+    good.chmod(0o755)
+    stale = tmp_path / "extract" / "run.sh"
+    stale.parent.mkdir()
+    stale.write_text("#!/bin/sh\necho STALE >> \"$HOME/out\"\nexit 64\n")
+    stale.chmod(0o755)
+    desk = tmp_path / "desk"
+    desk.write_text("#!/bin/sh\necho DESKTOP >> \"$HOME/out\"\n")
+    desk.chmod(0o755)
+    script = tmp_path / "session.sh"
+    script.write_text(kiosk.render_session_script(stale, str(desk)))
+    subprocess.run(["sh", str(script)], check=True, timeout=20,
+                   env=dict(os.environ, HOME=str(home), PATH="/usr/bin:/bin", ATARI_RESTART_DELAY="0"))
+    assert (home / "out").read_text().split() == ["GOOD"]
+
+
+def test_enable_sets_accountsservice_session_and_disable_restores_it(box, tmp_path):
+    layout, run_sh, _ = box
+    acc = kiosk.accounts_service_path(layout, "hazel")
+    acc.parent.mkdir(parents=True, exist_ok=True)
+    acc.write_text("[User]\nXSession=cinnamon\nSession=cinnamon\n")
+    home = tmp_path / "userhome"
+    home.mkdir()
+    ok, _ = kiosk.enable(layout, fake_pkexec(layout), user="hazel", checks=checks(box), run_sh=run_sh,
+                         )  # enable() does not take user_home; the script uses getent (empty here) and still writes AccountsService
+    # re-run the accounts bit by executing set_user_session_script with an explicit home
+    script = kiosk.set_user_session_script("hazel", "atari", layout, user_home=home)
+    subprocess.run(["sh", "-c", script], check=True)
+    body = acc.read_text()
+    assert "XSession=atari" in body and "Session=atari" in body
+    assert "Session=atari" in (home / ".dmrc").read_text()
+    # disable restores the backup
+    ok, _ = kiosk.disable(layout, fake_pkexec(layout))
+    assert ok
+    body = acc.read_text()
+    assert "XSession=cinnamon" in body
+
+
+def test_read_mode_reports_mismatch_when_files_say_console_but_this_login_is_cinnamon(box):
+    layout, run_sh, _ = box
+    kiosk.enable(layout, fake_pkexec(layout), user="hazel", checks=checks(box), run_sh=run_sh)
+    m = kiosk.read_mode(layout, env={"XDG_CURRENT_DESKTOP": "X-Cinnamon", "DESKTOP_SESSION": "cinnamon"})
+    assert m["next"] == "console" and m["running"] == "desktop" and m["mismatch"]
+    assert "Linux desktop" in " ".join(m["lines"])
+    # a bare test env (no desktop name, no ATARI_KIOSK) is not a mismatch
+    m2 = kiosk.read_mode(layout, env={})
+    assert m2["next"] == "console" and not m2["mismatch"]
+
+
+def test_preferred_run_sh_ignores_a_tmp_extract():
+    assert kiosk._ephemeral_path("/tmp/atari-0.10.83/run.sh")
+    assert not kiosk._ephemeral_path("/home/codeaque/.local/share/atari-launcher/run.sh")

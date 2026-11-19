@@ -1837,7 +1837,7 @@ Window {
                 border.width: 2 * win.u; border.color: "white"
                 Text { anchors.centerIn: parent; text: win.pageName === "help" || win.pageName === "fix" ? "BACK" : "CANCEL"
                        color: "white"; font.pixelSize: 21 * win.u; font.bold: true }
-                MouseArea { anchors.fill: parent; onClicked: win.leavePage() }
+                MouseArea { anchors.fill: parent; onClicked: { var a = backend.pageEscape(win.pageName); if (a) win.handleAction(a); else win.leavePage() } }
             }
             Rectangle { id: pageLine; anchors.top: pageHead.bottom; width: parent.width; height: 3 * win.u; color: Theme.accent }
             MenuList {

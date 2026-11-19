@@ -1,6 +1,6 @@
 """Keeps a Steam that CodeAque started at boot (`steam -silent`) out of sight: for the first minutes, any Steam window that appears
 (login check, update box, the main window, Big Picture) is minimised - or, without a window manager (some CodeAque-only sessions),
-unmapped - and CodeAque is put back in front. X11 only (xdotool, or wmctrl); on Wayland nothing can move other apps' windows.
+minimised - and CodeAque is put back in front. Windows are never unmapped (that can exit Steam and stop downloads). X11 only (xdotool, or wmctrl); on Wayland nothing can move other apps' windows.
 Steam's windows come back the normal way: the Steam tile (steam://open/...) shows them again. Never raises."""
 from __future__ import annotations
 
@@ -53,10 +53,16 @@ def has_window_manager(runner=None, which: Callable = shutil.which) -> bool:
 
 
 def hide(wid: str, wm: bool, runner=None, which: Callable = shutil.which) -> bool:
+    """Minimise a Steam window. Never unmap it: Steam treats an unmapped window as closed and can exit, which stops downloads."""
     if which("xdotool"):
-        if wm and _run(["xdotool", "windowminimize", wid], runner)[0] == 0:
+        if _run(["xdotool", "windowminimize", wid], runner)[0] == 0:
             return True
-        return _run(["xdotool", "windowunmap", wid], runner)[0] == 0
+        if which("wmctrl"):
+            try:
+                return _run(["wmctrl", "-i", "-r", hex(int(wid)), "-b", "add,hidden"], runner)[0] == 0
+            except ValueError:
+                return False
+        return False
     if which("wmctrl"):
         return _run(["wmctrl", "-i", "-r", hex(int(wid)), "-b", "add,hidden"], runner)[0] == 0
     return False

@@ -462,7 +462,9 @@ def test_steam_tile_opens_big_picture_and_esc_twice_comes_back(xvfb, fake_steam)
     secs, err = launcher.run_game(cfg, game, on_started=lambda: started.append(1))
     th.join(10)
     assert err == "" and started == [1] and time.time() - t0 < 20
-    assert lines(log) == ["-bigpicture -gamepadui", "steam://close/bigpicture"]
+    assert lines(log)[0] == "-bigpicture -gamepadui"
+    assert "steam://close/bigpicture" not in lines(log) and "-shutdown" not in " ".join(lines(log))
+    assert alive.exists()  # Steam stays in the tray so downloads continue
 
 
 @X
@@ -482,7 +484,9 @@ def test_a_single_esc_and_esc_inside_a_game_do_not_close_steam(xvfb, fake_steam)
     th.start()
     secs, err = launcher.run_game(cfg, game, on_started=lambda: None)
     th.join(10)
-    assert err == "" and lines(log) == ["-bigpicture -gamepadui", "steam://close/bigpicture"]
+    assert err == "" and lines(log)[0] == "-bigpicture -gamepadui"
+    assert "steam://close/bigpicture" not in lines(log)
+    assert alive.exists()
 
 
 def test_guide_b_leaves_big_picture_without_a_keyboard_watcher(fake_steam, monkeypatch):
@@ -498,13 +502,17 @@ def test_guide_b_leaves_big_picture_without_a_keyboard_watcher(fake_steam, monke
     th.start()
     secs, err = launcher.run_game(cfg, game, on_started=lambda: None)
     th.join(10)
-    assert err == "" and lines(log) == ["-bigpicture -gamepadui", "steam://close/bigpicture"]
+    assert err == "" and lines(log)[0] == "-bigpicture -gamepadui"
+    assert "steam://close/bigpicture" not in lines(log)
+    assert alive.exists()
 
 
 def test_already_running_steam_is_switched_with_the_open_link_and_toggle_off_keeps_the_old_behaviour(fake_steam, monkeypatch):
     cfg, game, log, alive, _ = fake_steam
     alive.write_text("")
     monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setattr(launcher, "wait_for_steam_window", lambda *a, **k: True)
+    monkeypatch.setattr(launcher, "raise_steam_window", lambda *a, **k: True)
     threading.Timer(1.0, lambda: exitwatch.request_quit("gamepad")).start()
     secs, err = launcher.run_game(cfg, game, on_started=lambda: None)
     assert err == "" and lines(log)[0] == "steam://open/bigpicture"
@@ -513,4 +521,8 @@ def test_already_running_steam_is_switched_with_the_open_link_and_toggle_off_kee
     secs, err = launcher.run_game(cfg, game, on_started=lambda: None)
     assert secs == 0.0 and "Steam is starting" in err
     time.sleep(0.3)
-    assert "-gamepadui" not in lines(log) and "" in lines(log)      # started plainly (a late close from the first part is not ours)
+    # After leaving Big Picture, Steam is kept running in the tray, so this talks to it
+    # with steam://open/main rather than starting a second copy.
+    assert "-gamepadui" not in lines(log)
+    assert "steam://open/main" in lines(log)
+    assert all("shutdown" not in x and "exitsteam" not in x and "close/bigpicture" not in x for x in lines(log))

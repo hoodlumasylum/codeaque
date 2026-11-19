@@ -2,6 +2,7 @@
 and the CodeAque launcher on the Mint menu and desktop. Nothing touches the real /etc: a Layout points the files into a temp folder and
 pkexec is a stand-in that runs the generated script."""
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -70,6 +71,10 @@ def test_a_failed_backup_copy_removes_nothing(box, monkeypatch):
     turn_on(box)
     # make the backup place impossible: a file where the folder must be
     blocker = layout.p(layout.backup_dir)
+    if blocker.is_dir():
+        shutil.rmtree(blocker)
+    elif blocker.exists():
+        blocker.unlink()
     blocker.parent.mkdir(parents=True, exist_ok=True)
     blocker.write_text("not a folder")
     ok, text = kiosk.disable(layout, fake_pkexec(layout))

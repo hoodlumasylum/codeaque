@@ -31,6 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.84
+
+**CodeAque-only mode now starts CodeAque itself, not the Mint desktop.** The 0.10.83 update could write the LightDM auto-login file correctly, yet after a restart you were still on the desktop. The usual one-command update built the session program from the extracted folder in `/tmp`; once that folder was gone, the session could not find CodeAque and started Cinnamon instead. The session now looks up the installed start script (`~/.local/share/atari-launcher/run.sh`) at runtime and skips leftover `/tmp` paths. It also starts a session bus (so a browser can open), and writes Mint's saved session (`AccountsService` and `~/.dmrc`) to "CodeAque" so a leftover "Cinnamon" choice cannot win. If the files say CodeAque-only but this login is still the Linux desktop, Start mode says so and will repair it (it will not claim "already set"). Every logo-tap and every Yes / No / Cancel on the confirm page is written to `~/.local/share/codeaque/mode.log` and shown on screen.
+
+**Fav Sites tiles open in the browser again.** Clicking a saved site showed "Unknown app" because the launcher treated `fav:` tiles as PC apps. They now open in the same browser as DuckDuckGo (with a fallback to Firefox or `xdg-open` if needed). Failures are logged and shown on screen. The update also adds you to the `input` group and installs a small udev rule and `steam-devices`, so `/dev/input/event*` is readable after you log out once (this was the "gamepad: not readable by this user" message).
+
+**Steam stays running when you leave or minimise it.** Returning to CodeAque (or minimising Steam) no longer closes the Steam client, so downloads continue in the tray. Steam windows are minimised, never unmapped.
+
+The Android APK attached to this release is unchanged (0.10.82). This PC update does not change the Android app.
+
+Untested: unit tests for Fav Sites launch, the session script preferring the installed `run.sh`, AccountsService, confirm-page logging, Steam staying in the tray, and the install.sh gamepad steps passed here. This has not been run on Code's desktop or Win600, has not written to a real LightDM or AccountsService file, has not used a live pkexec box, and has not installed steam-devices on his machine. Please run the manual update command, then log out or restart, and see that the computer starts in CodeAque-only mode (not the Mint desktop), that Fav Sites and DuckDuckGo open a browser, that Steam stays running when you come back to CodeAque, and that if something is wrong a message appears on screen (and in `~/.local/share/codeaque/mode.log`).
+
 ## What's new in 0.10.83
 
 **CodeAque-only mode now tells you what happened, and the update command finishes the setup.** On Linux Mint the main LightDM file (`/etc/lightdm/lightdm.conf`) can have its own auto-login lines, and those win over CodeAque's small drop-in file. Turning CodeAque-only on could look like it worked, then after a restart you were still on the Mint desktop — it felt like nothing happened. CodeAque now comments those lines out (a backup is kept) when you choose Use CodeAque only, or when you run the update with `--yes`. If anything still fails, a large on-screen message explains it. Every switch and logo-tap is written to `~/.local/share/codeaque/mode.log`. The first logo tap already shows a countdown, so you can tell the taps are counting. If the password window is not needed (the update is already running as root), the files are written without pkexec.

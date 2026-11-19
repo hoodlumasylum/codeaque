@@ -382,3 +382,24 @@ def _firefox_history(profile: Path, limit: int) -> list[tuple[str, str]]:
         if rows:
             return [(str(u), str(t)) for u, t in rows]
     return []
+
+
+# ------------------------------------------------------------------ launch dispatcher (console home + classic library)
+def resolve_tile(action: str = "", gid: str = "") -> str | None:
+    """Map a Fav Sites row tile (action and/or gid) to a launch id the PC dispatcher understands.
+
+    Returns 'duckduckgo', 'addfav', 'fav:<id>', 'web:browser', or None if it is not a Fav Sites tile.
+    """
+    a = (action or "").strip()
+    g = (gid or "").strip()
+    for raw in (a, g):
+        if raw in ("duckduckgo", "web:browser", "browser"):
+            return "duckduckgo"
+        if raw == "addfav":
+            return "addfav"
+        if raw.startswith("favopen:"):
+            sid = raw.split(":", 1)[1].strip()
+            return ("fav:" + sid) if sid else None
+        if raw.startswith("fav:") and raw.split(":", 1)[1].strip():
+            return "fav:" + raw.split(":", 1)[1].strip()
+    return None

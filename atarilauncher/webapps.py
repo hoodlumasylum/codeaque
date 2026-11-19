@@ -8,6 +8,8 @@ accept its prompt; on Linux those services stream at about 720p (Widevine "L3"),
 """
 from __future__ import annotations
 
+import os
+
 import shlex
 import shutil
 from dataclasses import dataclass
@@ -313,6 +315,16 @@ def build_command(cfg, app: WebApp, home: Path | None = None, which: Callable = 
         return shlex.split(custom) + (browse_flags(app, prof) if app.browse else chromium_flags(app, prof)), "your browser"
     b, how = find_browser(cfg, home, which, app.drm)
     if b is None:
+        # Last resorts: a browser in a well-known path (PATH can be thin in CodeAque-only), then xdg-open.
+        for path, kind in (("/usr/bin/firefox", "firefox"), ("/usr/bin/firefox-esr", "firefox"),
+                           ("/snap/bin/firefox", "firefox"), ("/usr/bin/chromium-browser", "chromium"),
+                           ("/usr/bin/chromium", "chromium"), ("/usr/bin/google-chrome-stable", "chromium")):
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                b, how = Browser(Path(path).name, Path(path).name, (path,), "", kind, False), "native"
+                break
+    if b is None:
+        if which("xdg-open"):
+            return ["xdg-open", app.url], "the default browser"
         return [], ""
     if how == "flatpak":
         base = ["flatpak", "run", f"--filesystem={root}", b.flatpak]

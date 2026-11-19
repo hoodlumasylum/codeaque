@@ -3483,7 +3483,8 @@ class Backend(QObject):
             lay = self._kiosk_layout
             mode = kiosk.read_mode(lay)
             want = "desktop" if rid == "smdesktop" else "console"
-            if mode["next"] == want and not mode["leftovers"] and not mode.get("conflict"):
+            if (mode["next"] == want and not mode["leftovers"] and not mode.get("conflict")
+                    and not mode.get("mismatch")):
                 self.show_toast("It is already set that way. Nothing was changed.", 6000)
                 kiosk.mode_log("start mode " + want + ": already set, nothing changed")
                 return ""
@@ -3561,6 +3562,7 @@ class Backend(QObject):
     def _open_browse_url(self, url: str, title: str, gid: str = "web:browser") -> None:
         """Open a site in the same browser window/profile as DuckDuckGo. Esc twice comes back."""
         if self._running:
+            self.show_toast("Something is already open. Come back first, then try the site again.", 6000)
             return
         self._fav_browse_open = True
         self._launch_game(Game(gid=gid, title=title or "Site", platform=webapps.STREAMING,
@@ -3751,18 +3753,26 @@ class Backend(QObject):
         self.ask_text("PARENT PIN", "Kids mode: enter the parent PIN to leave CodeAque-only.", True, "", "", cb)
 
     def _modetap_activate(self, rid: str) -> str:
+        want = getattr(self, "_mt_want", "") or ""
         if rid == "mtno":
+            kiosk.mode_log("confirm: no, stay as I am (wanted " + (want or "unknown") + ")")
+            self.show_toast("No change — start mode was left as it is.", 6000, big=True)
             return "back"
         if rid == "mtpin":
+            kiosk.mode_log("confirm: enter parent PIN")
             self._modetap_ask_pin()
             return ""
         if rid == "mtyes":
             if self._modetap_needs_pin() and not getattr(self, "_mt_pin_ok", False):
+                kiosk.mode_log("confirm: yes pressed but parent PIN still needed")
                 self._modetap_ask_pin()
                 return ""
-            want = getattr(self, "_mt_want", "")
+            kiosk.mode_log("confirm: yes, switch to " + (want or "unknown"))
+            self.show_toast("Switching start mode — type your password if a box appears...", 8000, big=True)
             ev = self._startmode_activate("smdesktop" if want == "desktop" else "smconsole")
+            kiosk.mode_log("confirm: start-mode result ev=" + (ev or "empty") + " want=" + (want or "unknown"))
             return "page:startmode" if ev == "refresh" else ev
+        kiosk.mode_log("confirm: ignored action " + (rid or ""))
         return ""
 
     @Slot(result=str)
@@ -3776,7 +3786,14 @@ class Backend(QObject):
         mode = kiosk.read_mode(self._kiosk_layout)
         nxt = mode["next"]
         ev = self._logo_taps.tap(now, nxt)
-        kiosk.mode_log("logo tap: " + ev.get("action", "") + " count=" + str(ev.get("count", 0)) + " next=" + str(nxt))
+        kiosk.mode_log("logo tap: " + ev.get("action", "") + " count=" + str(ev.get("count", 0)) + " next=" + str(nxt)
+                       + (" mismatch" if mode.get("mismatch") else "")
+                       + " running=" + str(mode.get("running", "")))
+        if mode.get("mismatch"):
+            self.show_toast("CodeAque-only is turned on in the files, but this login is the Linux desktop. "
+                            "The Start mode page is opening so you can repair it.", 9000, big=True)
+            kiosk.mode_log("logo tap: mismatch — files say CodeAque-only but this session is the Linux desktop; opening Start mode")
+            return "page:startmode"
         if ev["action"] == "broken":
             self.show_toast("Start mode is unclear, so the logo could not switch it. The Start mode page is opening — you can fix it there.", 8000, big=True)
             return "page:startmode"
@@ -4536,7 +4553,18 @@ class Backend(QObject):
 
     @Slot(str)
     def launchGid(self, gid: str) -> None:
-        """Start a game by its id (the Recently Played row on the home screen)."""
+        """Start a game by its id (the Recently Played row, classic library, or a console-home tile gid)."""
+        from . import favsites
+        kind = favsites.resolve_tile("", gid) or favsites.resolve_tile(gid, "")
+        if kind == "addfav":
+            self.startAddFavSite()
+            return
+        if kind == "duckduckgo":
+            self.openDuckDuckGo()
+            return
+        if kind and kind.startswith("fav:"):
+            self.openFavSite(kind.split(":", 1)[1])
+            return
         self._launch_obj(next((x for x in self._all if x.gid == gid), None))
 
     @Property("QVariantList", notify=statsChanged)
@@ -5248,6 +5276,9 @@ class Backend(QObject):
                 self._fm_dir = None if files.is_top(self._fm_dir, self._fm_home()) else self._fm_dir.parent
                 self._fm_msg = ""
                 return "page:files"
+        if name == "modetap":
+            kiosk.mode_log("confirm: cancelled (Esc / CANCEL)")
+            self.show_toast("No change — start mode was left as it is.", 6000, big=True)
         return "back"
 
     # ----- Steam in CodeAque-only mode: always Big Picture --------------------------------

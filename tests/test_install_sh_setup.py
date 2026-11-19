@@ -21,3 +21,13 @@ def test_yes_update_sets_up_steam_and_codeaque_only_and_survives_a_failed_apt_st
     assert "set +e" in SH
     # --no-system-packages (in-app updater) still skips this
     assert "--no-system-packages" in SH and 'SYSPKGS=0' in SH
+
+
+def test_yes_update_sets_up_gamepad_access_and_bakes_the_installed_run_script():
+    assert "usermod -aG input" in SH
+    assert "steam-devices" in SH
+    assert "99-codeaque-input.rules" in SH
+    assert "xdg-utils" in SH
+    # session files must point at the installed run.sh, never the /tmp extract
+    assert "ATARI_INSTALL_DIR" in SH
+    assert "run_sh=Path(os.environ['ATARI_INSTALL_DIR'])/'run.sh'" in SH or 'ATARI_INSTALL_DIR' in SH

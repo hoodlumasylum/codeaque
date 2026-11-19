@@ -154,3 +154,27 @@ def test_kids_mode_without_a_pin_set_cannot_leave_console(app, tmp_path, monkeyp
         assert not b.inputActive
     finally:
         ui.close()
+
+
+
+def test_confirm_page_yes_and_cancel_are_logged(app, tmp_path, monkeypatch, box):
+    (tmp_path / "home").mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("ATARI_NO_MODELOG", raising=False)
+    monkeypatch.setattr("atarilauncher.branding.ensure_launchers", lambda *a, **k: ["the Mint menu"])
+    ui = make_ui(app, tmp_path, monkeypatch, box)
+    try:
+        b = ui.backend
+        b._logo_taps.reset()
+        assert _tap_n(b, 10) == "page:modetap"
+        assert b.pageActivate("modetap", "mtno") == "back"
+        log = kiosk.mode_log_path(tmp_path / "home").read_text()
+        assert "confirm: no, stay as I am" in log
+        b._logo_taps.reset()
+        assert _tap_n(b, 10) == "page:modetap"
+        b.pageActivate("modetap", "mtyes")
+        # yes is logged immediately, even before the password work finishes
+        log = kiosk.mode_log_path(tmp_path / "home").read_text()
+        assert "confirm: yes, switch to" in log
+    finally:
+        ui.close()

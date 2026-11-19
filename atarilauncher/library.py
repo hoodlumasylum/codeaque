@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import appinstall, apps, icons, covers as covers_mod, emulators, freegames, gamesroot, paths, roms, steam, webapps, windows
+from . import appinstall, apps, icons, covers as covers_mod, emulators, favsites, freegames, gamesroot, paths, roms, steam, webapps, windows
 from .config import Config
 
 STEAM = "steam"
@@ -223,6 +223,14 @@ def build_library(cfg: Config, home: Path | None = None, covers_root: Path | Non
         plat, pname = (webapps.CLOUD, webapps.CLOUD_NAME) if wa.cloud else (webapps.STREAMING, webapps.STREAMING_NAME)
         res.games.append(Game(gid=wa.gid, title=wa.title, platform=plat, platform_name=pname,
                               note=(wa.note + " " + text).strip() if ready else text, missing="" if ready else "chrome"))
+    # Fav Sites: the same bookmarks as the console-home Fav Sites row, so classic library can open them too
+    try:
+        for s in favsites.list_sites():
+            res.games.append(Game(gid="fav:" + s.id, title=s.title, platform=webapps.STREAMING,
+                                  platform_name="Fav Sites", cover=s.icon or "",
+                                  note=s.url, meta={"browse_url": s.url}))
+    except Exception as exc:  # a bad bookmarks file must never break the library
+        print(f"[atari] fav sites catalogue failed: {exc}")
     # Windows games you added with "Add Windows game"
     for wg in windows.load_games():
         cover = wg.cover if wg.cover and Path(wg.cover).is_file() else ""

@@ -41,6 +41,14 @@ def clean_env() -> dict[str, str]:
     return env
 
 
+def browse_env() -> dict[str, str]:
+    """Environment for a browser (Fav Sites, DuckDuckGo). Keeps DISPLAY and the session bus.
+    In a CodeAque-only session those must be present or the window never appears."""
+    env = clean_env()
+    if not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+        env["DISPLAY"] = ":0"
+    return env
+
 def resolve_retroarch(cfg: Config, home: Path | None = None) -> list[str]:
     return emulators.find_emu(cfg, "retroarch", home)[0]
 
@@ -351,7 +359,8 @@ def run_game(cfg: Config, game: Game, on_started: Callable[[], None],
         return _run_windows(cfg, game, on_started)
     if game.gid.startswith("free:"):
         return _run_free(cfg, game, on_started)
-    if game.gid.startswith("web:"):
+    if (game.gid.startswith("web:") or game.gid.startswith("fav:")
+            or bool((getattr(game, "meta", None) or {}).get("browse_url"))):
         return _run_web(cfg, game, on_started)
     if game.platform in apps.NON_GAME or game.launch:
         return _run_app(cfg, game, on_started)
@@ -544,14 +553,40 @@ def bigpicture_command(cfg: Config, base: list[str], running: bool) -> list[str]
     return steamrepair.console_command(list(base) if base else ["steam"], running)
 
 
+def hide_steam_windows(runner=None, which: Callable = shutil.which) -> None:
+    """Minimise visible Steam windows so CodeAque can come back; do not close or unmap them."""
+    try:
+        from . import steamhide
+        for wid in steamhide.steam_windows(runner, which):
+            steamhide.hide(wid, True, runner, which)
+    except Exception:
+        pass
+
+
+def keep_steam_running(base: list[str] | None = None, run: Callable = subprocess.run,
+                       popen: Callable = subprocess.Popen, sleep=time.sleep, running=None) -> str:
+    """After leaving Steam's window, keep the client in the tray so downloads continue.
+    Never sends -shutdown / -exitsteam, never pkills Steam, never unmaps its windows."""
+    from . import steam as steam_mod
+    running = running or steam_mod.steam_running
+    hide_steam_windows()
+    base = list(base) if base else ["steam"]
+    if running():
+        return "still-running"
+    try:
+        popen(base + ["-silent"], env=clean_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              stdin=subprocess.DEVNULL, start_new_session=True)
+    except OSError as exc:
+        _log(f"steam: could not restart in the tray: {exc}")
+        return "failed"
+    _log("steam: restarted in the tray (-silent) so downloads can continue")
+    return "restarted-silent"
+
+
 def _close_bigpicture(base: list[str]):
-    """The quit gesture for Steam: leave Big Picture (Steam itself keeps running, and so do your downloads / games)."""
+    """The quit gesture for Steam: hide its windows and keep the client running in the tray (downloads continue)."""
     def term(_proc, _flatpak_id="", _grace=0.0):
-        try:
-            subprocess.run(base + ["steam://close/bigpicture"], env=clean_env(), stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, timeout=15)
-        except (OSError, subprocess.SubprocessError):
-            pass
+        keep_steam_running(base)
     return term
 
 
@@ -772,6 +807,12 @@ def _run_web(cfg: Config, game: Game, on_started):
         raise LaunchError(f"Unknown web app '{game.title}'.")
     cmd, name = webapps.build_command(cfg, wa)
     if not cmd:
+        _log("web launch: no browser found for " + (wa.url or wa.title))
+        try:
+            from . import kiosk
+            kiosk.mode_log("browser: no browser found for " + (wa.url or wa.title))
+        except Exception:
+            pass
         raise LaunchError(webapps.HELP_TEXT)
     try:
         (webapps.profile_root() / wa.id).mkdir(parents=True, exist_ok=True)
@@ -791,10 +832,16 @@ def _run_web(cfg: Config, game: Game, on_started):
         time.sleep(_hint_delay())       # let the "Press Esc twice to return to CodeAque" screen be read before the browser covers it
     started = time.time()
     try:
-        proc = subprocess.Popen(cmd, env=clean_env(), stdout=logfh, stderr=logfh, stdin=subprocess.DEVNULL,
+        proc = subprocess.Popen(cmd, env=browse_env(), stdout=logfh, stderr=logfh, stdin=subprocess.DEVNULL,
                                 start_new_session=True)
     except OSError as exc:
-        raise LaunchError(f"Could not start {name}: {exc}")
+        _log(f"web launch failed ({name}): {exc}")
+        try:
+            from . import kiosk
+            kiosk.mode_log(f"browser failed ({name}): {exc}")
+        except Exception:
+            pass
+        raise LaunchError(f"Could not open the site in {name}: {exc}")
     watch = _start_watch(cfg, proc, cmd)
     on_started()
     try:

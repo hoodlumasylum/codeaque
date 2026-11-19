@@ -106,3 +106,74 @@ def test_fav_sites_row_has_duckduckgo_and_add_and_hides_in_kids_mode(tmp_path, m
             assert t.get("action") not in ("duckduckgo", "addfav")
             assert not str(t.get("action", "")).startswith("favopen:")
             assert t.get("gid") != "web:browser"
+
+
+
+def test_every_fav_sites_row_tile_id_resolves_to_a_launch_action(tmp_path, monkeypatch):
+    """Every tile on the Fav Sites row (DuckDuckGo, Add fav site, and each saved site) must be a
+    recognised launch id. A missing mapping is what showed 'Unknown app' on Code's PC."""
+    from atarilauncher import launcher, webapps
+    from atarilauncher.config import default_config
+    from atarilauncher.library import Game
+
+    root = tmp_path / "data"
+    monkeypatch.setattr(favsites, "store_dir", lambda r=None: root)
+    monkeypatch.setattr(favsites, "store_path", lambda r=None: root / "sites.json")
+    monkeypatch.setattr(favsites, "icons_dir", lambda r=None: root / "icons")
+    site = favsites.add("https://example.org/", "Example", root=root, fetch=False)
+    assert site is not None
+    tiles = None
+    for c in handheld.categories(demo_library().games, kids_mode=False, fav_root=root):
+        if c["key"] == "favsites":
+            tiles = c["tiles"]
+            break
+    assert tiles, "the Fav Sites row must be present"
+    kinds = []
+    for t in tiles:
+        kind = favsites.resolve_tile(t.get("action") or "", t.get("gid") or "")
+        assert kind, "unrecognised Fav Sites tile: " + repr(t)
+        kinds.append(kind)
+    assert "duckduckgo" in kinds and "addfav" in kinds
+    assert any(k == "fav:" + site.id for k in kinds)
+
+    # The launch dispatcher must send fav: and DuckDuckGo to the browser, never 'Unknown app'
+    started = []
+    opened = []
+
+    real_popen = launcher.subprocess.Popen
+
+    def fake_popen(cmd, *a, **kw):
+        argv = list(cmd) if not isinstance(cmd, str) else [cmd]
+        # ctypes.util.find_library also uses Popen; only record browser launches
+        if argv and Path(str(argv[0])).name in {"firefox", "firefox-esr", "xdg-open",
+                                                "chromium", "chromium-browser", "google-chrome", "google-chrome-stable"}:
+            opened.append(argv)
+            class P:
+                def wait(self):
+                    return 0
+                def poll(self):
+                    return 0
+                def __enter__(self):
+                    return self
+                def __exit__(self, *exc):
+                    return False
+            return P()
+        return real_popen(cmd, *a, **kw)
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(webapps, "build_command", lambda cfg, wa, **k: (["firefox", wa.url], "Firefox"))
+    monkeypatch.setattr(launcher, "_check_executable", lambda *a, **k: None)
+    monkeypatch.setenv("ATARI_HINT_DELAY", "0")
+    cfg = default_config()
+    g = Game(gid="fav:" + site.id, title=site.title, platform=webapps.STREAMING,
+             platform_name="Fav Sites", meta={"browse_url": site.url})
+    secs, err = launcher.run_game(cfg, g, on_started=lambda: started.append(1))
+    assert "Unknown app" not in (err or "")
+    assert opened and site.url in " ".join(opened[0]), opened
+    assert started == [1]
+
+    opened.clear(); started.clear()
+    g2 = Game(gid="web:browser", title="DuckDuckGo", platform=webapps.STREAMING, platform_name="Streaming")
+    secs, err = launcher.run_game(cfg, g2, on_started=lambda: started.append(1))
+    assert "Unknown app" not in (err or "")
+    assert opened and started == [1]

@@ -59,10 +59,13 @@ def test_watcher_minimises_steam_windows_and_finishes_when_settled():
     assert w.tick(9.5)[1] is True             # nothing new for 5 s and Steam is up
 
 
-def test_without_a_window_manager_windows_are_unmapped():
+def test_without_a_window_manager_windows_are_minimised_not_unmapped():
     fx = FakeX(["7"], wm=False)
     w = steamhide.Watcher(0.0, runner=fx, which=which_all)
-    assert w.tick(1.0)[0] == ["7"] and ["xdotool", "windowunmap", "7"] in fx.calls
+    hidden, _ = w.tick(1.0)
+    assert ["xdotool", "windowunmap", "7"] not in fx.calls
+    # minimise is tried first (even without a WM); unmap is never used — that can exit Steam
+    assert any(c[:2] == ["xdotool", "windowminimize"] for c in fx.calls)
 
 
 def test_no_tools_means_nothing_to_do():

@@ -140,6 +140,26 @@ def run_script_path() -> Path:
     return Path(__file__).resolve().parent.parent / "run.sh"
 
 
+def _ephemeral_path(path: Path | str) -> bool:
+    """True for a throwaway extract (/tmp, an updater staging folder) that must not be baked into atari-session."""
+    s = str(path)
+    return s.startswith("/tmp/") or s.startswith("/var/tmp/") or "/atari-update-" in s
+
+
+def installed_run_sh(home: Path | None = None) -> Path:
+    if os.environ.get("ATARI_INSTALL_DIR"):
+        return Path(os.environ["ATARI_INSTALL_DIR"]) / "run.sh"
+    return (home or Path.home()) / ".local" / "share" / "atari-launcher" / "run.sh"
+
+
+def preferred_run_sh(home: Path | None = None) -> Path:
+    """The start script the CodeAque-only session should use: the installed copy, never a /tmp extract."""
+    here = run_script_path()
+    if here.is_file() and not _ephemeral_path(here):
+        return here
+    return installed_run_sh(home)
+
+
 def default_display_manager(path: str = "/etc/X11/default-display-manager") -> str:
     try:
         return Path(path).read_text(errors="replace").strip()
@@ -214,7 +234,7 @@ def enabled(layout: Layout = DEFAULT) -> bool:
 
 
 # ------------------------------------------------------------------ the three files
-SESSION_VERSION = 3     # 2 = 0.4.1 (restarts CodeAque instead of ending the session); 3 = 0.4.2 (also writes ~/.local/share/atari/session.log)
+SESSION_VERSION = 4     # 4 = 0.10.84: find run.sh at runtime (never a leftover /tmp extract); start a session bus; log to mode.log
 EXIT_LOGOUT = 64        # the one exit code that means "log out on purpose" (anything else: the session starts CodeAque again)
 MAX_QUICK_CRASHES = 5   # only this many crashes in a row, each within seconds of starting, send the session to the desktop
 
@@ -231,8 +251,8 @@ def session_outdated(layout: Layout = DEFAULT) -> bool:
         return False
     if (int(m.group(1)) if m else 1) < SESSION_VERSION:
         return True
-    r = re.search(r"^RUN=(.+)$", text, re.M)          # it starts another (older) copy of CodeAque than this one
-    if r:
+    r = re.search(r"^PREFERRED=(.+)$", text, re.M) or re.search(r"^RUN=(.+)$", text, re.M)
+    if r and not r.group(1).strip().startswith("$"):
         try:
             run = shlex.split(r.group(1))[0]
         except (ValueError, IndexError):
@@ -249,6 +269,7 @@ def session_outdated(layout: Layout = DEFAULT) -> bool:
 
 
 def render_session_script(run_sh: Path, desktop_exec: str, home_hint: str = "") -> str:
+    preferred = shlex.quote(str(run_sh))
     return f"""#!/bin/sh
 # CodeAque-only session. Written by CodeAque > Settings > CodeAque-only mode. Remove it with Settings > Start mode > Use Linux desktop.
 # atari-session-version: {SESSION_VERSION}
@@ -256,22 +277,55 @@ def render_session_script(run_sh: Path, desktop_exec: str, home_hint: str = "") 
 # "Restart CodeAque" - it starts CodeAque again after a second. Launching and closing games, browsers and emulators never reaches here.
 # Exceptions: the "Open the Mint desktop once" flag, CodeAque exiting with code {EXIT_LOGOUT} (log out on purpose), and a real crash
 # loop ({MAX_QUICK_CRASHES} crashes in a row, each within seconds): then the Mint desktop starts so you are never locked out.
-# Everything it decides is written to ~/.local/share/atari/session.log (Settings > CodeAque-only mode shows the last lines).
-RUN={shlex.quote(str(run_sh))}
+# Everything it decides is written to ~/.local/share/atari/session.log and ~/.local/share/codeaque/mode.log.
+PREFERRED={preferred}
+find_run() {{
+  # The installed copy always wins, even if $HOME happens to be under /tmp (tests).
+  for c in "$ATARI_INSTALL_DIR/run.sh" "$HOME/.local/share/atari-launcher/run.sh"; do
+    [ -n "$c" ] && [ -e "$c" ] || continue
+    printf '%s\\n' "$c"
+    return 0
+  done
+  if [ -n "$PREFERRED" ] && [ -e "$PREFERRED" ]; then
+    printf '%s\\n' "$PREFERRED"
+    return 0
+  fi
+  for c in "$HOME/.local/bin/atari" "$HOME/.local/bin/codeaque"; do
+    [ -e "$c" ] || continue
+    case "$c" in /tmp/*|/var/tmp/*) continue ;; esac
+    printf '%s\\n' "$c"
+    return 0
+  done
+  return 1
+}}
 FLAG="$HOME/.config/atari/desktop-once"
 LOG="$HOME/.local/share/atari/session.log"
+MODELOG="$HOME/.local/share/codeaque/mode.log"
 DELAY="${{ATARI_RESTART_DELAY:-1}}"
-mkdir -p "$(dirname "$LOG")" 2>/dev/null
+mkdir -p "$(dirname "$LOG")" "$(dirname "$MODELOG")" 2>/dev/null
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 200000 ]; then tail -n 200 "$LOG" > "$LOG.new" 2>/dev/null && mv "$LOG.new" "$LOG"; fi
-log() {{ printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG" 2>/dev/null; }}
+log() {{
+    line=$(printf '%s %s\\n' "$(date '+%F %T')" "$*")
+    printf '%s' "$line" >> "$LOG" 2>/dev/null
+    printf '%s' "$line" >> "$MODELOG" 2>/dev/null
+}}
 desktop() {{
     log "STARTING THE MINT DESKTOP: $*"
     exec {desktop_exec}
 }}
-log "session start (script version {SESSION_VERSION}, user $USER, display $DISPLAY)"
+log "session start (script version {SESSION_VERSION}, user $USER, display ${{DISPLAY:-unset}}, desktop ${{XDG_CURRENT_DESKTOP:-}}/${{DESKTOP_SESSION:-}}, dbus ${{DBUS_SESSION_BUS_ADDRESS:+yes}})"
+if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+    export DISPLAY=:0
+    log "DISPLAY was empty, set to :0"
+fi
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-launch >/dev/null 2>&1; then
+    eval "$(dbus-launch --sh-syntax)" && log "started a session bus so browsers and Steam can open"
+fi
 # "Open the Mint desktop once" in CodeAque's settings leaves this flag file.
 if [ -e "$FLAG" ]; then rm -f "$FLAG"; desktop "the 'Open the Mint desktop once' note was found ($FLAG)"; fi
-[ -e "$RUN" ] || desktop "CodeAque's start script is missing: $RUN"
+RUN=$(find_run) || true
+log "CodeAque start script: ${{RUN:-not found}} (preferred $PREFERRED)"
+[ -n "$RUN" ] && [ -e "$RUN" ] || desktop "CodeAque's start script is missing: ${{PREFERRED:-unset}}"
 # a black screen instead of the grey X pattern while CodeAque starts
 command -v xsetroot >/dev/null 2>&1 && xsetroot -solid black 2>/dev/null
 # tells CodeAque it is the whole session: Quit means Restart, and it re-takes the screen when any app closes
@@ -297,6 +351,7 @@ done
 """
 
 
+
 def render_xsession(session_script: str = "/usr/local/bin/atari-session") -> str:
     return f"""[Desktop Entry]
 Name=CodeAque
@@ -313,6 +368,7 @@ def render_lightdm(user: str) -> str:
 autologin-user={user}
 autologin-user-timeout=0
 autologin-session={SESSION_NAME}
+user-session={SESSION_NAME}
 """
 
 
@@ -345,9 +401,67 @@ def restore_lightdm_script(layout: Layout = DEFAULT) -> str:
     return f"if [ -f {main} ]; then sed -i 's/^# CodeAque: //' {main}; fi"
 
 
-def enable_script(user: str, layout: Layout = DEFAULT, run_sh: Path | None = None, desktop_exec: str | None = None) -> str:
+def accounts_service_path(layout: Layout, user: str) -> Path:
+    return layout.p(f"var/lib/AccountsService/users/{user}")
+
+
+def set_user_session_script(user: str, session: str = SESSION_NAME, layout: Layout = DEFAULT,
+                            user_home: Path | str | None = None) -> str:
+    """Point AccountsService and ~/.dmrc at the CodeAque session so a leftover Cinnamon choice cannot override autologin-session."""
+    acc = shlex.quote(str(accounts_service_path(layout, user)))
+    bak_dir = shlex.quote(str(layout.p(layout.backup_dir)))
+    bak = shlex.quote(str(layout.p(layout.backup_dir) / f"AccountsService-{user}"))
+    if user_home is not None:
+        home_expr = shlex.quote(str(user_home))
+    else:
+        home_expr = "$(getent passwd " + shlex.quote(user) + " | cut -d: -f6)"
+    # printf newlines must be escaped so they survive being inside a larger shell script string
+    nl = "\\n"
+    return (
+        "USER_HOME=" + home_expr + "; "
+        "mkdir -p \"$(dirname " + acc + ")\" " + bak_dir + "; "
+        "if [ -f " + acc + " ]; then [ -f " + bak + " ] || cp -p " + acc + " " + bak + "; fi; "
+        "if [ -f " + acc + " ]; then "
+        "if grep -q '^XSession=' " + acc + " 2>/dev/null; then sed -i 's/^XSession=.*/XSession=" + session + "/' " + acc + "; "
+        "else printf '" + nl + "XSession=" + session + nl + "' >> " + acc + "; fi; "
+        "if grep -q '^Session=' " + acc + " 2>/dev/null; then sed -i 's/^Session=.*/Session=" + session + "/' " + acc + "; "
+        "else printf 'Session=" + session + nl + "' >> " + acc + "; fi; "
+        "else printf '[User]" + nl + "XSession=" + session + nl + "Session=" + session + nl + "' > " + acc + "; fi; "
+        "if [ -n \"$USER_HOME\" ]; then DMRC=\"$USER_HOME/.dmrc\"; "
+        "if [ -f \"$DMRC\" ]; then [ -f " + bak_dir + "/dmrc ] || cp -p \"$DMRC\" " + bak_dir + "/dmrc; "
+        "if grep -q '^Session=' \"$DMRC\" 2>/dev/null; then sed -i 's/^Session=.*/Session=" + session + "/' \"$DMRC\"; "
+        "else printf '" + nl + "[Desktop]" + nl + "Session=" + session + nl + "' >> \"$DMRC\"; fi; "
+        "else printf '[Desktop]" + nl + "Session=" + session + nl + "' > \"$DMRC\" || true; fi; "
+        "chown " + shlex.quote(user) + " \"$DMRC\" 2>/dev/null || true; fi"
+    )
+
+
+def restore_user_session_script(layout: Layout = DEFAULT) -> str:
+    """Put AccountsService and ~/.dmrc back from the backup, or set them to Cinnamon if we had written atari with no backup."""
+    bak_dir = shlex.quote(str(layout.p(layout.backup_dir)))
+    acc_dir = shlex.quote(str(layout.p("var/lib/AccountsService/users")))
+    return (
+        "if [ -d " + bak_dir + " ]; then "
+        "for f in " + bak_dir + "/AccountsService-*; do [ -f \"$f\" ] || continue; "
+        "name=$(basename \"$f\" | sed 's/^AccountsService-//'); "
+        "mkdir -p " + acc_dir + "; cp -p \"$f\" " + acc_dir + "/\"$name\"; done; "
+        "if [ -f " + bak_dir + "/dmrc ]; then "
+        "uh=$(getent passwd \"$SUDO_USER\" 2>/dev/null | cut -d: -f6); "
+        "[ -z \"$uh\" ] && uh=$(getent passwd \"$USER\" 2>/dev/null | cut -d: -f6); "
+        "[ -n \"$uh\" ] && cp -p " + bak_dir + "/dmrc \"$uh/.dmrc\" && chown \"$SUDO_USER\" \"$uh/.dmrc\" 2>/dev/null || true; "
+        "fi; fi; "
+        "for f in " + acc_dir + "/*; do [ -f \"$f\" ] || continue; "
+        "if grep -q '^XSession=" + SESSION_NAME + "' \"$f\" 2>/dev/null "
+        "&& [ ! -f " + bak_dir + "/AccountsService-$(basename \"$f\") ]; then "
+        "sed -i 's/^XSession=" + SESSION_NAME + "/XSession=cinnamon/; s/^Session=" + SESSION_NAME + "/Session=cinnamon/' \"$f\"; "
+        "fi; done"
+    )
+
+
+def enable_script(user: str, layout: Layout = DEFAULT, run_sh: Path | None = None, desktop_exec: str | None = None,
+                  user_home: Path | str | None = None) -> str:
     """The shell script that pkexec (or sudo, or a root shell) runs. The file contents are inside the command itself (no temp files)."""
-    run_sh = run_sh or run_script_path()
+    run_sh = run_sh or preferred_run_sh()
     desktop_exec = desktop_exec or desktop_session_exec(layout)
     s, x, c = (str(layout.p(r)) for r in (layout.session_script, layout.xsession, layout.lightdm_conf))
     steps = [
@@ -357,8 +471,10 @@ def enable_script(user: str, layout: Layout = DEFAULT, run_sh: Path | None = Non
         _write(s, render_session_script(run_sh, desktop_exec), "755"),
         _write(x, render_xsession("/" + layout.session_script), "644"),
         _write(c, render_lightdm(user), "644"),
+        set_user_session_script(user, SESSION_NAME, layout, user_home),
     ]
     return "\n".join(steps)
+
 
 
 def backup_files(layout: Layout = DEFAULT) -> list[Path]:
@@ -379,6 +495,7 @@ def disable_script(layout: Layout = DEFAULT) -> str:
         lines.append(f"[ ! -f {q} ] || cp -p {q} {b}/")
     lines.append("rm -f " + " ".join(shlex.quote(str(f)) for f in layout.files))
     lines.append(restore_lightdm_script(layout))
+    lines.append(restore_user_session_script(layout))
     return "\n".join(lines)
 
 
@@ -440,6 +557,22 @@ def autologin_leftovers(layout: Layout = DEFAULT) -> list[str]:
     return found
 
 
+DESKTOP_HINTS = ("cinnamon", "x-cinnamon", "gnome", "mate", "xfce", "ubuntu", "kde", "plasma", "lxqt", "lxde", "budgie")
+
+
+def desktop_env_name(env: dict | None = None) -> str:
+    env = env if env is not None else os.environ
+    return (env.get("XDG_CURRENT_DESKTOP") or env.get("DESKTOP_SESSION") or "").strip()
+
+
+def looks_like_linux_desktop(env: dict | None = None) -> bool:
+    """True when this process is clearly inside a normal desktop session (not ATARI_KIOSK, not a bare test env)."""
+    if in_session(env):
+        return False
+    name = desktop_env_name(env).lower()
+    return any(h in name for h in DESKTOP_HINTS)
+
+
 def read_mode(layout: Layout = DEFAULT, env: dict | None = None) -> dict:
     """What the computer is set to do at the next start, read from the files, and what this running CodeAque is.
     {'next': 'console'|'desktop'|'broken', 'running': 'console'|'desktop', 'lines': [plain text], 'backup': bool}"""
@@ -476,10 +609,15 @@ def read_mode(layout: Layout = DEFAULT, env: dict | None = None) -> dict:
     kind, _ = running_description(env)
     running = "console" if kind == "code-only" else "desktop"
     lines.append("Right now CodeAque is running " + ("as the console-mode session." if running == "console" else "inside the Linux desktop."))
+    mismatch = bool(nxt == "console" and running == "desktop" and looks_like_linux_desktop(env))
+    if mismatch:
+        lines.append("But this login is the Linux desktop, not the CodeAque-only session. "
+                     "The session may have fallen back (a missing start script, a leftover desktop-once note, "
+                     "or Mint still selected in AccountsService). Choose Use CodeAque only to repair it, then log out or restart.")
     backup = has_backup(layout)
     if backup:
         lines.append("A backup of the console-mode files is kept in /" + layout.backup_dir + ".")
-    return {"next": nxt, "running": running, "lines": lines, "backup": backup, "leftovers": leftovers, "conflict": conflict}
+    return {"next": nxt, "running": running, "lines": lines, "backup": backup, "leftovers": leftovers, "conflict": conflict, "mismatch": mismatch}
 
 
 WM_NAMES = ("openbox", "metacity", "marco", "xfwm4")
@@ -648,10 +786,18 @@ def diagnose(layout: Layout = DEFAULT, home: Path | None = None) -> list[str]:
         pass
     try:
         text = s.read_text(errors="replace")
-        m = re.search(r"^RUN=(.+)$", text, re.M)
-        if m:
+        m = re.search(r"^PREFERRED=(.+)$", text, re.M) or re.search(r"^RUN=(.+)$", text, re.M)
+        if m and not m.group(1).strip().startswith("$"):
             run = Path(shlex.split(m.group(1))[0])
-            out.append(f"{'OK     ' if run.is_file() else 'MISSING'} CodeAque's start script: {run}")
+            leftover = _ephemeral_path(run) and "find_run" not in text
+            if leftover:
+                label = "WRONG  "
+            elif not run.is_file():
+                label = "MISSING"
+            else:
+                label = "OK     "
+            out.append(f"{label} CodeAque's start script: {run}"
+                       + (" (a leftover /tmp path - choose Use CodeAque only to repair it)" if leftover else ""))
         v = re.search(r"atari-session-version:\s*(\d+)", text)
         out.append(f"{'OK     ' if v and int(v.group(1)) >= SESSION_VERSION else 'OLD    '} session program version {v.group(1) if v else '1 (from CodeAque 0.3.x or older)'} "
                    f"(this CodeAque writes {SESSION_VERSION})")

@@ -47,7 +47,7 @@ elif command -v apt-get >/dev/null 2>&1; then
     MISSING=""
     for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"; done
     ENABLE_SH=""
-    if ENABLE_SH="$(mktemp)"; PYTHONPATH="$SRC_DIR" python3 -c "from atarilauncher import kiosk; print(kiosk.enable_script('$(id -un)'))" > "$ENABLE_SH"; then
+    if ENABLE_SH="$(mktemp)"; ATARI_INSTALL_DIR="$APP_DIR" CA_USER="$(id -un)" PYTHONPATH="$SRC_DIR" python3 -c "import os; from pathlib import Path; from atarilauncher import kiosk; print(kiosk.enable_script(os.environ['CA_USER'], run_sh=Path(os.environ['ATARI_INSTALL_DIR'])/'run.sh'))" > "$ENABLE_SH"; then
         echo "CodeAque-only session script is ready."
     else
         warn "Could not prepare the CodeAque-only session files (continuing). You can still use Settings > Start mode later."
@@ -60,7 +60,7 @@ elif command -v apt-get >/dev/null 2>&1; then
     if ask "Install Steam (steam-installer + 32-bit libraries), any missing CodeAque libraries, and set up CodeAque-only mode now? (one password)"; then
         say "Setting up Steam and CodeAque-only mode (one password; a failed apt step will not stop the rest)"
         # One sudo: i386, apt update, packages, then the session files. Each apt step is allowed to fail.
-        sudo env MISSING="$MISSING" ENABLE_SH="$ENABLE_SH" bash -c '
+        sudo env MISSING="$MISSING" ENABLE_SH="$ENABLE_SH" SETUP_USER="$(id -un)" bash -c '
             set +e
             echo "==> Adding 32-bit (i386) support (needed by Steam)..."
             dpkg --add-architecture i386 || echo "!! Could not add the i386 architecture (continuing)."
@@ -76,7 +76,18 @@ elif command -v apt-get >/dev/null 2>&1; then
             echo "==> Installing 32-bit Steam runtime libraries..."
             apt-get install -y libc6:i386 libgl1:i386 libgl1-mesa-dri:i386 || echo "!! Some 32-bit libraries could not be installed (continuing)."
             echo "==> Installing packages CodeAque-only mode needs (policykit, openbox)..."
-            apt-get install -y policykit-1 pkexec openbox || echo "!! Some CodeAque-only packages could not be installed (continuing)."
+            apt-get install -y policykit-1 pkexec openbox dbus xdg-utils || echo "!! Some CodeAque-only packages could not be installed (continuing)."
+            echo "==> Letting the gamepad be used (input group + steam-devices)..."
+            getent group input >/dev/null 2>&1 || groupadd input || echo "!! Could not create the input group (continuing)."
+            if [ -n "$SETUP_USER" ]; then
+                usermod -aG input "$SETUP_USER" || echo "!! Could not add $SETUP_USER to the input group (continuing). You can run: sudo usermod -aG input $SETUP_USER"
+            fi
+            apt-get install -y steam-devices || echo "!! steam-devices could not be installed (continuing). Fix Steam controller in CodeAque can still try later."
+            mkdir -p /etc/udev/rules.d
+            printf '%s\n' '# CodeAque: let the input group read gamepad event nodes' 'KERNEL=="event*", SUBSYSTEM=="input", MODE="0660", GROUP="input"' 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' > /etc/udev/rules.d/99-codeaque-input.rules || echo "!! Could not write the gamepad udev rule (continuing)."
+            udevadm control --reload-rules >/dev/null 2>&1 || true
+            udevadm trigger >/dev/null 2>&1 || true
+            echo "Gamepad access: $SETUP_USER was added to the input group (log out or restart once for it to take effect)."
             if [ -n "$ENABLE_SH" ] && [ -f "$ENABLE_SH" ]; then
                 echo "==> Writing CodeAque-only session files (takes effect after you log out or restart)..."
                 sh "$ENABLE_SH" || echo "!! Could not write the CodeAque-only session files (continuing). In a Terminal you can run the repair line from Settings > Start mode."
