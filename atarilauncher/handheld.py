@@ -142,12 +142,15 @@ def is_pc_game(g) -> bool:
 
 GET_GAMES = {"key": "getgames", "title": "Get Games", "icon": "download", "kind": "action", "action": "getgames", "items": [],
              "hue": 0.53}
+# 0.10.80: legal-only search (Internet Archive, itch.io free games, official Linux ISOs). Hidden in Kids mode.
+FREE_LEGAL = {"key": "freelegal", "title": "Free & Legal", "icon": "search", "kind": "action",
+              "action": "freelegal", "items": [], "hue": 0.42}
 # 0.9.6 Accounts: each platform's own app, where you sign in yourself (CodeAque never sees a password)
 ACCOUNTS = (("app:steam", "Steam"), ("app:heroic", "Epic · GOG · Amazon (Heroic)"), ("web:xcloud", "Xbox (Cloud Gaming)"),
             ("app:eaapp", "EA app"))
 
 
-def store_tiles(games) -> list:
+def store_tiles(games, kids_mode=False) -> list:
     """Games Store: Top Games, then Free (one tap installs: open-source games from Flathub, free-to-play on Steam), then Paid
     (the official stores; you pay the store, the game installs there and shows up in CodeAque). No prices in CodeAque."""
     from . import webapps
@@ -158,6 +161,8 @@ def store_tiles(games) -> list:
     free.sort(key=lambda g: g.gid != "free:rivals")          # pinned: Marvel Rivals (free on Steam, installs through Steam)
     tiles += [dict(_launch_tile(g, "pad"), title="Free · " + g.title) for g in free]
     tiles += [page("steamfree", "Free on Steam", "star", 0.58), page("epicfree", "Free on Epic", "star", 0.1)]
+    if not kids_mode:
+        tiles.append(dict(FREE_LEGAL))
     tiles += [page(p.id, "Paid · " + p.title, "cart", 0.3 + i * 0.1) for i, p in enumerate(webapps.STORE_PAGES) if p.id not in ("steamtop", "steamfree", "epicfree")]
     return tiles
 
@@ -286,7 +291,7 @@ def boxset_tiles() -> list:
     return trilogy_tiles() + coop_tiles()
 
 
-def categories(games, store=None, cfg=None, home=None) -> list:
+def categories(games, store=None, cfg=None, home=None, kids_mode=False) -> list:
     games = list(games)
     cloud = sorted((g for g in games if is_cloud(g)), key=lambda g: [w.id for w in webapps.WEBAPPS].index(g.gid[4:])
                    if g.gid[4:] in [w.id for w in webapps.WEBAPPS] else 99)
@@ -306,7 +311,7 @@ def categories(games, store=None, cfg=None, home=None) -> list:
             tiles = [_launch_tile(g, "c_pc") for g in sorted((g for g in games if is_pc_game(g) and g.platform != "steam"),
                                                            key=lambda g: g.title.lower())] + [GET_GAMES]
         elif key == "store":
-            tiles = store_tiles(games)
+            tiles = store_tiles(games, kids_mode=kids_mode)
         elif key == "world":
             tiles = world_tiles()
         elif key == "accounts":
@@ -339,7 +344,10 @@ def categories(games, store=None, cfg=None, home=None) -> list:
         elif key == "roblox":
             tiles = roblox_tiles()
         elif key == "downloads":
-            tiles = [{"key": "downloads", "title": "Downloads", "icon": "download", "kind": "action", "action": "downloads", "items": []}]
+            tiles = []
+            if not kids_mode:
+                tiles.append(dict(FREE_LEGAL))
+            tiles.append({"key": "downloads", "title": "Downloads", "icon": "download", "kind": "action", "action": "downloads", "items": []})
         else:
             tiles = [{"key": k, "title": t, "icon": i, "kind": "action", "action": k, "items": []} for k, t, i in SETTINGS_TILES]
         out.append({"key": key, "title": title, "icon": icon, "tiles": tiles})

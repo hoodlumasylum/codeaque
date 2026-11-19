@@ -31,6 +31,20 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.80
+
+**A Free & Legal search sits on the PC console home** (the Downloads row, and also on Games Store). It is a big, readable, on-screen-keyboard search: type with a real keyboard, or move the pad on the keys and press A. Mouse and touch work the same as on the other pages. It queries only three legal sources:
+
+* the **Internet Archive** (archive.org's official advancedsearch API), limited to software, films and audio that carry a public-domain or freely licensed licence URL
+* **itch.io free games**, via the official itch.io browse / search pages already filtered to free — opened in the browser, or in the itch.io app if you already have it installed
+* **official Linux download pages** from a curated list (Linux Mint, Ubuntu, Fedora, Debian, openSUSE, Arch Linux, Pop!_OS, elementary OS and Zorin OS)
+
+A result opens in the browser. When an Internet Archive item has a `.torrent` file, CodeAque downloads that official Archive torrent and hands it to **Transmission**, which is already a CodeAque tile. No second torrent app is added, and no torrent search plugins or pirate indexes are bundled or linked. There are no third-party logos — the tile uses CodeAque's own search icon.
+
+**Kids mode hides this feature.** The tile is removed from the console home, and the page itself will not search or open results while Kids mode is on.
+
+Untested: unit tests for the legal-only query filter, the three sources, handing an Archive `.torrent` to Transmission, Kids mode hiding the tile and the page, and the on-screen keyboard wiring passed here, and an offscreen preview of the search page was rendered here. This has not been run on Code's PC, a living-room TV, or with a real controller. It has not been tried against a live Internet Archive or itch.io session, a real Transmission install prompt, or Kids mode on his machine. Please try this install and see that Free & Legal appears on the console home (Downloads and Games Store), that the keyboard is large and usable with a pad, a keyboard or a mouse, that results come from the Internet Archive, itch.io free games and official Linux pages only, that an Archive torrent opens in Transmission, and that the feature is hidden in Kids mode.
+
 ## What's new in 0.10.79
 
 **Steam install and Fix Steam now set up the 32-bit libraries the Steam Runtime actually needs.** On Linux Mint 22 / Ubuntu 24.04, "Couldn't set up the Steam Runtime. Are you running low on disk space?" is usually missing i386 libraries or a broken first-run runtime folder, not a full disk. CodeAque now enables i386 multiarch, installs Steam (`steam-installer`, or `steam` if that is what Mint has) plus `libc6:i386`, `libgl1:i386` and `libgl1-mesa-dri:i386`, and moves a broken `ubuntu12_32/steam-runtime` aside so Steam can rebuild it. Your games in steamapps are never deleted. A password box appears for the system packages. If that box is closed, the exact Terminal command is shown in large text.

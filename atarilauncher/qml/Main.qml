@@ -203,7 +203,7 @@ Window {
     }
     function openOsk(purpose) {
         oskPurpose = purpose
-        searchText = purpose === "askquestion" ? "" : purpose === "sgdbkey" ? backend.steamGridKey() : backend.winName()
+        searchText = purpose === "askquestion" ? "" : purpose === "sgdbkey" ? backend.steamGridKey() : purpose === "freelegal" ? backend.freeLegalQuery() : backend.winName()
         typedSearch = false
         oskRow = 0; oskCol = 0
         mode = "search"
@@ -219,12 +219,20 @@ Window {
         if (oskPurpose === "winname") { oskPurpose = "search"; openPage("winform"); return }
         if (oskPurpose === "sgdbkey") { oskPurpose = "search"; refreshSetup(true); mode = "setup"; return }
         if (oskPurpose === "askquestion") { oskPurpose = "search"; openAsk(); return }
+        if (oskPurpose === "freelegal") { oskPurpose = "search"; openPage("freelegal"); return }
         mode = "library"; area = grid.count > 0 ? "grid" : "tiles"
+    }
+    function finishFreeLegal() {
+        var q = searchText.trim()
+        oskPurpose = "search"
+        backend.freeLegalSearch(q)
+        openPage("freelegal")
     }
     function setSearch(t) {
         if (oskPurpose === "askquestion") { searchText = t.substring(0, 4000); return }
         if (oskPurpose === "winname") { searchText = t; backend.winSetName(t); return }
         if (oskPurpose === "sgdbkey") { searchText = t; backend.setSteamGridKey(t); return }
+        if (oskPurpose === "freelegal") { searchText = t.substring(0, 80); return }
         searchText = t
         backend.setQuery(t)
         grid.currentIndex = 0
@@ -309,6 +317,7 @@ Window {
         else if (a === "browse:gamecover") openBrowser({ kind: "gamecover", files: "image", gid: backend.pickGid() }, backend.winBrowseStart())
         else if (a === "browse:wincover") openBrowser({ kind: "wincover", files: "image" }, backend.winBrowseStart())
         else if (a === "osk:winname") openOsk("winname")
+        else if (a === "osk:freelegal") openOsk("freelegal")
         else if (a === "browse:unreal") openBrowser({ kind: "unreal", files: "unreal" }, backend.homeDir())
         else if (a === "import:games") openImport("page", "games")
         else if (a === "import:bios") openImport("page", "bios")
@@ -545,6 +554,7 @@ Window {
         }
         else if (isEnter(k)) {
             if (oskPurpose === "askquestion") { var question = searchText.trim(); closeSearch(); if (question) backend.submitAsk(question); return }
+            if (oskPurpose === "freelegal") { finishFreeLegal(); return }
             if (typedSearch && searchText !== "") { closeSearch(); return }
             if (oskRow < 4) setSearch(searchText + oskChars.charAt(oskRow * 10 + oskCol))
             else if (oskCol === 0) setSearch(searchText + " ")
@@ -845,6 +855,7 @@ Window {
                 else if (id === "addgames") win.openPage("addgames")
                 else if (id === "settings") win.openSetup()
                 else if (id === "downloads") win.openPage("downloads")
+                else if (id === "freelegal") win.openPage("freelegal")
                 else if (id === "power") { backend.powerReset(); win.openPage("power") }
                 else if (id === "leave") backend.setHandheld(false)
                 else if (id === "update") win.openUpdate("library")
@@ -1434,7 +1445,7 @@ Window {
                 spacing: 18 * win.u
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: win.oskPurpose === "askquestion" ? "ASK CODEAQUE (LOCAL)" : win.oskPurpose === "winname" ? "NAME THE GAME" : "SEARCH"
+                    text: win.oskPurpose === "askquestion" ? "ASK CODEAQUE (LOCAL)" : win.oskPurpose === "winname" ? "NAME THE GAME" : win.oskPurpose === "freelegal" ? "FREE & LEGAL" : "SEARCH"
                     color: Theme.redBright
                     font.pixelSize: 40 * win.u
                     font.bold: true
@@ -1455,7 +1466,7 @@ Window {
                         anchors.leftMargin: 16 * win.u
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: win.searchText === "" ? (win.oskPurpose === "askquestion" ? "Type your local help question..." : win.oskPurpose === "winname" ? "Type the game's name..." : "Type to filter games...") : win.searchText + "\u258c"
+                        text: win.searchText === "" ? (win.oskPurpose === "askquestion" ? "Type your local help question..." : win.oskPurpose === "winname" ? "Type the game's name..." : win.oskPurpose === "freelegal" ? "Type a legal search..." : "Type to filter games...") : win.searchText + "\u258c"
                         color: win.searchText === "" ? Theme.faint : Theme.text
                         font.pixelSize: 40 * win.u
                     }

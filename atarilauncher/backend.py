@@ -14,7 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import Property, QObject, QProcess, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QKeyEvent, QWindow
 
-from . import xbox, usbdrive, padstyle, protondb, modetap, brightness, worldgames, bootscreen, create, steam, simtycoon, themes, biosfind, findgames, bluetooth, padbattery, pads, screentv, xemuconfig, branding, donate, gamedelete, gamesroot, power, rootauth, files, steamfix, downloads, golive, icons, inputfix, intro, kiosk, quietboot, sober, studio_fix, appinstall, apps, bios, controls, covers, diagnose, recorder, emulators, exitwatch, freegames, importer, installer, launcher, paths, roms, updater, webapps, windows
+from . import xbox, usbdrive, padstyle, protondb, modetap, brightness, worldgames, bootscreen, create, steam, simtycoon, themes, biosfind, findgames, bluetooth, padbattery, pads, screentv, xemuconfig, branding, donate, gamedelete, gamesroot, power, rootauth, files, steamfix, downloads, golive, icons, inputfix, intro, kiosk, quietboot, sober, studio_fix, appinstall, apps, bios, controls, covers, diagnose, recorder, emulators, exitwatch, freegames, freelegal, importer, installer, launcher, paths, roms, updater, webapps, windows
 from . import __version__
 from .config import Config, load_config, save_config
 from .import_model import ImportModel
@@ -230,6 +230,11 @@ class Backend(QObject):
         self._mt_pin_ok = False
         self._kids_mode = None          # None = read the pref; tests set True/False
         self._kids_pin = None
+        self._fl_query = ""
+        self._fl_results = None         # freelegal.SearchOut | None
+        self._fl_opener = None          # tests inject a fake urlopen
+        self._fl_msg = ""
+        self._fl_need_transmission = False
         # the welcome/setup screen shows only once: not if a config exists, nor if it was already dismissed
         self._first_run = bool(self.cfg.first_run and not self.store.get_pref("setup_done", False)) and not demo
         self._gamepad_proc: QProcess | None = None
@@ -5974,7 +5979,7 @@ class Backend(QObject):
     @Property("QVariantList", notify=statsChanged)
     def handheldCategories(self):
         from . import handheld as _hh
-        return _hh.categories(self._all, self.store, self.cfg)
+        return _hh.categories(self._all, self.store, self.cfg, kids_mode=self.kids_mode_on())
 
     @Slot()
     def getGames(self) -> None:
@@ -6826,7 +6831,7 @@ class Backend(QObject):
                 "winchoose": "WHICH PROGRAM STARTS THE GAME?", "winwork": "OPENING THE ARCHIVE",
                 "install": "INSTALL", "installmenu": "INSTALL EMULATORS & APPS", "steam": "STEAM",
                 "recordings": "RECORDINGS", "coverpick": "PICK A COVER", "nocovers": "COVERS NOT FOUND",
-                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "modetap": "SWITCH START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM",
+                "addgames": "ADD GAMES", "kiosk": "CODEAQUE-ONLY MODE", "startmode": "START MODE", "modetap": "SWITCH START MODE", "xemusetup": "XBOX (XEMU) SETTINGS", "controllers": "CONTROLLERS", "brightness": "BRIGHTNESS", "makeusb": "MAKE A CODEAQUE USB", "anticheat": "NEEDS WINDOWS", "btpair": "PAIR A BLUETOOTH CONTROLLER", "biosfind": "FIND MY BIOS FILES", "theme": "THEME", "simtycoon": "SIM & TYCOON", "create": "CREATE", "worldgames": "WORLD GAMES", "boot": "BOOT SCREEN", "simpick": "ADD TO SIM & TYCOON", "findgames": "FIND MY GAMES", "screentv": "SCREEN TO TV", "quietboot": "QUIET BOOT", "power": "POWER", "downloads": "DOWNLOADS", "golive": "GO LIVE", "robloxfix": "FIX ROBLOX", "steamfix": "FIX STEAM", "freelegal": "FREE & LEGAL",
                 "ask": "ASK CODEAQUE", "dlsystem": "WHICH SYSTEM IS THIS FILE FOR?", "files": "MY FILES", "fileact": "WHAT TO DO WITH IT", "deletegame": "DELETE GAME", "about": "ABOUT CODEAQUE"}.get(name, name.upper())
 
     @Property(str, notify=padStyleChanged)
@@ -6863,6 +6868,7 @@ class Backend(QObject):
                 "robloxfix": "Enter / A on Run fix.  Esc / B = back.",
                 "steamfix": "Enter / A on Run fix.  Esc / B = back.",
                 "downloads": "Enter / A on a finished file adds it to your games.  Esc / B = back.",
+                "freelegal": "Type a search, or pick a result. Enter / A opens it.  Esc / B = back.",
                 "files": "Downloads, Games, Videos.  Enter / A opens;  Esc / B goes up.",
                 "fileact": "Enter / A on the button you want.  Esc / B = back to the list.",
                 "about": "Esc / B = back.",
@@ -6928,6 +6934,107 @@ class Backend(QObject):
                 return ""
             self._launch_game(g)
             return "close"
+        return ""
+
+    # ----- 0.10.80 Free & Legal search (Internet Archive, itch.io free, official Linux ISOs) -
+    @Slot(str)
+    def freeLegalSearch(self, query: str) -> None:
+        """Run the legal-only search. Hidden in Kids mode. Never raises."""
+        if self.kids_mode_on():
+            return
+        self._fl_query = freelegal.sanitize_query(query)
+        self._fl_need_transmission = False
+        self._fl_results = freelegal.search(self._fl_query, opener=self._fl_opener)
+        self._fl_msg = self._fl_results.error or self._fl_results.notice or ""
+        self.pageChanged.emit()
+
+    @Slot(result=str)
+    def freeLegalQuery(self) -> str:
+        return self._fl_query
+
+    def _freelegal_rows(self) -> list:
+        if self.kids_mode_on():
+            return [self._info("Kids mode is on, so Free & Legal search is hidden."),
+                    {"kind": "item", "id": "back", "title": "Back"}]
+        if self._fl_results is None:
+            self._fl_results = freelegal.search(self._fl_query, opener=self._fl_opener)
+            self._fl_msg = self._fl_results.error or self._fl_results.notice or self._fl_msg
+        out = self._fl_results
+        rows = [self._info(
+            "Search only legal sources: the Internet Archive (public domain and freely licensed software, films and audio), "
+            "itch.io free games, and official Linux download pages. No pirate sites and no torrent search plugins. "
+            "A .torrent from the Internet Archive is handed to Transmission, which is already a CodeAque tile."
+        )]
+        rows.append({"kind": "item", "id": "search", "title": "Type a search",
+                     "detail": (f"Searching for “{out.query}”. Press to type a new search." if out.query
+                                else "A big on-screen keyboard. Type with a keyboard, or move the pad and press A."),
+                     "value": out.query or "Search"})
+        if self._fl_msg:
+            rows.append(self._info(self._fl_msg))
+        if self._fl_need_transmission:
+            rows.append({"kind": "item", "id": "installtransmission",
+                         "title": "Install Transmission (torrent client)",
+                         "detail": "The existing CodeAque tile. Used only for Internet Archive .torrent files you choose. "
+                                   "No search plugins are added.",
+                         "value": "Install"})
+        for r in out.results:
+            if r.source == "itch":
+                rows.append({"kind": "item", "id": "fl:itch", "title": r.title, "detail": r.detail})
+            elif r.source == "linux":
+                rows.append({"kind": "item", "id": "fl:distro:" + r.ident, "title": r.title, "detail": r.detail})
+            else:
+                rows.append({"kind": "item", "id": "fl:ia:" + r.ident, "title": r.title,
+                             "detail": r.detail, "value": "Archive"})
+                if r.has_torrent:
+                    rows.append({"kind": "item", "id": "fl:tor:" + r.ident,
+                                 "title": f"Add “{r.title}” torrent to Transmission",
+                                 "detail": "Downloads the official Internet Archive .torrent and opens it in Transmission. "
+                                           "Nothing is searched on any other torrent site."})
+        rows.append({"kind": "item", "id": "back", "title": "Back"})
+        return rows
+
+    def _freelegal_activate(self, rid: str) -> str:
+        if self.kids_mode_on():
+            return "back"
+        if rid == "search":
+            return "osk:freelegal"
+        if rid == "installtransmission":
+            self.begin_install(["transmission"], for_gid="app:transmission", what="Transmission")
+            return ""
+        home = Path.home()
+        if rid == "fl:itch":
+            ok, text = freelegal.open_itch(self.cfg, self._fl_query, home=home)
+            self.show_toast(text, 8000)
+            return ""
+        if rid.startswith("fl:distro:"):
+            ident = rid.split(":", 2)[-1]
+            d = next((x for x in freelegal.DISTROS if x.id == ident), None)
+            if d is None:
+                return ""
+            _ok, text = freelegal.open_url(self.cfg, d.url, d.title, home=home)
+            self.show_toast(text, 8000)
+            return ""
+        if rid.startswith("fl:ia:"):
+            ident = rid.split(":", 2)[-1]
+            if not freelegal.IDENT_RE.match(ident):
+                return ""
+            url = freelegal.IA_DETAILS.format(ident=ident)
+            title = next((r.title for r in (self._fl_results.results if self._fl_results else []) if r.ident == ident), ident)
+            _ok, text = freelegal.open_url(self.cfg, url, title, home=home)
+            self.show_toast(text, 8000)
+            return ""
+        if rid.startswith("fl:tor:"):
+            ident = rid.split(":", 2)[-1]
+            if not freelegal.IDENT_RE.match(ident):
+                return ""
+            ok, text, _path = freelegal.add_torrent_to_transmission(
+                self.cfg, ident, home=home, opener=self._fl_opener)
+            self.show_toast(text, 10000, big=not ok)
+            if not ok and "not installed" in text.lower():
+                self._fl_need_transmission = True
+                self._fl_msg = text
+                return "refresh"
+            return ""
         return ""
 
     # ----- Downloads: the web browser's files -> my games ---------------------------------
@@ -7082,6 +7189,8 @@ class Backend(QObject):
             return self._golive_rows()
         if name == "downloads":
             return self._downloads_rows()
+        if name == "freelegal":
+            return self._freelegal_rows()
         if name == "files":
             return self._files_rows()
         if name == "fileact":
@@ -7400,6 +7509,8 @@ class Backend(QObject):
             return self._golive_activate(rid)
         if name == "downloads":
             return self._downloads_activate(rid)
+        if name == "freelegal":
+            return self._freelegal_activate(rid)
         if name == "files":
             return self._files_activate(rid)
         if name == "fileact":
