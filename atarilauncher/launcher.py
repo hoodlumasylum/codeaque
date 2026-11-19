@@ -138,13 +138,8 @@ def _finish_watched(w, name: str, code: int, started: float) -> tuple[float, str
 
 
 def steam_base_command(cfg: Config, home: Path | None = None) -> list[str]:
-    if cfg.steam_command.strip():
-        return shlex.split(cfg.steam_command)
-    if shutil.which("steam"):
-        return ["steam"]
-    if shutil.which("flatpak") and flatpak_installed("com.valvesoftware.Steam", home):
-        return ["flatpak", "run", "com.valvesoftware.Steam"]
-    return ["steam"]
+    from . import steam as steam_mod
+    return steam_mod.launch_command(cfg, home)
 
 
 def build_steam_command(cfg: Config, appid: str, home: Path | None = None) -> list[str]:
@@ -225,11 +220,112 @@ def bring_to_front(pids: list[int], which: Callable = shutil.which, run: Callabl
     return False
 
 
+
+STEAM_WINDOW_NAMES = ("Steam", "Big Picture")
+TRAY_WAIT_MSG = (
+    "Steam is running in the background (in the tray) but its window did not appear. "
+    "It is not closed. Press Restart Steam in Settings > Steam, or click the Steam icon in the tray."
+)
+RESTART_MARK = "STEAM_RESTART:"
+
+
+def _steam_window_wait() -> float:
+    try:
+        return max(1.0, float(os.environ.get("ATARI_STEAM_WINDOW_WAIT", "10")))
+    except ValueError:
+        return 10.0
+
+
+def list_steam_client_pids(proc_root: str = "/proc") -> list[int]:
+    """PIDs of the Steam client itself (steam, steam.sh, steamwebhelper), not games."""
+    from . import steam as steam_mod
+    pids = []
+    for pid, parts in steam_mod._cmdlines(proc_root):
+        names = [os.path.basename(a.decode("utf-8", "replace")) for a in parts[:2]]
+        if any(n in steam_mod.STEAM_NAMES for n in names) or steam_mod._comm(proc_root, pid) in ("steam", "steam.sh", "steamwebhelper"):
+            pids.append(pid)
+    return pids
+
+
+def raise_steam_window(which: Callable = shutil.which, run: Callable = subprocess.run,
+                       proc_root: str = "/proc") -> bool:
+    """Bring an existing Steam window to the front (X11: xdotool or wmctrl)."""
+    if bring_to_front(list_steam_client_pids(proc_root), which=which, run=run, proc_root=proc_root):
+        return True
+    try:
+        if which("xdotool"):
+            for flag, pat in (("--class", "Steam"), ("--class", "steam"), ("--name", "Steam"), ("--name", "Big Picture")):
+                r = run(["xdotool", "search", "--onlyvisible", flag, pat], capture_output=True, text=True, timeout=4)
+                wins = (r.stdout or "").split()
+                if r.returncode == 0 and wins:
+                    if run(["xdotool", "windowactivate", wins[-1]], capture_output=True, text=True, timeout=4).returncode == 0:
+                        return True
+        if which("wmctrl"):
+            r = run(["wmctrl", "-lx"], capture_output=True, text=True, timeout=4)
+            for line in (r.stdout or "").splitlines():
+                low = line.lower()
+                if "steam" in low and "codeaque" not in low and "atari" not in low:
+                    wid = line.split(None, 1)[0]
+                    if run(["wmctrl", "-ia", wid], capture_output=True, text=True, timeout=4).returncode == 0:
+                        return True
+            # wmctrl -a matches a window title
+            if run(["wmctrl", "-a", "Steam"], capture_output=True, text=True, timeout=4).returncode == 0:
+                return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return False
+
+
+def steam_window_visible(which: Callable = shutil.which, run: Callable = subprocess.run,
+                         proc_root: str = "/proc") -> bool:
+    """True when a visible Steam window can be found (not only a tray icon)."""
+    return raise_steam_window(which=which, run=run, proc_root=proc_root)
+
+
+def open_running_steam(base: list[str], *, bigpicture: bool = False, env=None) -> list[str]:
+    """How to talk to a Steam that is already running (tray or background)."""
+    if not base:
+        base = ["steam"]
+    if bigpicture:
+        return list(base) + ["steam://open/bigpicture"]
+    return list(base) + ["steam://open/main"]
+
+
+def wait_for_steam_window(timeout: float | None = None, step: float = 0.4,
+                          which: Callable = shutil.which, run: Callable = subprocess.run,
+                          proc_root: str = "/proc", sleep=time.sleep, now=time.time) -> bool:
+    deadline = now() + (timeout if timeout is not None else _steam_window_wait())
+    while now() < deadline:
+        if raise_steam_window(which=which, run=run, proc_root=proc_root):
+            return True
+        sleep(step)
+    return raise_steam_window(which=which, run=run, proc_root=proc_root)
+
+
+def restart_steam(base: list[str] | None = None, run: Callable = subprocess.run,
+                  popen: Callable = subprocess.Popen, sleep=time.sleep, env=None) -> tuple[bool, str]:
+    """Stop the tray Steam client and start it again. Does not touch games in steamapps."""
+    base = list(base) if base else ["steam"]
+    try:
+        run(["pkill", "-x", "steam"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        run(["pkill", "-x", "steamwebhelper"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Could not stop Steam ({exc})."
+    sleep(1.5)
+    try:
+        popen(base, env=env or clean_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              stdin=subprocess.DEVNULL, start_new_session=True)
+    except OSError as exc:
+        return False, f"Could not start Steam: {exc}"
+    return True, "Steam is starting again."
+
+
 def _check_executable(cmd: list[str], what: str) -> None:
-    if not cmd or not shutil.which(cmd[0]):
-        raise LaunchError(
-            f"Could not find the program '{cmd[0] if cmd else ''}' needed for {what}. "
-            f"Install it, or change the command in {paths.config_file()}.")
+    if cmd and (shutil.which(cmd[0]) or Path(cmd[0]).expanduser().exists()):
+        return
+    raise LaunchError(
+        f"Could not find the program '{cmd[0] if cmd else ''}' needed for {what}. "
+        f"Install it, or change the command in {paths.config_file()}.")
 
 
 # ---------- running -------------------------------------------------------
@@ -334,13 +430,22 @@ def _run_app(cfg: Config, game: Game, on_started):
     _log("launch: " + shlex.join(cmd))
     if app.id == "steam" and not game.launch and big_picture_wanted(cfg):
         return _run_steam_bigpicture(cfg, game, cmd, on_started)
-    if app.id == "steam" and not game.launch:      # Steam stays open on its own: start it and come straight back
+    if app.id == "steam" and not game.launch:      # Steam stays open on its own: start or raise it, then come back
+        from . import steam as steam_mod
+        already = steam_mod.steam_running()
+        launch = open_running_steam(cmd, bigpicture=False) if already else list(cmd)
         try:
-            subprocess.Popen(cmd, env=clean_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            subprocess.Popen(launch, env=clean_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              stdin=subprocess.DEVNULL, start_new_session=True)
         except OSError as exc:
             raise LaunchError(f"Could not start Steam: {exc}")
-        on_started()
+        _log("launch (steam): " + shlex.join(launch))
+        shown = wait_for_steam_window()
+        if already and not shown:
+            return 0.0, INFO + RESTART_MARK + TRAY_WAIT_MSG
+        if shown:
+            raise_steam_window()
+        # Do not hide CodeAque here: a missing Steam window would leave a bare desktop.
         return 0.0, INFO + ("Steam is starting - sign in there. After Steam has installed a game, choose "
                             "Settings > Steam > Rescan Steam so it shows up here.")
     try:
@@ -422,13 +527,12 @@ def big_picture_wanted(cfg: Config) -> bool:
 
 def steam_available(cfg: Config, home: Path | None = None) -> bool:
     """True when a Steam executable CodeAque can actually run is on this machine."""
+    from . import steam as steam_mod
+    if steam_mod.client_installed(home):
+        return True
     base = steam_base_command(cfg, home)
     if not base:
         return False
-    if cfg.steam_command.strip():
-        return bool(shutil.which(base[0]) or Path(base[0]).exists())
-    if base[0] == "flatpak":
-        return bool(shutil.which("flatpak")) and flatpak_installed("com.valvesoftware.Steam", home)
     return bool(shutil.which(base[0]) or Path(base[0]).exists())
 
 
@@ -476,9 +580,10 @@ def _run_steam_bigpicture(cfg: Config, game: Game, cmd: list[str], on_started):
     """Steam tile: open Steam full screen in Big Picture, and come back to CodeAque with the Esc / Guide+B gesture."""
     from . import steam as steam_mod
     base = list(cmd)
-    cmd = bigpicture_command(cfg, base, steam_mod.steam_running())
+    already = steam_mod.steam_running()
+    cmd = open_running_steam(base, bigpicture=True) if already else bigpicture_command(cfg, base, False)
     watched = exitwatch.enabled(cfg)
-    if watched:
+    if watched and not already:
         time.sleep(_hint_delay())
     _log("launch (steam big picture): " + shlex.join(cmd))
     started = time.time()
@@ -487,10 +592,18 @@ def _run_steam_bigpicture(cfg: Config, game: Game, cmd: list[str], on_started):
                          stdin=subprocess.DEVNULL, start_new_session=True)
     except OSError as exc:
         raise LaunchError(f"Could not start Steam: {exc}")
+    shown = wait_for_steam_window() if already else False
+    if already and not shown:
+        _log("steam is in the tray but no window appeared")
+        return 0.0, INFO + RESTART_MARK + TRAY_WAIT_MSG
+    if already:
+        raise_steam_window()
+    # Only hide CodeAque once a Steam window is really up, so a tray-only Steam cannot leave a bare desktop.
     on_started()
     proc = _SteamProc()
-    deadline = time.time() + _steam_appear_timeout()
-    while proc.poll() is None and not proc.seen and time.time() < deadline:   # wait for the Steam window to exist
+    deadline = time.time() + (2.0 if already and shown else _steam_appear_timeout())
+    while proc.poll() is None and not proc.seen and time.time() < deadline:
+        raise_steam_window()
         time.sleep(0.5)
     if not proc.seen:
         return 0.0, INFO + ("Steam is starting - sign in there. After Steam has installed a game, choose "

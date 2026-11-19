@@ -465,3 +465,46 @@ def test_marvel_rivals_gets_the_launch_option_hint(env):
                                     hint_after=0.5, steam_running=lambda: True, ui_ready=lambda: True)
     assert "SteamDeck=1 %command%" in err
     assert launcher.launch_option_hint("4242") == ""
+
+
+def test_open_running_steam_uses_open_main_or_bigpicture():
+    assert launcher.open_running_steam(["steam"], bigpicture=False) == ["steam", "steam://open/main"]
+    assert launcher.open_running_steam(["/usr/games/steam"], bigpicture=True) == ["/usr/games/steam", "steam://open/bigpicture"]
+    assert launcher.open_running_steam(["flatpak", "run", "com.valvesoftware.Steam"])[-1] == "steam://open/main"
+
+
+def test_wait_for_steam_window_times_out_then_restart_relaunches():
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(list(cmd))
+        return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+    pops = []
+
+    def popen(cmd, **kw):
+        pops.append(list(cmd))
+        return type("P", (), {"pid": 1})()
+
+    ticks = {"t": 0.0}
+    def now():
+        ticks["t"] += 0.02
+        return ticks["t"]
+    assert launcher.wait_for_steam_window(timeout=0.05, step=0.01, which=lambda n: None,
+                                          run=run, proc_root="/does-not-exist", sleep=lambda s: None, now=now) is False
+    ok, msg = launcher.restart_steam(["/usr/games/steam"], run=run, popen=popen, sleep=lambda s: None)
+    assert ok and "starting again" in msg.lower()
+    assert any(c[:2] == ["pkill", "-x"] for c in calls)
+    assert pops == [["/usr/games/steam"]]
+
+
+def test_raise_steam_window_uses_wmctrl_title_when_no_pid_match():
+    def run(cmd, **kw):
+        if cmd[:2] == ["wmctrl", "-lx"]:
+            return type("R", (), {"returncode": 0, "stdout": "0x123456  0 host steam.Steam  user  Steam\n", "stderr": ""})()
+        if cmd[:2] == ["wmctrl", "-ia"] and cmd[-1] == "0x123456":
+            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+    assert launcher.raise_steam_window(which=lambda n: "/usr/bin/wmctrl" if n == "wmctrl" else None,
+                                       run=run, proc_root="/does-not-exist") is True

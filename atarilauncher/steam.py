@@ -33,11 +33,94 @@ def find_steam_root(home: Path | None = None, override: str = "") -> Path | None
     cands = [Path(override).expanduser()] if override else steam_root_candidates(home)
     for cand in cands:
         try:
-            if (cand / "steamapps").is_dir() or (cand / "config" / "libraryfolders.vdf").is_file():
+            if _root_looks_like_steam(cand):
                 return Path(os.path.realpath(cand))
         except OSError:
             continue
     return None
+
+
+
+def _root_looks_like_steam(cand: Path) -> bool:
+    """True for a real Steam data folder, even before steamapps exists (first-run bootstrap)."""
+    if (cand / "steamapps").is_dir() or (cand / "config" / "libraryfolders.vdf").is_file():
+        return True
+    if (cand / "steam.sh").is_file() or (cand / "ubuntu12_32").exists():
+        return True
+    if (cand / "config" / "config.vdf").is_file() or (cand / "registry.vdf").is_file():
+        return True
+    return False
+
+
+# Well-known native binaries. Ubuntu / Linux Mint put the steam-installer wrapper in /usr/games,
+# which is sometimes missing from the PATH of a GUI app started from a .desktop file.
+STEAM_BINARIES = (
+    "/usr/bin/steam",
+    "/usr/games/steam",
+    "/snap/bin/steam",
+)
+
+
+def client_installed(home: Path | None = None, which=None, binaries: tuple[str, ...] | None = None) -> bool:
+    """True when a Steam client CodeAque can launch is present (deb, snap, Flatpak, or a data folder)."""
+    import shutil
+    which = which or shutil.which
+    home = home or Path.home()
+    for path in (binaries or STEAM_BINARIES):
+        try:
+            if Path(path).is_file():
+                return True
+        except OSError:
+            continue
+    if which("steam"):
+        return True
+    try:
+        from .emulators import flatpak_installed
+        if flatpak_installed("com.valvesoftware.Steam", home):
+            return True
+    except Exception:
+        pass
+    if (home / "snap" / "steam").exists() or Path("/snap/bin/steam").is_file():
+        return True
+    if find_steam_root(home) is not None:
+        return True
+    # A first-run folder with no steamapps yet still counts (the bootstrap just ran).
+    for cand in steam_root_candidates(home):
+        try:
+            if cand.is_dir() and _root_looks_like_steam(cand):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def launch_command(cfg=None, home: Path | None = None, which=None,
+                   binaries: tuple[str, ...] | None = None) -> list[str]:
+    """The command that starts this machine's Steam client (native path, Flatpak, or Snap)."""
+    import shutil
+    which = which or shutil.which
+    home = home or Path.home()
+    custom = (getattr(cfg, "steam_command", "") or "").strip() if cfg is not None else ""
+    if custom:
+        import shlex
+        return shlex.split(custom)
+    for path in (binaries or STEAM_BINARIES):
+        try:
+            if Path(path).is_file():
+                return [path]
+        except OSError:
+            continue
+    found = which("steam")
+    if found:
+        return [found]
+    from .emulators import flatpak_installed
+    if shutil.which("flatpak") and flatpak_installed("com.valvesoftware.Steam", home):
+        return ["flatpak", "run", "com.valvesoftware.Steam"]
+    if Path("/snap/bin/steam").is_file():
+        return ["/snap/bin/steam"]
+    if which("snap") and (home / "snap" / "steam").exists():
+        return ["snap", "run", "steam"]
+    return ["steam"]
 
 
 def is_flatpak_root(root: Path) -> bool:

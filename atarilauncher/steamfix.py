@@ -9,7 +9,7 @@ Four layers, because Steam can be started in many ways and Valve gives no single
      Big Picture (steam://open/bigpicture - harmless when Big Picture is already open), once more a little later.
   4. The Steam tile always uses -gamepadui in CodeAque-only mode (the "Open Steam in Big Picture" setting cannot turn it off there).
 Steam Play: config/config.vdf > InstallConfigStore > Software > Valve > Steam > CompatToolMapping > "0" (the default for every game)
-is set to proton-experimental when nobody chose a tool yet. Same rules: Steam closed, backup first, never overwrites a choice.
+is set to proton_experimental (Proton Experimental) when nobody chose a tool yet. Same rules: Steam closed, backup first, never overwrites a choice.
 Both edits are best effort: Valve's files are undocumented and can change; every failure is reported and logged, never raised."""
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from . import steam as steam_mod
 
 SHIM_NAME = "steam"
 BACKUP_SUFFIX = ".code-backup"
-PROTON_TOOL = "proton-experimental"
+PROTON_TOOL = "proton_experimental"  # Steam's official CompatToolMapping name (underscore, not hyphen)
 NUDGE_AT = (12.0, 35.0)          # seconds after a foreign Steam client appeared: tell it to open Big Picture
 
 
@@ -173,7 +173,13 @@ def set_startup_bigpicture(home: Path | None = None, running: Callable[[], bool]
 
 def set_default_proton(home: Path | None = None, cfg_root: str = "", running: Callable[[], bool] | None = None,
                        tool: str = PROTON_TOOL) -> tuple[bool, str]:
-    """Steam Play for every game: CompatToolMapping "0" = proton-experimental, unless a tool was already chosen."""
+    """Steam Play for every game: CompatToolMapping "0" = proton_experimental, unless a real tool was already chosen.
+
+    The hyphenated name "proton-experimental" is only an alias in some third-party tools; Steam's
+    own config uses proton_experimental. A leftover hyphenated default is upgraded. Per-game
+    entries and a user-chosen default (GE-Proton, proton_9, ...) are left alone. Written only
+    while Steam is closed, after a one-time config.vdf.code-backup.
+    """
     home = home or Path.home()
     running = running or steam_mod.steam_running
     path = config_path(home, cfg_root)
@@ -186,11 +192,19 @@ def set_default_proton(home: Path | None = None, cfg_root: str = "", running: Ca
             node = child(node, part, create=True)
         mapping = child(node, "CompatToolMapping", create=True)
         existing = child(mapping, "0")
-        if existing is not None and existing.get(_key(existing, "name") or "name", ""):
-            return False, f"Steam Play already uses \"{existing[_key(existing, 'name')]}\" for all games - left as it is."
+        current = ""
+        if existing is not None:
+            k = _key(existing, "name")
+            current = existing.get(k or "name", "") if k or "name" in existing else ""
+        # A previous CodeAque typo used a hyphen. Steam wants the underscore form.
+        stale = current in ("", "proton-experimental")
+        if current and not stale and current != tool:
+            return False, f"Steam Play already uses \"{current}\" for all games - left as it is."
+        if current == tool:
+            return False, f"Steam Play already uses \"{current}\" for all games - left as it is."
         if running():
             return False, "Steam is open right now; Steam Play is set up the next time Steam is closed."
-        mapping["0"] = {"name": tool, "config": "", "priority": "75"}
+        mapping["0"] = {"name": tool, "config": "", "priority": "250"}
         _write_checked(path, data)
         return True, f"Steam Play (Proton) is now ON for all games ({tool}); Steam downloads it the first time a Windows game starts."
     except (OSError, VdfError) as exc:

@@ -283,7 +283,7 @@ Window {
         pageList.model = backend.pageRows(pageName)
         if (keep) pageList.currentIndex = Math.min(idx, pageList.count - 1)
         var r = pageList.model[pageList.currentIndex]
-        if (!r || r.kind === "info" || r.kind === "progress") pageList.firstSelectable()
+        if (!r || r.kind === "info" || r.kind === "progress" || r.kind === "heading" || r.kind === "command") pageList.firstSelectable()
     }
     function leavePage() {
         if (pageName === "winwork") backend.pageActivate("winwork", "cancel")

@@ -159,6 +159,14 @@ def app_command(cfg, app: AppDef, home: Path | None = None,
         if app.lutris in lutris_installed_slugs(home):
             return base + [f"lutris:rungame/{app.lutris}"], "lutris"
         return base + [f"lutris:install/{app.lutris_installer}"], "lutris-install"
+    if app.id == "steam":
+        from . import steam as steam_mod
+        if steam_mod.client_installed(home, which=which):
+            cmd = steam_mod.launch_command(cfg, home, which=which)
+            how = "custom" if (getattr(cfg, "steam_command", "") or "").strip() else (
+                "flatpak" if cmd[:2] == ["flatpak", "run"] else "native")
+            return cmd, how
+        return steam_mod.launch_command(cfg, home, which=which), ""
     if emulators.flatpak_installed(app.flatpak, home):
         return ["flatpak", "run", app.flatpak], "flatpak"
     for exe in app.exes:

@@ -7,8 +7,8 @@ including Steam) and a few extras (browsers for the web apps, mpv). Their Flathu
 How one program gets installed (first way that works wins; every step is explained in plain English):
   1. Flatpak, for your user only (no password): adds the Flathub store for your user when it is missing.
   2. apt through ``pkexec`` - Linux Mint shows its normal graphical password pop-up. Used for programs that are not on
-     Flathub (mednafen, mupen64plus, Steam as a fallback: package ``steam-installer``, which takes care of the 32-bit
-     libraries itself) and for installing Flatpak itself when the computer has none.
+     Flathub (mednafen, mupen64plus, Steam as a fallback: package ``steam-installer`` or ``steam``, plus 32-bit
+     libraries the Steam Runtime needs on Ubuntu 24.04 / Mint 22) and for installing Flatpak itself when the computer has none.
   3. Google Chrome only: Google's official .deb is downloaded and installed with ``pkexec apt-get install`` (Chrome from
      the .deb needs a password once; it is CodeAque's first choice for Netflix & co. because of Widevine).
 Nothing is ever installed without the user pressing the Install button, nothing needs a terminal, and a failure of one
@@ -115,6 +115,10 @@ def is_installed(t: Target, home: Path | None = None, which: Callable = shutil.w
     if cfg is not None:
         custom = (cfg.retroarch_command if t.id == "retroarch" else cfg.emulator_commands.get(t.id, "")).strip()
         if custom:
+            return True
+    if t.id == "steam":
+        from . import steam as steam_mod
+        if steam_mod.client_installed(home, which=which):
             return True
     if any(which(x) for x in t.exes):
         return True
@@ -270,6 +274,19 @@ def _try(step: str, t: Target, env: Env, out: Callable[[str], None], has_apt: bo
             out("   done" if orc == 0 else f"   that did not work (code {orc}); Roblox's fix screen can do it later")
         return done, f"flatpak install flathub {t.flatpak} did not finish (code {rc})"
     if step == "apt":
+        if t.id == "steam":
+            from . import steamrepair
+            out("Enabling 32-bit (i386) support and installing Steam plus the libraries the Steam Runtime needs "
+                "(libc6:i386, libgl1:i386, libgl1-mesa-dri:i386). A password window will pop up - type your usual password there.")
+            rc = env.run(["pkexec", "sh", "-c", steamrepair.native_steam_script()], out, env.cancel)
+            if rc == 130:
+                raise InterruptedError("cancelled")
+            if rc == 126 or rc == 127:
+                return False, ("the password window was closed or is not available. In a Terminal, paste:  "
+                               + steamrepair.sudo_command())
+            ok = rc == 0
+            return ok, ("apt could not install Steam and the 32-bit runtime libraries (code "
+                        f"{rc}). In a Terminal, paste:  " + steamrepair.sudo_command())
         out(f"Installing {t.title} with your system's software sources. A password window will pop up - type your usual password there.")
         rc = env.run(_pkexec(env, "apt-get", "install", "-y", t.apt), out, env.cancel)
         if rc == 130:
@@ -355,6 +372,17 @@ def install_one(t: Target, out: Callable[[str], None] = print, env: Env | None =
         if res is None:
             return Result(t.id, t.title, "failed", failure_text(t, reasons, steps)
                           + ((" " + sober.INVALID_BUNDLE_TEXT) if t.id == "roblox" else ""))
+    if t.id == "steam" and res.status in ("installed", "already"):
+        from . import steamrepair, steamfix
+        out("Clearing a broken Steam Runtime if one is there (your games are not touched)...")
+        boot = steamrepair.repair_bootstrap(home=env.home)
+        out(boot.detail)
+        out("Turning Steam Play (Proton) on for all games, so Windows titles can start from CodeAque tiles...")
+        pr = steamrepair.enable_proton(home=env.home, cfg_root=getattr(cfg, "steam_root", "") if cfg else "")
+        out(pr.detail)
+        if pr.ok or boot.changed:
+            extra = (res.detail + " " + boot.detail + " " + pr.detail).strip()
+            res = Result(res.id, res.title, res.status, extra, res.how)
     if t.id == "retroarch" and cores and res.status != "failed":
         for o in installer.install_cores(out, env.home, env.http, cores):
             if o.status == "failed":
@@ -368,7 +396,11 @@ def no_way_text(t: Target, env: Env) -> str:
     if t.flatpak:
         bits.append("install Flatpak (Software Manager > search 'flatpak') and try again")
     if t.apt:
-        bits.append(f"or run in a terminal:  sudo apt install {t.apt}")
+        if t.id == "steam":
+            from . import steamrepair
+            bits.append("or run in a terminal:  " + steamrepair.sudo_command())
+        else:
+            bits.append(f"or run in a terminal:  sudo apt install {t.apt}")
     if not rootauth.can_elevate(env.which) and t.apt:
         bits.insert(0, "the graphical password helper (pkexec / polkit) is missing")
     return f"CodeAque has no way to install {t.title} on this computer by itself: " + "; ".join(bits or ["see the program's website"]) + "."
@@ -379,7 +411,11 @@ def failure_text(t: Target, reasons: list[str], steps: list[str]) -> str:
     if t.flatpak:
         tail.append(f"flatpak install flathub {t.flatpak}")
     if t.apt:
-        tail.append(f"sudo apt install {t.apt}")
+        if t.id == "steam":
+            from . import steamrepair
+            tail.append(steamrepair.sudo_command())
+        else:
+            tail.append(f"sudo apt install {t.apt}")
     hint = ("  You can also try in a terminal:  " + "   or   ".join(tail)) if tail else ""
     return (f"{t.title} could not be installed. " + "; ".join(reasons[-2:]) + ". Check the internet connection and press Install again." + hint)
 

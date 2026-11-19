@@ -1,17 +1,20 @@
-"""One-press Fix Steam: diagnose and repair common "Couldn't start Steam" causes.
+"""One-press Fix Steam: diagnose and repair common Steam Runtime / start failures.
 
-The error "Couldn't start Steam. Are you running low on disk space?" often appears
-when there is plenty of space. Typical causes on Linux Mint / the Win600:
+The error "Couldn't set up the Steam Runtime. Are you running low on disk space?"
+(and the similar "Couldn't start Steam" wording) often appears when there is
+plenty of space. Typical causes on Linux Mint 22 / Ubuntu 24.04 (noble):
 
-  * Flatpak Steam (com.valvesoftware.Steam) missing the 32-bit GL32 runtime
-    for the same org.freedesktop.Platform version Steam is using
-  * A corrupted first-run bootstrap (ubuntu12_32 / package)
-  * Native .deb Steam without i386 / steam-libs-i386
+  * Missing i386 multiarch and 32-bit libraries (libc6:i386, libgl1:i386,
+    libgl1-mesa-dri:i386, and related packages)
+  * A broken or half-downloaded ~/.local/share/Steam/ubuntu12_32/steam-runtime
+  * Flatpak Steam missing the 32-bit GL32 runtime for its Platform version
   * Actually not enough free space at the Steam path or in /tmp
 
 Nothing here deletes steamapps or games. Privileged steps go through pkexec
 (and CodeAque's in-app password box via rootauth in CodeAque-only mode).
-All functions accept a ``run`` injectable so tests never touch the real system.
+If pkexec fails, the exact sudo commands are returned so the UI can show them
+in large text. All functions accept a ``run`` injectable so tests never touch
+the real system.
 """
 from __future__ import annotations
 
@@ -25,7 +28,22 @@ from typing import Callable
 
 FLATPAK_ID = "com.valvesoftware.Steam"
 GL32_RUNTIME = "org.freedesktop.Platform.GL32.default"
-I386_PACKAGES = ("steam-installer", "steam-libs-i386")
+# Ubuntu 24.04 / Linux Mint 22 (noble): Steam's runtime needs these 32-bit libs.
+# steam-libs-i386 is useful when the distro ships it, but it is not always in the
+# archive, so it is optional. Prefer the steam-installer package; fall back to steam.
+STEAM_PACKAGES = ("steam-installer", "steam")
+I386_CORE = ("libc6:i386", "libgl1:i386", "libgl1-mesa-dri:i386")
+I386_OPTIONAL = (
+    "steam-libs-i386", "libglx-mesa0:i386", "libstdc++6:i386", "libgcc-s1:i386",
+    "libx11-6:i386", "libxrandr2:i386", "libxss1:i386",
+)
+I386_PACKAGES = STEAM_PACKAGES + I386_CORE  # used by older tests / callers
+RUNTIME_NAMES = (
+    "steam-runtime",
+    "steam-runtime.tar.xz",
+    "steam-runtime.tar.xz.part",
+    "steam-runtime.tar.xz.lzma",
+)
 MIN_FREE = 500 * 1024 * 1024
 MIN_TMP_FREE = 200 * 1024 * 1024
 
@@ -40,6 +58,7 @@ class Step:
     ok: bool
     detail: str
     changed: bool = False
+    commands: str = ""  # exact sudo commands to show in large text when pkexec failed
 
 
 def _noop_progress(_msg: str) -> None:
@@ -236,7 +255,11 @@ def install_gl_runtimes(run: Run | None = None, which: Callable | None = None) -
 
 
 def repair_bootstrap(home: Path | None = None, now: Callable[[], float] | None = None) -> Step:
-    """Move a corrupted first-run bootstrap aside so Steam can rebuild it. Never touches steamapps or games."""
+    """Move a broken Steam Runtime aside so Steam can rebuild it. Never touches steamapps or games.
+
+    Only ubuntu12_32/steam-runtime (and a half-downloaded runtime tarball) is moved.
+    The rest of ubuntu12_32, including Steam's own bootstrap binary, is left in place.
+    """
     home = home or Path.home()
     roots = list(steam_roots(home).values())
     stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime((now or time.time)()))
@@ -244,25 +267,53 @@ def repair_bootstrap(home: Path | None = None, now: Callable[[], float] | None =
     for root in roots:
         if not root.is_dir():
             continue
-        for name in ("ubuntu12_32", "package"):
-            src = root / name
-            if not src.exists():
-                continue
-            if src.name == "steamapps" or src.name.lower().startswith("steamapps"):
-                continue
-            dest = root / f"{name}.broken-{stamp}"
+        # Never walk or rename steamapps, even if a name looks similar.
+        runtime_dir = root / "ubuntu12_32"
+        candidates = []
+        if runtime_dir.is_dir():
+            for name in RUNTIME_NAMES:
+                src = runtime_dir / name
+                if src.exists() and "steamapps" not in src.parts:
+                    candidates.append(src)
+        for src in candidates:
+            dest = src.with_name(f"{src.name}.broken-{stamp}")
             try:
                 src.rename(dest)
                 moved.append(f"{src} → {dest}")
             except OSError as exc:
-                return Step("bootstrap", "First-run Steam files", False,
+                return Step("bootstrap", "Steam Runtime files", False,
                             f"Could not move {src} aside: {exc}. Your games were not touched.")
     if moved:
-        return Step("bootstrap", "First-run Steam files", True,
-                    "Moved the first-run Steam files aside so they can be rebuilt (your games in steamapps were not touched): "
+        return Step("bootstrap", "Steam Runtime files", True,
+                    "Moved a broken Steam Runtime aside so Steam can rebuild it (your games in steamapps were not touched): "
                     + "; ".join(moved), changed=True)
-    return Step("bootstrap", "First-run Steam files", True,
-                "No first-run Steam folder needed moving. Games in steamapps were left alone.")
+    return Step("bootstrap", "Steam Runtime files", True,
+                "No broken Steam Runtime folder needed moving. Games in steamapps were left alone.")
+
+
+def sudo_command() -> str:
+    """One pasteable line for a Terminal if the password window cannot run."""
+    pkgs = "steam-installer " + " ".join(I386_CORE)
+    return (
+        "sudo dpkg --add-architecture i386 && sudo apt update && "
+        f"sudo apt install -y {pkgs}"
+    )
+
+
+def native_steam_script() -> str:
+    """What pkexec/sudo runs as root: i386 multiarch, Steam, and 32-bit runtime libs."""
+    core = " ".join(I386_CORE)
+    optional = " ".join(I386_OPTIONAL)
+    return (
+        "set -e; "
+        "dpkg --print-foreign-architectures | grep -qx i386 || dpkg --add-architecture i386; "
+        "apt-get update -y; "
+        "if apt-get install -y steam-installer; then :; "
+        "elif apt-get install -y steam; then :; "
+        "else echo 'Could not install steam-installer or steam' >&2; exit 1; fi; "
+        f"apt-get install -y {core}; "
+        f"for p in {optional}; do apt-get install -y \"$p\" || true; done"
+    )
 
 
 def _dpkg_has_i386(run: Run | None = None) -> bool:
@@ -275,34 +326,61 @@ def _pkg_installed(name: str, run: Run | None = None) -> bool:
     return r.returncode == 0 and "install ok installed" in (r.stdout or "")
 
 
+def _steam_pkg_installed(run: Run | None = None) -> bool:
+    return any(_pkg_installed(p, run) for p in STEAM_PACKAGES)
+
+
 def install_i386(run: Run | None = None, which: Callable | None = None) -> Step:
-    """For the native .deb Steam: enable i386 and install steam-installer / steam-libs-i386 if missing (pkexec)."""
+    """Enable i386, install Steam (steam-installer, or steam), and the 32-bit libs the runtime needs."""
+    cmd = sudo_command()
     if not _which("dpkg", which) and run is None:
         return Step("i386", "32-bit Steam libraries", True, "This is not a Debian / Ubuntu system, so this step was skipped.")
     already_arch = _dpkg_has_i386(run)
-    missing = [p for p in I386_PACKAGES if not _pkg_installed(p, run)]
-    if already_arch and not missing:
+    missing_core = [p for p in I386_CORE if not _pkg_installed(p, run)]
+    have_steam = _steam_pkg_installed(run)
+    if already_arch and have_steam and not missing_core:
         return Step("i386", "32-bit Steam libraries", True,
-                    "32-bit support is on, and steam-installer and steam-libs-i386 are already installed.")
-    script = (
-        "set -e; "
-        "dpkg --print-foreign-architectures | grep -qx i386 || dpkg --add-architecture i386; "
-        "apt-get update -y; "
-        "apt-get install -y steam-installer steam-libs-i386"
-    )
-    r = _run(["pkexec", "sh", "-c", script], run=run, timeout=600)
+                    "32-bit support is on, Steam is installed, and the libraries the Steam Runtime needs "
+                    "(libc6:i386, libgl1:i386, libgl1-mesa-dri:i386) are already present.")
+    r = _run(["pkexec", "sh", "-c", native_steam_script()], run=run, timeout=600)
     text = _out(r)
     if r.returncode == 0:
-        return Step("i386", "32-bit Steam libraries", True,
-                    "Enabled 32-bit (i386) support and installed steam-installer / steam-libs-i386"
-                    + ((" (was missing: " + ", ".join(missing) + ")") if missing else "") + ".",
-                    changed=True)
-    if r.returncode == 126:
-        return Step("i386", "32-bit Steam libraries", False,
-                    "The password window was closed, so the 32-bit Steam libraries were not installed. Press Fix Steam again when you are ready.")
-    return Step("i386", "32-bit Steam libraries", False,
-                "Needed steam-installer / steam-libs-i386 and 32-bit (i386) support. A password box appears for this. "
-                + text[-240:], changed=False)
+        bits = []
+        if not already_arch:
+            bits.append("enabled 32-bit (i386) support")
+        if not have_steam:
+            bits.append("installed Steam")
+        if missing_core:
+            bits.append("installed " + ", ".join(missing_core))
+        what = (", ".join(bits) or "confirmed Steam and the 32-bit runtime libraries").capitalize()
+        return Step("i386", "32-bit Steam libraries", True, what + ".", changed=True)
+    why = ("The password window was closed, so the 32-bit Steam libraries were not installed. "
+           if r.returncode == 126 else
+           "Needed 32-bit (i386) support, Steam, and libc6:i386 / libgl1:i386 / libgl1-mesa-dri:i386. ")
+    why += "Paste this in a Terminal, then press Fix Steam again:\n" + cmd
+    if text and r.returncode not in (126, 127):
+        why += "\n(" + text[-200:] + ")"
+    return Step("i386", "32-bit Steam libraries", False, why, changed=False, commands=cmd)
+
+
+def enable_proton(home: Path | None = None, cfg_root: str = "",
+                  running: Callable[[], bool] | None = None) -> Step:
+    """Turn Steam Play (Proton Experimental) on for every title, without touching games."""
+    from . import steamfix
+    ok, text = steamfix.set_default_proton(home, cfg_root, running)
+    note = (" Individual games can still fail: that is Proton compatibility, not a missing setting.")
+    low = text.lower()
+    if ok:
+        return Step("proton", "Steam Play (Proton) for all games", True, text + note, changed=True)
+    if "already" in low or "left as it is" in low:
+        return Step("proton", "Steam Play (Proton) for all games", True, text + note)
+    if "no config" in low or "sign in once" in low or "has no config" in low:
+        return Step("proton", "Steam Play (Proton) for all games", True,
+                    text + " After you sign in once, close Steam and press Fix Steam again, or just reopen CodeAque.")
+    if "open right now" in low:
+        return Step("proton", "Steam Play (Proton) for all games", False,
+                    text + " Close Steam, then press Fix Steam again (or Turn Steam Play on) so Windows games can start from CodeAque tiles.")
+    return Step("proton", "Steam Play (Proton) for all games", False, text)
 
 
 def console_command(base: list[str], running: bool = False) -> list[str]:
@@ -317,7 +395,8 @@ def console_command(base: list[str], running: bool = False) -> list[str]:
 
 def run_fix(home: Path | None = None, run: Run | None = None, which: Callable | None = None,
             now: Callable[[], float] | None = None, tmp: Path | None = None,
-            progress: Progress | None = None) -> tuple[list[Step], str]:
+            progress: Progress | None = None, cfg_root: str = "",
+            running: Callable[[], bool] | None = None) -> tuple[list[Step], str]:
     """Diagnose and repair. Returns (steps, verdict). Safe to run again. Never deletes games."""
     home = Path(home) if home else Path.home()
     report = progress or _noop_progress
@@ -329,10 +408,20 @@ def run_fix(home: Path | None = None, run: Run | None = None, which: Callable | 
     steps.append(Step("space", "Free space", ok_space, space_msg))
 
     if kind == "missing":
-        steps.append(Step("steam", "Steam is installed", False,
-                          "Steam is not installed yet. Install it from Settings > Install emulators and apps "
-                          "(choose everything), or from Software Manager, then sign in and use Settings > Steam games > Rescan."))
-        return steps, "Steam is not installed, so nothing was repaired. " + space_msg
+        report("Steam is not installed yet. Installing Steam and the 32-bit libraries the Steam Runtime needs...")
+        steps.append(install_i386(run=run, which=which))
+        kind = detect_kind(home, which=which, run=run)
+
+    if kind == "missing":
+        i386 = next((s for s in steps if s.id == "i386"), None)
+        detail = ((i386.detail + " ") if i386 else "") + (
+            "Steam is not installed yet. If the password window did not work, paste the command shown in large text "
+            "into a Terminal, then press Fix Steam again."
+        )
+        steps.append(Step("steam", "Steam is installed", False, detail,
+                          commands=(i386.commands if i386 else sudo_command())))
+        cmds = (i386.commands if i386 and i386.commands else sudo_command())
+        return steps, "Steam could not be installed yet. " + space_msg + " In a Terminal:  " + cmds
 
     steps.append(Step("steam", "Steam is installed", True,
                       "Found " + ("Flatpak Steam" if kind == "flatpak" else "native Steam" if kind == "native" else "Flatpak and native Steam") + "."))
@@ -340,24 +429,35 @@ def run_fix(home: Path | None = None, run: Run | None = None, which: Callable | 
     if kind in ("flatpak", "both"):
         report("Updating Flatpak Steam and installing the matching 32-bit GL32 runtime...")
         steps.append(install_gl_runtimes(run=run, which=which))
-        report("Moving broken first-run Steam files aside (games in steamapps stay)...")
-        steps.append(repair_bootstrap(home, now=now))
     if kind in ("native", "both"):
-        report("Checking 32-bit (i386) support and steam-installer / steam-libs-i386...")
-        steps.append(install_i386(run=run, which=which))
-        if kind == "native":
-            report("Moving broken first-run Steam files aside (games in steamapps stay)...")
-            steps.append(repair_bootstrap(home, now=now))
+        # Skip a second pkexec if we just installed Steam in the "missing" path above.
+        if not any(s.id == "i386" for s in steps):
+            report("Enabling 32-bit (i386) support and installing Steam plus libc6:i386, libgl1:i386 and libgl1-mesa-dri:i386...")
+            steps.append(install_i386(run=run, which=which))
+
+    report("Moving a broken Steam Runtime aside if one is there (games in steamapps stay)...")
+    steps.append(repair_bootstrap(home, now=now))
+
+    report("Turning Steam Play (Proton) on for all games, so Windows titles can start from CodeAque...")
+    steps.append(enable_proton(home, cfg_root=cfg_root, running=running))
 
     report("Finishing...")
     changed = any(s.changed for s in steps)
     failed = [s for s in steps if not s.ok]
+    blocking = [s for s in failed if s.id in ("space", "i386", "steam")]
+    cmd = next((s.commands for s in failed if s.commands), "")
     if not ok_space:
         verdict = space_msg + " CodeAque did not start Steam, because there may not be enough room."
+    elif blocking:
+        verdict = "Some steps could not finish: " + "; ".join(s.title + " — " + s.detail for s in blocking)
+        if cmd:
+            verdict += "  In a Terminal, paste:  " + cmd
     elif failed:
-        verdict = "Some steps could not finish: " + "; ".join(s.title + " — " + s.detail for s in failed)
+        verdict = "Steam was repaired as far as CodeAque could go. " + "; ".join(s.title + " — " + s.detail for s in failed)
     elif changed:
-        verdict = "Steam was repaired. CodeAque will try to start it in Big Picture now."
+        verdict = ("Steam was repaired, and Steam Play (Proton) is set as the default for all titles. "
+                   "CodeAque will try to start Steam now. Some Windows games may still need a different Proton version.")
     else:
-        verdict = "Everything CodeAque can check looks fine. CodeAque will try to start Steam in Big Picture now."
+        verdict = ("Everything CodeAque can check looks fine, and Steam Play (Proton) is the default for all titles. "
+                   "CodeAque will try to start Steam now. Some Windows games may still need a different Proton version.")
     return steps, verdict

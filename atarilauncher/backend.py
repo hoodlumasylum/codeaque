@@ -151,6 +151,10 @@ class Backend(QObject):
         self.steamFixProgress.connect(self._steam_fix_progress, Qt.QueuedConnection)
         self._rbx_state, self._rbx_steps, self._rbx_verdict = "idle", [], ""
         self._stfix_state, self._stfix_steps, self._stfix_verdict, self._stfix_progress = "idle", [], "", ""
+        self._stboot = None          # steamprogress.Watcher while Steam is downloading its update
+        self._stboot_progress = None
+        self._stboot_timer = None
+        self._inst_progress = None   # parsed apt / bootstrap progress for the Install page
         self._input_fixing = False
         self.kioskDone.connect(self._kiosk_finished, Qt.QueuedConnection)
         self.launchStatus.connect(self._on_launch_status, Qt.QueuedConnection)
@@ -313,8 +317,11 @@ class Backend(QObject):
         if not self._demo and kiosk.session_outdated(self._kiosk_layout):
             QTimer.singleShot(7000, lambda: self.show_toast("CodeAque-only mode needs a one-time update so CodeAque never drops to the desktop: "
                                                             "Settings > \"Update CodeAque-only mode\".", 15000))
-        if not self._demo and not os.environ.get("ATARI_NO_STEAMFIX") and self._shell_mode():
-            self._start_steam_guard()
+        if not self._demo and not os.environ.get("ATARI_NO_STEAMFIX"):
+            if self._shell_mode():
+                self._start_steam_guard()
+            else:
+                threading.Thread(target=self._steam_prepare_proton, daemon=True, name="atari-steam-proton").start()
         if not self._demo and not os.environ.get("ATARI_NO_MEDIA"):
             QTimer.singleShot(3000, self._media_poll)        # the music control in the top bar
         # pages (help / fix my game / add Windows game)
@@ -1055,6 +1062,13 @@ class Backend(QObject):
             self._inst_step = text
         elif kind == "line":
             self._inst_lines = (self._inst_lines + [text])[-5:]
+            try:
+                from . import steamprogress
+                pr = steamprogress.parse_line(text)
+                if pr is not None:
+                    self._inst_progress = pr
+            except Exception:
+                pass
         elif kind == "done":
             res = self._inst_job.results if self._inst_job else []
             self._inst_summary = appinstall.summary_text(res)
@@ -1065,6 +1079,8 @@ class Backend(QObject):
                 self.rescan(toast=False)
             self.playSound("select" if self._inst_ok else "error")
             self.show_toast(self._inst_summary, 9000)
+            if self._inst_ok and "steam" in (self._inst_specs or []):
+                self._open_steam_console()
         self.pageChanged.emit()
 
     def _install_rows(self) -> list:
@@ -1086,10 +1102,28 @@ class Backend(QObject):
             return rows
         if st == "running":
             rows = [self._info("Installing - " + (self._inst_step or "starting...") + "   (you can leave this screen; it keeps going)")]
+            pr = getattr(self, "_inst_progress", None)
+            if pr is not None:
+                rows.append(pr.row(big=True))
+            else:
+                rows.append({"kind": "progress", "title": self._inst_step or "Installing Steam...",
+                             "fraction": -1.0, "value": "", "detail": "", "big": True})
             for ln in self._inst_lines:
                 rows.append(self._info(ln))
             rows.append({"kind": "item", "id": "cancel", "title": "Stop"})
             rows.append({"kind": "item", "id": "back", "title": "Hide this screen"})
+            return rows
+        boot = getattr(self, "_stboot_progress", None)
+        if boot is not None and "steam" in (self._inst_specs or []):
+            rows = [self._info(self._inst_summary or "Steam is installed. It may still be downloading its first update.")]
+            rows.append(boot.row(big=True))
+            if boot.wait_for_download:
+                rows.append(self._info(boot.detail or ""))
+            if self._inst_ok and boot.ready:
+                g = next((x for x in self._all if x.gid == self._inst_for_gid), None) if self._inst_for_gid else None
+                if g is not None and not g.missing:
+                    rows.append({"kind": "done", "id": "launch", "title": f"Open {g.title} now"})
+            rows.append({"kind": "item", "id": "back", "title": "Back"})
             return rows
         rows = [self._info(self._inst_summary or "Done.")]
         g = next((x for x in self._all if x.gid == self._inst_for_gid), None) if self._inst_for_gid else None
@@ -1120,8 +1154,7 @@ class Backend(QObject):
     # ----- Steam: install, rescan, where to keep games ----------------------------------
     def steam_installed(self) -> bool:
         from . import steam as steam_mod
-        return steam_mod.find_steam_root(None, self.cfg.steam_root) is not None or \
-            appinstall.is_installed(appinstall.TARGETS["steam"], cfg=self.cfg)
+        return steam_mod.client_installed() or appinstall.is_installed(appinstall.TARGETS["steam"], cfg=self.cfg)
 
     @Slot()
     def rescanSteam(self) -> None:
@@ -1259,36 +1292,55 @@ class Backend(QObject):
         e = (err or "").lower()
         return any(s in e for s in (
             "couldn't start steam", "could not start steam", "couldnt start steam",
+            "couldn't set up the steam runtime", "could not set up the steam runtime",
+            "set up the steam runtime", "steam runtime",
             "low on disk space", "disk space", "failed to start steam",
             "steam failed", "missing permissions", "gl32", "i386",
         ))
 
     def _steam_fix_rows(self) -> list:
-        rows = [self._info("Steam sometimes says \"Couldn't start Steam. Are you running low on disk space?\" even when there is plenty of space. "
-                           "This is often a missing 32-bit graphics runtime or a broken first-run file — not a full disk.")]
+        rows = [self._info("Steam sometimes says \"Couldn't set up the Steam Runtime. Are you running low on disk space?\" "
+                           "even when there is plenty of space. That is usually missing 32-bit libraries or a broken Steam Runtime folder — not a full disk.")]
         if self._stfix_state == "running":
-            rows.append({"kind": "progress", "title": self._stfix_progress or "Working — checking Steam..."})
+            rows.append({"kind": "progress", "title": self._stfix_progress or "Working — checking Steam...",
+                         "fraction": -1.0, "value": "", "detail": "", "big": True})
             rows.append(self._info("Your games in steamapps are never deleted. A password box appears only if 32-bit system libraries need installing."))
             for st in self._stfix_steps:
-                rows.append({"kind": "item", "id": "noop", "title": ("OK   " if st.ok else "FIX  ") + st.title, "detail": st.detail,
-                             "value": "" if st.ok else "Problem"})
+                rows += self._steam_fix_step_rows(st)
         elif self._stfix_state == "done":
+            boot = getattr(self, "_stboot_progress", None)
+            if boot is not None:
+                rows.append(boot.row(big=True))
+                if boot.wait_for_download:
+                    rows.append(self._info(boot.detail or ""))
             for st in self._stfix_steps:
-                rows.append({"kind": "item", "id": "noop", "title": ("OK   " if st.ok else "FIX  ") + st.title, "detail": st.detail,
-                             "value": "" if st.ok else "Problem"})
+                rows += self._steam_fix_step_rows(st)
             rows.append(self._info("Result:  " + self._stfix_verdict))
         else:
-            for t in ("1  Free space at the Steam folder and in /tmp",
-                      "2  Flatpak Steam: update, and install the GL32 runtime for the same Platform version",
-                      "3  Broken first-run files (ubuntu12_32 and package) moved aside so Steam can rebuild them — games stay",
-                      "4  Native .deb Steam: enable i386 and install steam-installer / steam-libs-i386 if they are missing"):
-                rows.append(self._info(t))
-            rows.append(self._info("Press Run fix. Progress shows on this page, then CodeAque tries to start Steam in Big Picture."))
+            for line in (
+                "1  Free space at the Steam folder and in /tmp",
+                "2  Flatpak Steam: update, and install the GL32 runtime for the same Platform version",
+                "3  A broken Steam Runtime (ubuntu12_32/steam-runtime) is moved aside so Steam can rebuild it — your games stay",
+                "4  Enable 32-bit (i386) support and install Steam plus libc6:i386, libgl1:i386 and libgl1-mesa-dri:i386",
+                "5  Turn Steam Play (Proton Experimental) on for all games, so Windows titles can start from CodeAque tiles "
+                "(some games may still need a different Proton version)",
+            ):
+                rows.append(self._info(line))
+            rows.append(self._info("Press Run fix. Progress shows on this page, then CodeAque tries to start Steam."))
         rows.append({"kind": "done", "id": "stfixrun", "title": "Working..." if self._stfix_state == "running" else "Run fix"})
         rows.append({"kind": "item", "id": "stfixopen", "title": "Open Steam now",
                      "detail": "Starts Steam in Big Picture / console mode (steam -bigpicture, or flatpak run ... -bigpicture)."})
         rows.append({"kind": "item", "id": "copylog", "title": "Copy CodeAque's log (to send to someone who is helping you)"})
         rows.append({"kind": "item", "id": "back", "title": "Back"})
+        return rows
+
+    def _steam_fix_step_rows(self, st) -> list:
+        rows = [{"kind": "item", "id": "noop", "title": ("OK   " if st.ok else "FIX  ") + st.title,
+                 "detail": st.detail, "value": "" if st.ok else "Problem"}]
+        cmd = getattr(st, "commands", "") or ""
+        if cmd and not st.ok:
+            rows.append(self._info("The password window did not work. Paste this in a Terminal, then press Fix Steam again:"))
+            rows.append({"kind": "command", "title": cmd})
         return rows
 
     def _steam_fix_activate(self, rid: str) -> str:
@@ -1301,7 +1353,7 @@ class Backend(QObject):
                     self.steamFixProgress.emit(msg)
                 try:
                     from . import steamrepair
-                    steps, verdict = steamrepair.run_fix(progress=progress)
+                    steps, verdict = steamrepair.run_fix(progress=progress, cfg_root=self.cfg.steam_root)
                 except Exception as exc:  # pragma: no cover - safety net
                     steps, verdict = [], f"That hit a problem: {exc}"
                 self.steamFixDone.emit(steps, verdict)
@@ -1321,30 +1373,92 @@ class Backend(QObject):
     def _open_steam_console(self) -> str:
         from . import steam as steam_mod
         from . import steamrepair
-        if not launcher.steam_available(self.cfg):
-            self.show_toast("Steam isn't installed yet. Install it from Settings > Install emulators and apps "
-                            "(choose everything), or from Software Manager, then sign in and use Settings > Steam games > Rescan.", 12000)
+        if not launcher.steam_available(self.cfg) and not steam_mod.client_installed():
+            self.show_toast("Steam isn't installed yet. Install it from Settings > Steam, or from Software Manager, "
+                            "then sign in and use Rescan Steam.", 12000)
             return ""
         base = launcher.steam_base_command(self.cfg)
-        cmd = steamrepair.console_command(base, running=steam_mod.steam_running())
+        already = steam_mod.steam_running()
+        if already:
+            cmd = launcher.open_running_steam(base, bigpicture=True)
+        else:
+            cmd = steamrepair.console_command(base, running=False)
         try:
             subprocess.Popen(cmd, env=launcher.clean_env(), stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True)
-            self.show_toast("Starting Steam in Big Picture.", 5000)
-            return "close"
         except OSError as exc:
             self.show_toast(f"Could not start Steam: {exc}", 10000)
             return ""
+        self._start_steam_bootstrap_watch()
+        if already:
+            shown = launcher.wait_for_steam_window()
+            if not shown:
+                self.show_toast(launcher.TRAY_WAIT_MSG, 14000)
+                return "page:steam"
+            launcher.raise_steam_window()
+        self.show_toast("Starting Steam..." if already else "Starting Steam. A progress bar shows if it is downloading an update.", 6000)
+        return "page:steam"
+
+    def restartSteam(self) -> None:
+        """Stop a tray-only Steam and start it again so its window can appear."""
+        from . import steam as steam_mod
+        self.show_toast("Restarting Steam...", 5000)
+        base = launcher.steam_base_command(self.cfg)
+        ok, msg = launcher.restart_steam(base)
+        kiosk.log_event("steam restart: " + msg)
+        self.show_toast(msg, 8000)
+        if ok:
+            self._start_steam_bootstrap_watch()
+            if not launcher.wait_for_steam_window():
+                self.show_toast(launcher.TRAY_WAIT_MSG, 14000)
+            else:
+                launcher.raise_steam_window()
+
+    def _start_steam_bootstrap_watch(self) -> None:
+        from . import steamprogress
+        self._stboot = steamprogress.Watcher()
+        self._stboot_progress = steamprogress.starting()
+        if self._stboot_timer is None:
+            from PySide6.QtCore import QTimer
+            self._stboot_timer = QTimer(self)
+            self._stboot_timer.setInterval(500)
+            self._stboot_timer.timeout.connect(self._steam_bootstrap_tick)
+        self._stboot_timer.start()
+        self.pageChanged.emit()
+
+    def _steam_bootstrap_tick(self) -> None:
+        from . import steam as steam_mod
+        from . import steamprogress
+        w = self._stboot
+        if w is None:
+            if self._stboot_timer is not None:
+                self._stboot_timer.stop()
+            return
+        p = w.poll(ui_ready=steam_mod.steam_ui_ready())
+        self._stboot_progress = p
+        self._inst_progress = p
+        self.pageChanged.emit()
+        if p.ready or (steam_mod.steam_ui_ready() and not p.still_downloading):
+            self._stboot_progress = steamprogress.ready("Steam is ready.")
+            if self._stboot_timer is not None:
+                self._stboot_timer.stop()
+            self._stboot = None
+            self.show_toast("Steam is ready. Sign in if it asks, then use Rescan Steam so your games show up.", 8000)
+            self.pageChanged.emit()
 
     def _steam_fix_finished(self, steps, verdict: str) -> None:
         self._stfix_state, self._stfix_steps, self._stfix_verdict = "done", list(steps), verdict
         self._stfix_progress = ""
         self.pageChanged.emit()
+        blocking = [st for st in steps if not st.ok and getattr(st, "id", "") in ("space", "i386", "steam")]
+        if blocking:
+            self.show_toast(verdict, 12000)
+            return
         space_ok = all(st.ok for st in steps if getattr(st, "id", "") == "space")
         installed = any(getattr(st, "id", "") == "steam" and st.ok for st in steps) or launcher.steam_available(self.cfg)
         if space_ok and installed:
             self._open_steam_console()
-            self.pageRequested.emit("close")
+            # Stay on a Steam page so the bootstrap / update progress bar is visible.
 
     def _input_fix_finished(self, ok: bool, text: str) -> None:
         self._input_fixing = False
@@ -3661,9 +3775,18 @@ class Backend(QObject):
     def _steam_rows(self) -> list:
         from . import steam as steam_mod
         have = self.steam_installed()
-        rows = [self._info("Steam is installed." if have else
+        rows = []
+        boot = getattr(self, "_stboot_progress", None)
+        if boot is not None and self._stboot is not None:
+            rows.append(boot.row(big=True))
+            if boot.wait_for_download:
+                rows.append(self._info(boot.detail or ""))
+            elif not boot.ready:
+                rows.append(self._info("Steam often looks stuck while it downloads its first update. Please wait. "
+                                       "If it shows “Couldn't set up the Steam Runtime”, that message is often wrong while the download is running."))
+        rows.append(self._info("Steam is installed." if have else
                            "Steam is not installed. One press installs it for you (Flatpak, no password; or your system's steam-installer package), "
-                           "then opens it so you can sign in.")]
+                           "then opens it so you can sign in."))
         if have:
             rows.append({"kind": "item", "id": "steamopen", "title": "Open Steam (sign in / install games there)"})
         else:
@@ -3674,10 +3797,17 @@ class Backend(QObject):
             rows.append(self._info("CodeAque-only mode: Steam ALWAYS opens in Big Picture (from the tile, or started any other way). Use Big Picture's own "
                                    "menus for game Properties and Settings - the desktop Steam windows are not made for a TV and can open out of sight. "
                                    "Steam Play (Proton) is switched on for all games by default."))
-            rows.append({"kind": "item", "id": "steamproton", "title": "Turn Steam Play (Proton) on for all games now",
-                         "detail": "Needs Steam closed. Does nothing if you already picked a tool. Writes a backup first (config.vdf.code-backup)."})
+        rows.append({"kind": "item", "id": "steamproton", "title": "Turn Steam Play (Proton) on for all games now",
+                     "detail": "Needs Steam closed. Sets Proton Experimental as the default so Windows games like The Quarry can start from a CodeAque tile. "
+                               "Does nothing if you already picked a tool. Writes a backup first (config.vdf.code-backup). "
+                               "Some games may still need a different Proton version."})
         rows.append({"kind": "item", "id": "steamfix", "title": "Fix Steam",
-                     "detail": "One press: checks free space, updates Flatpak Steam and the matching 32-bit GL32 runtime, moves broken first-run files aside, and installs steam-installer / steam-libs-i386 if needed (never deletes your games). Use this if Steam says it could not start, or mentions disk space."})
+                     "detail": "One press: checks free space, installs missing 32-bit libraries (libc6:i386, libgl1:i386, libgl1-mesa-dri:i386), "
+                               "moves a broken Steam Runtime aside, turns Steam Play (Proton) on for all games, then starts Steam "
+                               "(never deletes your games). Use this if Steam mentions the Steam Runtime or disk space."})
+        rows.append({"kind": "item", "id": "steamrestart", "title": "Restart Steam",
+                     "detail": "Closes the hidden Steam in the tray and starts it again, so its window comes back. "
+                               "Use this if clicking Steam only shows the desktop, or Steam stays in the tray."})
         rows.append({"kind": "item", "id": "inputfix", "title": "Fix Steam controller / gamepad permissions",
                      "detail": "Use this if Steam says \"Missing permissions for input devices\". Installs Valve's controller rules (asks for your password once)."})
         rows.append(self._info("Where to keep Steam games: a Linux drive (ext4). Windows (NTFS) drives and USB sticks (exFAT / FAT) make many Proton games fail."))
@@ -4842,6 +4972,15 @@ class Backend(QObject):
         except Exception as exc:  # pragma: no cover - never let this touch CodeAque
             kiosk.log_event(f"steam: setup problem: {exc}")
 
+    def _steam_prepare_proton(self) -> None:
+        """Desktop mode: turn Steam Play on for all games without touching Big Picture or the steam shim."""
+        try:
+            if getattr(self.cfg, "steam_proton_default", True):
+                _ok, text = steamfix.set_default_proton(cfg_root=self.cfg.steam_root)
+                kiosk.log_event("steam: " + text)
+        except Exception as exc:  # pragma: no cover - never let this touch CodeAque
+            kiosk.log_event(f"steam: proton setup problem: {exc}")
+
     def _steam_tick(self) -> None:
         from . import steam as steam_mod
         guard = getattr(self, "_steam_guard", None)
@@ -4935,6 +5074,12 @@ class Backend(QObject):
         self._apply()
         self._restore_window()
         self._sync_music()
+        if err and launcher.RESTART_MARK in err:
+            err = err.replace(launcher.INFO, "").replace(launcher.RESTART_MARK, "")
+            self.playSound("select")
+            self.show_toast(err, 14000)
+            self.pageRequested.emit("steam")
+            return
         if err and err.startswith(launcher.INFO):
             self.playSound("select")
         elif err:
@@ -7029,7 +7174,10 @@ class Backend(QObject):
             rows.append({"kind": "item", "id": "bios", "title": "Add BIOS files",
                          "detail": "From your own console, via USB stick or folder."})
         if g.platform == "steam" or g.gid == "app:steam":
-            rows.append({"kind": "item", "id": "inputfix", "title": "Fix Steam controller / gamepad permissions",
+            rows.append({"kind": "item", "id": "steamrestart", "title": "Restart Steam",
+                     "detail": "Closes the hidden Steam in the tray and starts it again, so its window comes back. "
+                               "Use this if clicking Steam only shows the desktop, or Steam stays in the tray."})
+        rows.append({"kind": "item", "id": "inputfix", "title": "Fix Steam controller / gamepad permissions",
                          "detail": "For \"Missing permissions for input devices\" in Steam."})
         if g.gid.endswith(":roblox") and g.platform == apps.APPS:
             rows.append({"kind": "item", "id": "soberfix", "title": "Fix Roblox (step by step)",
@@ -7222,6 +7370,8 @@ class Backend(QObject):
                 return "page:steamfix"
             elif rid == "inputfix":
                 self.fixInputPermissions()
+            elif rid == "steamrestart":
+                self.restartSteam()
             return ""
         if name == "fix":
             if rid == "xboxfixfile":

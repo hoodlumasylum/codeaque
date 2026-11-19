@@ -46,7 +46,7 @@ class Config:
     steam_root: str = ""  # empty = auto-detect
     steam_extra_libraries: list[str] = field(default_factory=list)
     steam_command: str = ""  # empty = auto ("steam" or Flatpak)
-    steam_proton_default: bool = True  # CodeAque-only mode: Steam Play (proton-experimental) for all games unless a tool was already chosen
+    steam_proton_default: bool = True  # Steam Play (proton_experimental) for all games unless a tool was already chosen
     retroarch_command: str = ""  # empty = auto ("retroarch" or Flatpak)
     cores_dir: str = ""  # empty = auto
     emulator_commands: dict[str, str] = field(default_factory=dict)  # e.g. {"rpcs3": "flatpak run net.rpcs3.RPCS3"}

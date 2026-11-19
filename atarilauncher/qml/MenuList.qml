@@ -23,13 +23,13 @@ Item {
             j += step
             if (j < 0 || j >= n) { j = i; break }
             var row = lv.model[j]
-            if (row && row.kind !== "info" && row.kind !== "progress" && row.kind !== "heading") break
+            if (row && row.kind !== "info" && row.kind !== "progress" && row.kind !== "heading" && row.kind !== "command") break
         }
         lv.currentIndex = j
     }
     function firstSelectable() {
         for (var i = 0; i < lv.count; i++) {
-            if (lv.model[i] && lv.model[i].kind !== "info" && lv.model[i].kind !== "progress" && lv.model[i].kind !== "heading") { lv.currentIndex = i; return }
+            if (lv.model[i] && lv.model[i].kind !== "info" && lv.model[i].kind !== "progress" && lv.model[i].kind !== "heading" && lv.model[i].kind !== "command") { lv.currentIndex = i; return }
         }
     }
     ListView {
@@ -45,14 +45,17 @@ Item {
             required property var modelData
             required property int index
             readonly property bool isBar: modelData.kind === "progress"      // a percentage bar (unpacking): not selectable
+            readonly property bool isBigBar: isBar && !!modelData.big
             readonly property bool isHeading: modelData.kind === "heading"
-            readonly property bool isInfo: modelData.kind === "info" || isBar || isHeading
+            readonly property bool isCommand: modelData.kind === "command"
+            readonly property bool isInfo: modelData.kind === "info" || isBar || isHeading || isCommand
             readonly property bool needsInstall: !!(modelData.needsInstall)
             readonly property bool sel: ListView.isCurrentItem && !isInfo
             readonly property bool two: !!modelData.detail
             readonly property bool primary: modelData.kind === "done"   // the big red DONE / CONTINUE rows
             width: lv.width
-            height: isBar ? 112 * ml.u : isHeading ? Math.max(40 * ml.u, infoText.implicitHeight + 14 * ml.u)
+            height: isBigBar ? 168 * ml.u : isBar ? 112 * ml.u : isHeading ? Math.max(40 * ml.u, infoText.implicitHeight + 14 * ml.u)
+                           : isCommand ? Math.max(64 * ml.u, infoText.implicitHeight + 24 * ml.u)
                            : isInfo ? Math.max(34 * ml.u, infoText.implicitHeight + 12 * ml.u)
                            : (modelData.image ? 112 * ml.u : (two ? 56 * ml.u * ml.textScale + detailText.implicitHeight : 62 * ml.u * ml.textScale))
             radius: 10 * ml.u
@@ -85,8 +88,9 @@ Item {
                     elide: Text.ElideMiddle
                     text: row.isBar ? modelData.title : ""
                     color: "#e6e8f2"
-                    font.pixelSize: 21 * ml.u
+                    font.pixelSize: (row.isBigBar ? 28 : 21) * ml.u
                     font.bold: true
+                    wrapMode: Text.Wrap
                 }
                 Text {
                     id: barPct
@@ -95,7 +99,7 @@ Item {
                     anchors.top: parent.top
                     text: row.isBar && modelData.value ? modelData.value : ""
                     color: Theme.green
-                    font.pixelSize: 24 * ml.u
+                    font.pixelSize: (row.isBigBar ? 36 : 24) * ml.u
                     font.bold: true
                 }
                 Rectangle {
@@ -105,7 +109,7 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.verticalCenterOffset: 4 * ml.u
-                    height: 22 * ml.u
+                    height: (row.isBigBar ? 36 : 22) * ml.u
                     radius: height / 2
                     color: "#262a3c"
                     clip: true
@@ -133,7 +137,8 @@ Item {
                     elide: Text.ElideRight
                     text: row.isBar && modelData.detail ? modelData.detail : ""
                     color: Theme.dim
-                    font.pixelSize: 17 * ml.u
+                    font.pixelSize: (row.isBigBar ? 20 : 17) * ml.u
+                    wrapMode: Text.Wrap
                 }
             }
             Text {
@@ -146,9 +151,10 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 wrapMode: Text.Wrap
                 text: modelData.title
-                color: row.isHeading ? Theme.yellow : Theme.dim
-                font.pixelSize: (row.isHeading ? 22 : 18) * ml.u * ml.textScale
-                font.bold: row.isHeading
+                color: row.isCommand ? "#f4f1c8" : (row.isHeading ? Theme.yellow : Theme.dim)
+                font.pixelSize: (row.isCommand ? 28 : (row.isHeading ? 22 : 18)) * ml.u * ml.textScale
+                font.bold: row.isHeading || row.isCommand
+                font.family: row.isCommand ? "monospace" : "Sans Serif"
             }
             Image {      // optional picture on the left (the cover picker's candidates)
                 id: rowImg

@@ -86,10 +86,21 @@ def test_startup_mode_without_a_registry_or_with_a_broken_one_is_harmless(tmp_pa
 def test_proton_default_is_set_when_nobody_chose(tmp_path):
     p = conf_vdf(tmp_path)
     changed, text = steamfix.set_default_proton(tmp_path, "", NO)
-    assert changed and "proton-experimental" in text
+    assert changed and "proton_experimental" in text
     steam = steamfix.parse(p.read_text())["InstallConfigStore"]["Software"]["Valve"]["Steam"]
-    assert steam["CompatToolMapping"]["0"]["name"] == "proton-experimental"
+    assert steam["CompatToolMapping"]["0"]["name"] == "proton_experimental"
+    assert steam["CompatToolMapping"]["0"]["priority"] == "250"
     assert steam["BaseInstallFolder_1"] == "/games"                          # the rest is untouched
+    assert (p.parent / "config.vdf.code-backup").is_file()
+
+
+def test_hyphenated_proton_default_is_upgraded_to_steam_name(tmp_path):
+    body = '\t\t\t\t"CompatToolMapping"\n\t\t\t\t{\n\t\t\t\t\t"0"\n\t\t\t\t\t{\n\t\t\t\t\t\t"name"\t\t"proton-experimental"\n\t\t\t\t\t}\n\t\t\t\t}\n'
+    p = conf_vdf(tmp_path, body)
+    changed, text = steamfix.set_default_proton(tmp_path, "", NO)
+    assert changed and "proton_experimental" in text
+    steam = steamfix.parse(p.read_text())["InstallConfigStore"]["Software"]["Valve"]["Steam"]
+    assert steam["CompatToolMapping"]["0"]["name"] == "proton_experimental"
     assert (p.parent / "config.vdf.code-backup").is_file()
 
 
@@ -106,7 +117,7 @@ def test_proton_keeps_per_game_choices(tmp_path):
     p = conf_vdf(tmp_path, body)
     assert steamfix.set_default_proton(tmp_path, "", NO)[0]
     cm = steamfix.parse(p.read_text())["InstallConfigStore"]["Software"]["Valve"]["Steam"]["CompatToolMapping"]
-    assert cm["620"]["name"] == "proton_9" and cm["0"]["name"] == "proton-experimental"
+    assert cm["620"]["name"] == "proton_9" and cm["0"]["name"] == "proton_experimental"
 
 
 def test_proton_waits_while_steam_runs_and_survives_missing_or_bad_files(tmp_path):
@@ -264,7 +275,9 @@ def test_steam_page_explains_dialogs_and_offers_proton_in_code_only_mode(app, tm
         assert "ALWAYS opens in Big Picture" in text and "Properties" in text
         assert any(r.get("id") == "steamproton" for r in rows)
         monkeypatch.setattr(ui.backend, "_shell_mode", lambda: False)
-        assert not any(r.get("id") == "steamproton" for r in ui.backend._steam_rows())
+        rows = ui.backend._steam_rows()
+        assert any(r.get("id") == "steamproton" for r in rows)
+        assert "ALWAYS opens in Big Picture" not in " ".join(r.get("title", "") for r in rows)
     finally:
         ui.close()
 
@@ -279,7 +292,7 @@ def test_proton_button_edits_the_users_config_and_says_what_happened(app, tmp_pa
         toasts = []
         monkeypatch.setattr(ui.backend, "show_toast", lambda t, *a: toasts.append(t))
         ui.backend.pageActivate("steam", "steamproton")
-        assert "CompatToolMapping" in p.read_text() and "proton-experimental" in toasts[0]
+        assert "CompatToolMapping" in p.read_text() and "proton_experimental" in toasts[0]
     finally:
         ui.close()
 

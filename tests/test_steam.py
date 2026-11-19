@@ -95,3 +95,32 @@ def test_library_builds_steam_games_with_art_and_notes(fake_system):
     assert games["620"].cover.endswith("620_library_600x900.jpg") and games["620"].note == ""
     assert "NTFS" in games["400"].note and games["400"].cover == ""
     assert games["620"].gid == "steam:620"
+
+
+def test_client_installed_finds_usr_games_binary_and_data_without_steamapps(tmp_path):
+    bin_dir = tmp_path / "games"
+    bin_dir.mkdir()
+    steam_bin = bin_dir / "steam"
+    steam_bin.write_text("#!/bin/sh\n")
+    steam_bin.chmod(0o755)
+    assert steam.client_installed(tmp_path, which=lambda n: None, binaries=(str(steam_bin),))
+    # A first-run folder (runtime present, no steamapps yet) still counts.
+    root = tmp_path / ".local/share/Steam/ubuntu12_32"
+    root.mkdir(parents=True)
+    (root / "steam").write_text("bootstrap")
+    assert steam.client_installed(tmp_path, which=lambda n: None, binaries=())
+    assert steam.find_steam_root(tmp_path) is not None
+    empty = tmp_path / "empty-home"
+    empty.mkdir()
+    assert not steam.client_installed(empty, which=lambda n: None, binaries=())
+
+
+def test_launch_command_prefers_usr_games_then_flatpak(tmp_path):
+    steam_bin = tmp_path / "usr-games-steam"
+    steam_bin.write_text("#!/bin/sh\n")
+    steam_bin.chmod(0o755)
+    cmd = steam.launch_command(None, tmp_path, which=lambda n: None, binaries=(str(steam_bin),))
+    assert cmd == [str(steam_bin)]
+    # No binary: fall back to the name "steam" when nothing else is present.
+    cmd = steam.launch_command(None, tmp_path / "nope", which=lambda n: None, binaries=())
+    assert cmd[0] in ("steam", "flatpak", "snap")
