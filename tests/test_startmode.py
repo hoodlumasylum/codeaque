@@ -261,3 +261,24 @@ def test_the_in_app_updater_still_keeps_the_new_modules():
     from atarilauncher import updater
     assert "atarilauncher" in updater.KEEP                        # the whole package (kiosk.py, branding.py ...) is replaced as one folder
     assert "install.sh" in updater.KEEP
+
+
+def test_start_mode_does_not_say_already_set_when_lightdm_conflict_blocks_it(app, tmp_path, monkeypatch, box):
+    """A written drop-in plus a winning /etc/lightdm/lightdm.conf must not claim 'already set' and do nothing."""
+    layout, run_sh, _ = box
+    kiosk.enable(layout, fake_pkexec(layout), user="hazel", checks=checks(box), run_sh=run_sh)
+    main = kiosk.main_lightdm_path(layout)
+    main.parent.mkdir(parents=True, exist_ok=True)
+    main.write_text("[Seat:*]\nautologin-user=hazel\nautologin-session=cinnamon\n")
+    ui = make_ui(app, tmp_path, monkeypatch, box)
+    try:
+        b = ui.backend
+        assert kiosk.read_mode(layout)["next"] == "broken"
+        ev = b.pageActivate("startmode", "smconsole")
+        assert ev == "refresh"          # must try again, not toast 'already set'
+        assert wait_for(app, lambda: not b._kiosk_busy, 10), b.toast
+        assert not kiosk.autologin_conflict(str(main))
+        assert kiosk.read_mode(layout)["next"] == "console"
+        assert "already set" not in (b.toast or "").lower()
+    finally:
+        ui.close()

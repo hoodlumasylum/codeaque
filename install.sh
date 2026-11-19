@@ -6,7 +6,8 @@
 #
 #   ./install.sh                 normal install / upgrade
 #   ./install.sh --autostart     also start CodeAque automatically when you log in
-#   ./install.sh --yes           don't ask questions (install missing system libraries automatically)
+#   ./install.sh --yes           don't ask questions; also set up Steam (steam-installer, i386) and CodeAque-only mode
+#   ./install.sh --yes --autostart   the usual one-command update: libraries, Steam, CodeAque-only session, start at login
 #   ./install.sh --no-gamepad    skip the controller library
 #   ./install.sh --no-studio     skip numpy (only needed by the music Studio)
 #   ./install.sh --no-system-packages   never use sudo / the package manager (used by CodeAque's own updater)
@@ -37,7 +38,7 @@ if [ "$(id -u)" = 0 ] && [ "${ATARI_ALLOW_ROOT_BUILD:-0}" != 1 ]; then   # (ATAR
     exit 1
 fi
 
-# ---------------------------------------------------------------- system libraries
+# ---------------------------------------------------------------- system libraries, Steam, CodeAque-only mode
 say "Checking system libraries"
 if [ "$SYSPKGS" = 0 ]; then
     echo "Skipping system packages (already set up)."
@@ -45,13 +46,48 @@ elif command -v apt-get >/dev/null 2>&1; then
     PKGS="python3 python3-venv python3-pip xdotool wmctrl libxcb-cursor0 libxkbcommon-x11-0 libegl1 libgl1 libfontconfig1 libdbus-1-3 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1"
     MISSING=""
     for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"; done
+    ENABLE_SH=""
+    if ENABLE_SH="$(mktemp)"; PYTHONPATH="$SRC_DIR" python3 -c "from atarilauncher import kiosk; print(kiosk.enable_script('$(id -un)'))" > "$ENABLE_SH"; then
+        echo "CodeAque-only session script is ready."
+    else
+        warn "Could not prepare the CodeAque-only session files (continuing). You can still use Settings > Start mode later."
+        rm -f "$ENABLE_SH"
+        ENABLE_SH=""
+    fi
     if [ -n "$MISSING" ]; then
         echo "CodeAque needs these packages:$MISSING"
-        if ask "Install them now with sudo apt?"; then
-            sudo apt-get update && sudo apt-get install -y $MISSING || warn "Some packages could not be installed; continuing anyway."
-        fi
+    fi
+    if ask "Install Steam (steam-installer + 32-bit libraries), any missing CodeAque libraries, and set up CodeAque-only mode now? (one password)"; then
+        say "Setting up Steam and CodeAque-only mode (one password; a failed apt step will not stop the rest)"
+        # One sudo: i386, apt update, packages, then the session files. Each apt step is allowed to fail.
+        sudo env MISSING="$MISSING" ENABLE_SH="$ENABLE_SH" bash -c '
+            set +e
+            echo "==> Adding 32-bit (i386) support (needed by Steam)..."
+            dpkg --add-architecture i386 || echo "!! Could not add the i386 architecture (continuing)."
+            echo "==> Updating package lists..."
+            apt-get update || echo "!! apt-get update failed (continuing)."
+            if [ -n "$MISSING" ]; then
+                echo "==> Installing libraries CodeAque needs:$MISSING"
+                # unquoted on purpose: MISSING is a space-separated list
+                apt-get install -y $MISSING || echo "!! Some CodeAque libraries could not be installed (continuing)."
+            fi
+            echo "==> Installing steam-installer..."
+            apt-get install -y steam-installer || echo "!! steam-installer could not be installed (continuing). You can still press Fix Steam in CodeAque later."
+            echo "==> Installing 32-bit Steam runtime libraries..."
+            apt-get install -y libc6:i386 libgl1:i386 libgl1-mesa-dri:i386 || echo "!! Some 32-bit libraries could not be installed (continuing)."
+            echo "==> Installing packages CodeAque-only mode needs (policykit, openbox)..."
+            apt-get install -y policykit-1 pkexec openbox || echo "!! Some CodeAque-only packages could not be installed (continuing)."
+            if [ -n "$ENABLE_SH" ] && [ -f "$ENABLE_SH" ]; then
+                echo "==> Writing CodeAque-only session files (takes effect after you log out or restart)..."
+                sh "$ENABLE_SH" || echo "!! Could not write the CodeAque-only session files (continuing). In a Terminal you can run the repair line from Settings > Start mode."
+            fi
+            echo "==> System setup step finished."
+            exit 0
+        ' || warn "The system setup step did not finish cleanly; CodeAque itself will still be installed."
+        rm -f "$ENABLE_SH"
     else
-        echo "All needed packages are already installed."
+        [ -n "$MISSING" ] && warn "Skipping packages; CodeAque may fail to start until they are installed."
+        rm -f "$ENABLE_SH"
     fi
 elif command -v dnf >/dev/null 2>&1; then
     PKGS="python3 python3-pip xdotool wmctrl xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm libxkbcommon-x11 mesa-libEGL mesa-libGL fontconfig dbus-libs"
@@ -202,5 +238,8 @@ The first start shows a setup screen; "Add Games" copies games from a USB stick.
 Need emulators or apps (PlayStation, Nintendo, Xbox, Roblox, ...)?  Open Settings > Emulators > Install emulators and apps,
 or run in a terminal:   atari-install-everything
 To start CodeAque at login:  ./install.sh --autostart
+If you used --yes, Steam (steam-installer) and CodeAque-only mode were also set up.
+CodeAque-only mode takes effect after you log out or restart. To do it by hand:
+  cd ~/.local/share/atari-launcher && rm -f ~/.config/atari/desktop-once && PYTHONPATH=. python3 -c "from atarilauncher import kiosk; print(kiosk.enable_script('\$USER'))" | sudo sh
 EOT
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "Note: $BIN_DIR is not on your PATH yet; log out/in to use the 'atari' command." ;; esac

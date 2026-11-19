@@ -142,18 +142,16 @@ def detect_kind(home: Path | None = None, which: Callable | None = None, run: Ru
     if has_fp:
         r = _run(["flatpak", "info", FLATPAK_ID], run=run, timeout=30)
         installed = r.returncode == 0
-    native = bool(_which("steam", which))
+    from . import steam as steam_mod
+    native = bool(steam_mod.steam_binary(which))
     if installed and native:
         return "both"
     if installed:
         return "flatpak"
     if native:
         return "native"
-    roots = steam_roots(home)
-    if roots["flatpak"].is_dir():
-        return "flatpak"
-    if roots["native"].is_dir() or roots["dotsteam"].is_dir():
-        return "native"
+    # A leftover ~/.local/share/Steam or ~/.steam from the bootstrap is not a Steam install
+    # if /usr/bin/steam and /usr/games/steam are both missing — Fix Steam must offer steam-installer.
     return "missing"
 
 

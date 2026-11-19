@@ -31,6 +31,16 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.83
+
+**CodeAque-only mode now tells you what happened, and the update command finishes the setup.** On Linux Mint the main LightDM file (`/etc/lightdm/lightdm.conf`) can have its own auto-login lines, and those win over CodeAque's small drop-in file. Turning CodeAque-only on could look like it worked, then after a restart you were still on the Mint desktop — it felt like nothing happened. CodeAque now comments those lines out (a backup is kept) when you choose Use CodeAque only, or when you run the update with `--yes`. If anything still fails, a large on-screen message explains it. Every switch and logo-tap is written to `~/.local/share/codeaque/mode.log`. The first logo tap already shows a countdown, so you can tell the taps are counting. If the password window is not needed (the update is already running as root), the files are written without pkexec.
+
+**The usual one-command update now installs Steam properly too.** `./install.sh --yes --autostart` (one password) adds 32-bit (i386) support, installs `steam-installer` and the 32-bit runtime libraries, installs policykit and openbox for CodeAque-only mode, and writes the session files. If one apt step fails, the rest still run and the message says what failed. **Fix Steam** also notices when `/usr/bin/steam` and `/usr/games/steam` are missing (a leftover Steam folder from the bootstrap is not enough) and offers to install steam-installer.
+
+The Android APK attached to this release is unchanged (0.10.82). This PC update does not change the Android app.
+
+Untested: unit tests for the LightDM conflict fix, the mode log, logo-tap feedback, Fix Steam offering steam-installer when the program is missing, and the install.sh contents passed here. This has not been run on Code's desktop or Win600, has not written to a real `/etc/lightdm/lightdm.conf`, has not used a live pkexec password box, and has not installed steam-installer on his machine. Please run the manual update command, then log out or restart, and see that the computer starts in CodeAque-only mode, that Steam's `steam` command is there, and that if something is wrong a message appears on screen (and in `~/.local/share/codeaque/mode.log`).
+
 ## What's new in 0.10.82
 
 **DuckDuckGo is back on the home screen, under a new Fav Sites row.** On the PC console home the web browser tile had been easy to miss: it lived only in the classic Streaming list, under the name "Web Browser". It is now a clear **DuckDuckGo** tile on the Fav Sites row (and still opens DuckDuckGo in a normal browser window — CodeAque does not have its own in-page browser). On Android the DuckDuckGo tile had been dropped; the leftover "browser" action even opened Google. That is restored: DuckDuckGo opens https://duckduckgo.com/.

@@ -75,7 +75,7 @@ def test_ten_taps_open_a_confirm_then_switch_both_ways(app, tmp_path, monkeypatc
         assert kiosk.read_mode(layout)["next"] == "desktop"
         assert b.pageTitle("modetap") == "SWITCH START MODE"
         assert _tap_n(b, 4) == ""
-        assert b.toast == ""
+        assert "Keep tapping the logo" in b.toast and "4 of 10" in b.toast
         assert _tap_n(b, 1, now=0.8) == ""
         assert b.toast == "5 more taps to switch to CodeAque-only mode"
         assert b.toastBig

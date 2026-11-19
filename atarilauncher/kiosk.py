@@ -59,7 +59,7 @@ RECOVERY = ("If you ever get stuck: at the login screen choose the Cinnamon sess
 # One line to paste in a Terminal if CodeAque-only mode ever stops working (rewrites the three files and clears a leftover "desktop once" note;
 # needs the installed CodeAque 0.3.x or newer; asks for the sudo password):
 RESTORE_COMMAND = ("cd ~/.local/share/atari-launcher && rm -f ~/.config/atari/desktop-once && "
-                   "python3 -c \"from atarilauncher import kiosk; print(kiosk.enable_script('$USER'))\" | sudo sh")
+                   "PYTHONPATH=. python3 -c \"from atarilauncher import kiosk; print(kiosk.enable_script('$USER'))\" | sudo sh")
 FAST_BOOT_TIPS = [
     "Optional - make the computer start faster. CodeAque changes none of this by itself.",
     "See what is slow:  systemd-analyze blame   (in a Terminal).",
@@ -101,9 +101,29 @@ def running_description(env: dict | None = None) -> tuple[str, str]:
                        "desktop), not by the CodeAque-only session.")
 
 
-def log_event(text: str, home: Path | None = None) -> None:
-    """One line in the same session.log the session program writes. Never raises."""
+def mode_log_path(home: Path | None = None) -> Path:
+    """~/.local/share/codeaque/mode.log — start-mode switches, logo taps, and failures."""
+    return (home or Path.home()) / ".local" / "share" / "codeaque" / "mode.log"
+
+
+def mode_log(text: str, home: Path | None = None) -> None:
+    """Append one line to mode.log. Never raises. Tests can pass home= or set ATARI_NO_MODELOG."""
     import time
+    if home is None and os.environ.get("ATARI_NO_MODELOG"):
+        return
+    try:
+        f = mode_log_path(home)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with open(f, "a", encoding="utf-8") as fh:
+            fh.write(time.strftime("%F %T") + " " + text + "\n")
+    except OSError:
+        pass
+
+
+def log_event(text: str, home: Path | None = None) -> None:
+    """One line in the same session.log the session program writes. Never raises. Also copied to mode.log."""
+    import time
+    mode_log(text, home)
     if home is None and os.environ.get("ATARI_NO_SESSIONLOG"):
         return
     try:
@@ -174,8 +194,9 @@ def preflight(layout: Layout = DEFAULT, which: Callable = shutil.which, dm_file:
                      "This login uses Wayland. CodeAque-only mode starts an X11 session, which is fine on Mint."))
     conflict = autologin_conflict(lightdm_conf)
     out.append(Check("conflict", not conflict, False, "No other auto-login setting found." if not conflict else
-                     f"{lightdm_conf} already has its own auto-login lines, and they win over CodeAque's. "
-                     "Remove those two lines, or CodeAque-only mode will not start by itself."))
+                     f"{lightdm_conf} already has its own auto-login lines, and they would win over CodeAque's. "
+                     "When you choose Use CodeAque only, those lines are commented out (a backup is kept). "
+                     "Until then, the computer may still start the Linux desktop."))
     return out
 
 
@@ -300,14 +321,39 @@ def _write(path: str, content: str, mode: str) -> str:
             f"&& chmod {mode} {shlex.quote(path)}")
 
 
+def main_lightdm_path(layout: Layout = DEFAULT) -> Path:
+    """The main LightDM file (it is read after conf.d, so its auto-login lines win over CodeAque's drop-in)."""
+    return layout.p("etc/lightdm/lightdm.conf")
+
+
+def neutralize_lightdm_script(layout: Layout = DEFAULT) -> str:
+    """Comment auto-login lines in the main LightDM file so they cannot override the CodeAque drop-in. A backup is kept."""
+    main = shlex.quote(str(main_lightdm_path(layout)))
+    bak_dir = shlex.quote(str(layout.p(layout.backup_dir)))
+    return (
+        f"if [ -f {main} ]; then "
+        f"mkdir -p {bak_dir}; "
+        f"[ -f {bak_dir}/lightdm.conf ] || cp -p {main} {bak_dir}/lightdm.conf; "
+        f"sed -i -E 's/^([[:space:]]*autologin-(user|session|user-timeout)[[:space:]]*=)/# CodeAque: \\1/' {main}; "
+        f"fi"
+    )
+
+
+def restore_lightdm_script(layout: Layout = DEFAULT) -> str:
+    """Undo neutralize_lightdm_script: remove the '# CodeAque: ' prefix we added."""
+    main = shlex.quote(str(main_lightdm_path(layout)))
+    return f"if [ -f {main} ]; then sed -i 's/^# CodeAque: //' {main}; fi"
+
+
 def enable_script(user: str, layout: Layout = DEFAULT, run_sh: Path | None = None, desktop_exec: str | None = None) -> str:
-    """The shell script that pkexec runs as root. The file contents are inside the command itself (no temp files)."""
+    """The shell script that pkexec (or sudo, or a root shell) runs. The file contents are inside the command itself (no temp files)."""
     run_sh = run_sh or run_script_path()
     desktop_exec = desktop_exec or desktop_session_exec(layout)
     s, x, c = (str(layout.p(r)) for r in (layout.session_script, layout.xsession, layout.lightdm_conf))
     steps = [
         "set -e",
         "(command -v openbox >/dev/null 2>&1 || apt-get install -y openbox >/dev/null 2>&1 || true)",   # optional, never fatal
+        neutralize_lightdm_script(layout),
         _write(s, render_session_script(run_sh, desktop_exec), "755"),
         _write(x, render_xsession("/" + layout.session_script), "644"),
         _write(c, render_lightdm(user), "644"),
@@ -332,6 +378,7 @@ def disable_script(layout: Layout = DEFAULT) -> str:
         q = shlex.quote(str(f))
         lines.append(f"[ ! -f {q} ] || cp -p {q} {b}/")
     lines.append("rm -f " + " ".join(shlex.quote(str(f)) for f in layout.files))
+    lines.append(restore_lightdm_script(layout))
     return "\n".join(lines)
 
 
@@ -346,6 +393,15 @@ def _pkexec(script: str, out: Callable[[str], None], run: Callable | None) -> in
     from .appinstall import stream_run
     run = run or stream_run
     return run(["pkexec", "sh", "-c", script], out, None)
+
+
+def _run_script(script: str, out: Callable[[str], None], run: Callable | None) -> int:
+    """Run the enable/disable script as root. If this process is already root (install.sh via sudo), skip pkexec."""
+    from .appinstall import stream_run
+    run = run or stream_run
+    if os.geteuid() == 0:
+        return run(["sh", "-c", script], out, None)
+    return _pkexec(script, out, run)
 
 
 def _result_text(rc: int, ok_text: str, fail_text: str) -> tuple[bool, str]:
@@ -390,6 +446,7 @@ def read_mode(layout: Layout = DEFAULT, env: dict | None = None) -> dict:
     conf = layout.p(layout.lightdm_conf)
     present = [f.is_file() for f in layout.files]
     leftovers = autologin_leftovers(layout)
+    conflict = autologin_conflict(str(main_lightdm_path(layout)))
     lines: list[str] = []
     if all(present):
         try:
@@ -399,6 +456,10 @@ def read_mode(layout: Layout = DEFAULT, env: dict | None = None) -> dict:
         nxt = "console" if sets_login else "broken"
         lines.append("Next start: CodeAque only (console mode) - the computer starts straight into CodeAque." if sets_login else
                      "Next start: unclear - the CodeAque session files are there but the auto-login line is missing.")
+        if sets_login and conflict:
+            nxt = "broken"
+            lines.append("But " + str(main_lightdm_path(layout)) + " still has its own auto-login lines, and they win over CodeAque's file, "
+                         "so the computer may still start the Linux desktop. Choose Use CodeAque only to comment those lines out.")
     elif any(present):
         nxt = "broken"
         lines.append("Next start: unclear - only some of the CodeAque-only files are there (" + ", ".join(f.name for f, p in zip(layout.files, present) if p)
@@ -409,13 +470,16 @@ def read_mode(layout: Layout = DEFAULT, env: dict | None = None) -> dict:
     else:
         nxt = "desktop"
         lines.append("Next start: the Linux Mint login and desktop. CodeAque is installed and starts from the menu.")
+        if conflict:
+            lines.append("Note: " + str(main_lightdm_path(layout)) + " already has auto-login lines (typical on Mint). "
+                         "CodeAque will comment them out if you choose Use CodeAque only, so they cannot block it.")
     kind, _ = running_description(env)
     running = "console" if kind == "code-only" else "desktop"
     lines.append("Right now CodeAque is running " + ("as the console-mode session." if running == "console" else "inside the Linux desktop."))
     backup = has_backup(layout)
     if backup:
         lines.append("A backup of the console-mode files is kept in /" + layout.backup_dir + ".")
-    return {"next": nxt, "running": running, "lines": lines, "backup": backup, "leftovers": leftovers}
+    return {"next": nxt, "running": running, "lines": lines, "backup": backup, "leftovers": leftovers, "conflict": conflict}
 
 
 WM_NAMES = ("openbox", "metacity", "marco", "xfwm4")
@@ -467,18 +531,28 @@ def enable(layout: Layout = DEFAULT, run: Callable | None = None, out: Callable[
         if why:
             return False, why
         user = user or getpass.getuser()
-        rc = _pkexec(enable_script(user, layout, run_sh, desktop_exec), out, run)
+        rc = _run_script(enable_script(user, layout, run_sh, desktop_exec), out, run)
         ok, text = _result_text(rc, ON_TEXT, "Could not turn CodeAque-only mode on")
         if ok and not enabled(layout):
-            return False, "The files were not written - nothing changed. Try again, or ask for help (Settings > Help > Copy log)."
+            ok, text = False, "The files were not written - nothing changed. Try again, or run this in a Terminal:  " + RESTORE_COMMAND
+        elif ok and autologin_conflict(str(main_lightdm_path(layout))):
+            ok, text = False, (
+                "The CodeAque-only files were written, but " + str(main_lightdm_path(layout)) +
+                " still has its own auto-login lines, so the computer may still start the Linux desktop. "
+                "Those lines should have been commented out. In a Terminal run:  " + RESTORE_COMMAND
+            )
+        mode_log(("enable ok: " if ok else "enable failed: ") + text)
+        if not ok and "password window was closed" not in text:
+            text += "  A record was written to ~/.local/share/codeaque/mode.log."
         return ok, text
     except Exception as exc:  # never take CodeAque down
+        mode_log("enable failed: " + str(exc))
         return False, f"Could not turn CodeAque-only mode on: {exc}"
 
 
 def disable(layout: Layout = DEFAULT, run: Callable | None = None, out: Callable[[str], None] = lambda s: None) -> tuple[bool, str]:
     try:
-        rc = _pkexec(disable_script(layout), out, run)
+        rc = _run_script(disable_script(layout), out, run)
         ok, text = _result_text(rc, OFF_TEXT, "Could not turn CodeAque-only mode off")
         if ok and enabled(layout):
             return False, "The files are still there. In a Terminal run:  sudo rm /etc/lightdm/lightdm.conf.d/90-atari-kiosk.conf"
@@ -489,8 +563,12 @@ def disable(layout: Layout = DEFAULT, run: Callable | None = None, out: Callable
                               "console mode. Open that file and remove the autologin-session line.")
             if not has_backup(layout):
                 text += " (No backup copy of the old files was found; Use CodeAque only (console mode) writes them again.)"
+        mode_log(("disable ok: " if ok else "disable failed: ") + text)
+        if not ok and "password window was closed" not in text:
+            text += "  A record was written to ~/.local/share/codeaque/mode.log."
         return ok, text
     except Exception as exc:
+        mode_log("disable failed: " + str(exc))
         return False, f"Could not turn CodeAque-only mode off: {exc}"
 
 

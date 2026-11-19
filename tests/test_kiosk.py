@@ -529,3 +529,62 @@ def test_diagnose_notes_a_missing_window_manager_and_a_desktop_autostart(box, tm
     monkeypatch.setattr(kiosk.shutil, "which", lambda n: None)
     facts = " ".join(kiosk.diagnose(layout, home))
     assert "no window manager (openbox)" in facts and "sudo apt install openbox" in facts and "autostart" in facts
+
+
+def test_enable_comments_conflicting_lightdm_autologin_and_disable_restores_it(box, tmp_path):
+    layout, run_sh, _ = box
+    main = layout.p("etc/lightdm/lightdm.conf")
+    main.parent.mkdir(parents=True, exist_ok=True)
+    main.write_text("[Seat:*]\nautologin-user=hazel\nautologin-session=cinnamon\nautologin-user-timeout=0\n# already a comment\n")
+    # Without this fix, LightDM would ignore CodeAque\'s drop-in and still start the desktop.
+    assert kiosk.read_mode(layout, env={})["next"] == "desktop"
+    mode = kiosk.mode_log_path(tmp_path)
+    ok, text = kiosk.enable(layout, fake_pkexec(layout), user="hazel", checks=checks(box), run_sh=run_sh)
+    assert ok and kiosk.enabled(layout)
+    body = main.read_text()
+    assert "# CodeAque: autologin-user=hazel" in body
+    assert "# CodeAque: autologin-session=cinnamon" in body
+    assert "# CodeAque: autologin-user-timeout=0" in body
+    assert "already a comment" in body
+    assert not kiosk.autologin_conflict(str(main))
+    assert kiosk.read_mode(layout, env={})["next"] == "console"
+    assert not kiosk.read_mode(layout, env={})["conflict"]
+    ok, text = kiosk.disable(layout, fake_pkexec(layout))
+    assert ok and not kiosk.enabled(layout)
+    body = main.read_text()
+    assert "autologin-user=hazel" in body and "# CodeAque: autologin-user=hazel" not in body
+    assert "autologin-session=cinnamon" in body
+
+
+def test_read_mode_is_broken_when_main_lightdm_conf_would_win(box):
+    layout, run_sh, _ = box
+    kiosk.enable(layout, fake_pkexec(layout), user="hazel", checks=checks(box), run_sh=run_sh)
+    main = kiosk.main_lightdm_path(layout)
+    # simulate a leftover Mint autologin that enable had not seen (or failed to comment)
+    main.parent.mkdir(parents=True, exist_ok=True)
+    main.write_text("[Seat:*]\nautologin-user=hazel\nautologin-session=cinnamon\n")
+    m = kiosk.read_mode(layout, env={})
+    assert m["next"] == "broken" and m["conflict"]
+    assert "win over" in " ".join(m["lines"]) and "Linux desktop" in " ".join(m["lines"])
+
+
+def test_enable_runs_without_pkexec_when_already_root(box, monkeypatch):
+    layout, run_sh, _ = box
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    calls = []
+    def run(cmd, out, cancel):
+        calls.append(cmd)
+        assert cmd[:2] == ["sh", "-c"]
+        script = cmd[2].replace("apt-get install", "true")
+        return subprocess.run(["sh", "-c", script], capture_output=True, text=True).returncode
+    ok, text = kiosk.enable(layout, run, user="hazel", checks=checks(box), run_sh=run_sh)
+    assert ok and kiosk.enabled(layout) and calls and calls[0][0] == "sh"
+
+
+def test_mode_log_records_enable_and_never_raises(tmp_path):
+    kiosk.mode_log("tap 1 of 10", home=tmp_path)
+    kiosk.mode_log("enable ok: done", home=tmp_path)
+    p = kiosk.mode_log_path(tmp_path)
+    text = p.read_text()
+    assert "tap 1 of 10" in text and "enable ok: done" in text
+    kiosk.mode_log("never", home=Path("/proc/nope"))  # must not raise

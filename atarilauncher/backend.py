@@ -1312,6 +1312,7 @@ class Backend(QObject):
             "set up the steam runtime", "steam runtime",
             "low on disk space", "disk space", "failed to start steam",
             "steam failed", "missing permissions", "gl32", "i386",
+            "command not found", "no such file", "not found",
         ))
 
     def _steam_fix_rows(self) -> list:
@@ -1333,6 +1334,12 @@ class Backend(QObject):
                 rows += self._steam_fix_step_rows(st)
             rows.append(self._info("Result:  " + self._stfix_verdict))
         else:
+            from . import steam as steam_mod, steamrepair
+            if not steam_mod.steam_binary():
+                rows.append(self._info(
+                    "Steam's program is missing — there is no /usr/bin/steam or /usr/games/steam. "
+                    "A leftover Steam folder from the bootstrap is not enough. Press Run fix to install the steam-installer package "
+                    "(32-bit support is turned on too). Your games in steamapps are never deleted."))
             for line in (
                 "1  Free space at the Steam folder and in /tmp",
                 "2  Flatpak Steam: update, and install the GL32 runtime for the same Platform version",
@@ -1389,10 +1396,14 @@ class Backend(QObject):
     def _open_steam_console(self) -> str:
         from . import steam as steam_mod
         from . import steamrepair
-        if not launcher.steam_available(self.cfg) and not steam_mod.client_installed():
-            self.show_toast("Steam isn't installed yet. Install it from Settings > Steam, or from Software Manager, "
-                            "then sign in and use Rescan Steam.", 12000)
+        if not steam_mod.steam_binary() and not steam_mod.client_installed():
+            self.show_toast("Steam isn't installed yet. Press Fix Steam (or run the CodeAque update) to install steam-installer, "
+                            "then sign in and use Rescan Steam.", 12000, big=True)
             return ""
+        if not steam_mod.steam_binary():
+            self.show_toast("Steam's program is missing (/usr/bin/steam and /usr/games/steam were not found). "
+                            "A leftover Steam folder is not enough. Press Fix Steam to install steam-installer.", 12000, big=True)
+            return "page:steamfix"
         base = launcher.steam_base_command(self.cfg)
         already = steam_mod.steam_running()
         if already:
@@ -3472,8 +3483,9 @@ class Backend(QObject):
             lay = self._kiosk_layout
             mode = kiosk.read_mode(lay)
             want = "desktop" if rid == "smdesktop" else "console"
-            if mode["next"] == want and not mode["leftovers"]:
+            if mode["next"] == want and not mode["leftovers"] and not mode.get("conflict"):
                 self.show_toast("It is already set that way. Nothing was changed.", 6000)
+                kiosk.mode_log("start mode " + want + ": already set, nothing changed")
                 return ""
             self._kiosk_busy = True
             self._kiosk_msg = ""
@@ -3761,11 +3773,16 @@ class Backend(QObject):
         now = getattr(self, "_logo_taps_now", None)
         if now is None:
             now = time.time()
-        nxt = kiosk.read_mode(self._kiosk_layout)["next"]
+        mode = kiosk.read_mode(self._kiosk_layout)
+        nxt = mode["next"]
         ev = self._logo_taps.tap(now, nxt)
+        kiosk.mode_log("logo tap: " + ev.get("action", "") + " count=" + str(ev.get("count", 0)) + " next=" + str(nxt))
         if ev["action"] == "broken":
-            self.show_toast("Start mode is unclear. Open Settings > Start mode to fix it before switching.", 8000, big=True)
+            self.show_toast("Start mode is unclear, so the logo could not switch it. The Start mode page is opening — you can fix it there.", 8000, big=True)
             return "page:startmode"
+        if ev["action"] == "silent":
+            self.show_toast("Keep tapping the logo to switch start mode (" + str(ev["count"]) + " of 10, within 5 seconds).", 4000, big=True)
+            return ""
         if ev["action"] == "toast":
             self.show_toast(ev["text"], 5000, big=True)
             return ""
@@ -3773,6 +3790,7 @@ class Backend(QObject):
             self._mt_want = ev["want"]
             self._mt_pin_ok = False
             return "page:modetap"
+        self.show_toast("That tap was not counted. Keep tapping the logo, 10 times within 5 seconds.", 5000, big=True)
         return ""
 
     # ----- Power menu ------------------------------------------------------------------
@@ -4041,7 +4059,8 @@ class Backend(QObject):
     def _kiosk_finished(self, ok: bool, text: str) -> None:
         self._kiosk_busy = False
         self._kiosk_msg = text
-        self.show_toast(text, 12000)
+        kiosk.mode_log("start mode finished ok=" + str(ok) + " " + (text or ""))
+        self.show_toast(text or ("The change worked." if ok else "The change did not work. See Settings > Start mode."), 14000, big=True)
         self.pageChanged.emit()
 
     def _steam_rows(self) -> list:

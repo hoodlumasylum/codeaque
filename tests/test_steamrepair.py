@@ -218,3 +218,67 @@ def test_repair_bootstrap_never_touches_steamapps(tmp_path):
     assert (games / "Quarry.exe").read_bytes() == b"game"
     assert (steam / "steamapps" / "steam-runtime").is_dir()
     assert not (steam / "ubuntu12_32" / "steam-runtime").exists()
+
+
+def test_a_bootstrap_folder_without_a_steam_program_is_treated_as_missing(tmp_path, monkeypatch):
+    """~/.local/share/Steam from a bootstrap is not an install if /usr/bin/steam and /usr/games/steam are gone."""
+    home = tmp_path / "home"
+    (home / ".local/share/Steam/steamapps/common").mkdir(parents=True)
+    (home / ".steam/steam").mkdir(parents=True)
+    monkeypatch.setattr(steamrepair, "steam_roots", lambda h=None: {
+        "flatpak": home / "no-flatpak",
+        "native": home / ".local/share/Steam",
+        "dotsteam": home / ".steam/steam",
+    })
+    # No which("steam"), and STEAM_BINARIES are the real system paths — hide them.
+    import atarilauncher.steam as steam_mod
+    monkeypatch.setattr(steam_mod, "STEAM_BINARIES", ("/tmp/no-such-steam-bin",))
+    assert steam_mod.steam_binary(which=lambda n: None) == ""
+    assert steamrepair.detect_kind(home=home, which=lambda n: None) == "missing"
+
+
+def test_fix_offers_steam_installer_when_the_steam_program_is_missing(tmp_path):
+    home = tmp_path / "home"
+    (home / ".local/share/Steam").mkdir(parents=True)
+    tmp = tmp_path / "tmp"
+    tmp.mkdir()
+    calls = []
+
+    def run(cmd, timeout=None, env=None):
+        calls.append(list(cmd))
+        if cmd[:2] == ["dpkg", "--print-foreign-architectures"]:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if cmd[0] == "dpkg-query":
+            return subprocess.CompletedProcess(cmd, 1, "", "not installed")
+        if cmd[0] == "pkexec":
+            return subprocess.CompletedProcess(cmd, 0, "installed steam-installer\\n", "")
+        return subprocess.CompletedProcess(cmd, 1, "", "unexpected")
+
+    which_state = {"steam": False}
+
+    def which(n):
+        if n == "dpkg":
+            return "/usr/bin/dpkg"
+        if n == "steam" and which_state["steam"]:
+            return "/usr/bin/steam"
+        return None
+
+    def run_flip(cmd, timeout=None, env=None):
+        r = run(cmd, timeout, env)
+        if cmd[0] == "pkexec":
+            which_state["steam"] = True
+        return r
+
+    import atarilauncher.steam as steam_mod
+    # Ensure we don't pick up a real /usr/bin/steam on this machine.
+    orig = steam_mod.STEAM_BINARIES
+    steam_mod.STEAM_BINARIES = ("/tmp/no-such-steam-bin",)
+    try:
+        steps, verdict = steamrepair.run_fix(home=home, run=run_flip, which=which, tmp=tmp, now=lambda: 1_700_000_000)
+    finally:
+        steam_mod.STEAM_BINARIES = orig
+    by_id = {s.id: s for s in steps}
+    assert by_id["i386"].ok and by_id["i386"].changed
+    assert by_id["steam"].ok
+    assert any(c[0] == "pkexec" and "steam-installer" in " ".join(c) for c in calls)
+    assert "steam-installer" in " ".join(" ".join(c) for c in calls)

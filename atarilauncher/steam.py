@@ -61,18 +61,26 @@ STEAM_BINARIES = (
 )
 
 
+def steam_binary(which=None, binaries: tuple[str, ...] | None = None) -> str:
+    """Absolute path of a launchable Steam program, or '' if only a data folder / bootstrap leftover is present."""
+    import shutil
+    which = which or shutil.which
+    for path in (binaries or STEAM_BINARIES):
+        try:
+            if Path(path).is_file():
+                return path
+        except OSError:
+            continue
+    found = which("steam")
+    return found or ""
+
+
 def client_installed(home: Path | None = None, which=None, binaries: tuple[str, ...] | None = None) -> bool:
     """True when a Steam client CodeAque can launch is present (deb, snap, Flatpak, or a data folder)."""
     import shutil
     which = which or shutil.which
     home = home or Path.home()
-    for path in (binaries or STEAM_BINARIES):
-        try:
-            if Path(path).is_file():
-                return True
-        except OSError:
-            continue
-    if which("steam"):
+    if steam_binary(which, binaries):
         return True
     try:
         from .emulators import flatpak_installed
@@ -104,13 +112,7 @@ def launch_command(cfg=None, home: Path | None = None, which=None,
     if custom:
         import shlex
         return shlex.split(custom)
-    for path in (binaries or STEAM_BINARIES):
-        try:
-            if Path(path).is_file():
-                return [path]
-        except OSError:
-            continue
-    found = which("steam")
+    found = steam_binary(which, binaries)
     if found:
         return [found]
     from .emulators import flatpak_installed
