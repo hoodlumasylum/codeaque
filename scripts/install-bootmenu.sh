@@ -4,6 +4,9 @@
 # Install (from a Terminal on this computer):
 #   curl -fsSL https://raw.githubusercontent.com/hoodlumasylum/codeaque/main/scripts/install-bootmenu.sh | sudo bash
 #
+# Faster plain-text menu (no pictures — use this if the menu is slow to appear):
+#   curl -fsSL https://raw.githubusercontent.com/hoodlumasylum/codeaque/main/scripts/install-bootmenu.sh | sudo bash -s -- --light
+#
 # Undo:
 #   curl -fsSL https://raw.githubusercontent.com/hoodlumasylum/codeaque/main/scripts/install-bootmenu.sh | sudo bash -s -- --undo
 #
@@ -16,6 +19,7 @@ THEME_DIR_REL="scripts/bootmenu-theme"
 PLY_SRC_REL="atarilauncher/bootscreen"
 
 BACKUP_DIR="/var/lib/codeaque-bootmenu"
+LIGHT_FLAG="/var/lib/codeaque-bootmenu/light"
 GRUB_THEME_DIR="/boot/grub/themes/codeaque"
 PLY_DIR="/usr/share/plymouth/themes/codeaque"
 GRUB_D_CFG="/etc/default/grub.d/zzz-codeaque-boot.cfg"
@@ -32,18 +36,22 @@ UEFI_SCRIPT="/etc/grub.d/30_uefi-firmware"
 ROOT="${CODEAQUE_BOOTMENU_ROOT:-}"
 ASSET_DIR="${CODEAQUE_BOOTMENU_ASSETS:-}"
 SKIP_UPDATE="${CODEAQUE_BOOTMENU_SKIP_UPDATE:-}"
+LIGHT=0
 
 usage() {
   cat <<'EOF'
 CodeAque boot menu installer
 
-  sudo bash install-bootmenu.sh           Install or refresh the menu
+  sudo bash install-bootmenu.sh           Install or refresh the pictured menu
+  sudo bash install-bootmenu.sh --light   Plain text menu, no pictures (faster, more reliable)
   sudo bash install-bootmenu.sh --undo    Put the old boot menu back
   bash install-bootmenu.sh --help         Show this help
   bash install-bootmenu.sh --selftest     Check the script without changing this computer
 
 One-line install:
   curl -fsSL https://raw.githubusercontent.com/hoodlumasylum/codeaque/main/scripts/install-bootmenu.sh | sudo bash
+
+If the menu takes a long time to appear (a black screen after Windows), run --light.
 EOF
 }
 
@@ -123,20 +131,39 @@ EOF
 }
 
 grub_defaults_txt() {
-  cat <<'EOF'
+  if [ "$LIGHT" = 1 ]; then
+    cat <<'EOF'
+# BEGIN CodeAque boot menu (scripts/install-bootmenu.sh --light). Remove with --undo.
+GRUB_DISTRIBUTOR="CodeAque"
+GRUB_DEFAULT=codeaque
+GRUB_TIMEOUT_STYLE=menu
+GRUB_TIMEOUT=10
+GRUB_RECORDFAIL_TIMEOUT=10
+GRUB_DISABLE_OS_PROBER=true
+GRUB_PRELOAD_MODULES="part_gpt part_msdos ext2 fat"
+GRUB_TERMINAL_OUTPUT=console
+GRUB_GFXPAYLOAD_LINUX=text
+GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT quiet splash"
+# END CodeAque boot menu
+EOF
+  else
+    cat <<'EOF'
 # BEGIN CodeAque boot menu (scripts/install-bootmenu.sh). Remove with --undo.
 GRUB_DISTRIBUTOR="CodeAque"
 GRUB_DEFAULT=codeaque
 GRUB_TIMEOUT_STYLE=menu
 GRUB_TIMEOUT=10
-GRUB_DISABLE_OS_PROBER=false
-GRUB_GFXMODE=1920x1080,1366x768,auto
+GRUB_RECORDFAIL_TIMEOUT=10
+GRUB_DISABLE_OS_PROBER=true
+GRUB_PRELOAD_MODULES="part_gpt part_msdos ext2 fat"
+GRUB_GFXMODE=1920x1080,1280x1024,auto
 GRUB_GFXPAYLOAD_LINUX=keep
 GRUB_TERMINAL_OUTPUT=gfxterm
 GRUB_THEME="/boot/grub/themes/codeaque/theme.txt"
 GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT quiet splash"
 # END CodeAque boot menu
 EOF
+  fi
 }
 
 menu_entry_script() {
@@ -211,18 +238,59 @@ echo "}"
 EOF
 }
 
+# Best-effort GRUB --hint list for FAT/EFI partitions, so search tries those first
+# and does not walk the macOS APFS volume first. Never mounts anything.
+# Hints are baked into the menuentry at install time; the search itself only runs
+# when Windows or Mac is chosen, not when the menu is drawn.
+grub_efi_hints() {
+  local hints="" name typ fstype parttype partn pkname hd pstyle idx
+  idx=0
+  local -A disk_hd=()
+  while read -r name typ; do
+    [ "$typ" = disk ] || continue
+    disk_hd["$name"]="hd$idx"
+    idx=$((idx + 1))
+  done < <(lsblk -nr -d -o NAME,TYPE 2>/dev/null || true)
+  while read -r name typ fstype parttype partn pkname; do
+    [ "$typ" = part ] || continue
+    [ -n "${partn:-}" ] || continue
+    fstype=$(printf '%s' "${fstype:-}" | tr '[:upper:]' '[:lower:]')
+    parttype=$(printf '%s' "${parttype:-}" | tr '[:upper:]' '[:lower:]')
+    case "$fstype" in
+      vfat|fat|fat32|efi) ;;
+      *)
+        case "$parttype" in
+          c12a7328-f81f-11d2-ba4b-00a0c93ec93b|0xef|ef) ;;
+          *) continue ;;
+        esac
+        ;;
+    esac
+    hd="${disk_hd[${pkname:-}]:-}"
+    [ -n "$hd" ] || continue
+    pstyle=gpt
+    case "$parttype" in
+      0xef|ef) pstyle=msdos ;;
+    esac
+    hints="$hints --hint ${hd},${pstyle}${partn}"
+  done < <(lsblk -nr -o NAME,TYPE,FSTYPE,PARTTYPE,PARTN,PKNAME 2>/dev/null || true)
+  printf '%s' "$hints"
+}
+
 windows_entry_script() {
-  cat <<'EOF'
+  local hints="${1:-}"
+  # The search lives inside the menuentry, so it runs only when Windows is chosen.
+  cat <<EOF
 #!/bin/sh
-# CodeAque: a "Windows" entry. Finds Windows' own boot manager at start-up with
-# search --file, so it does not depend on partition numbers. Nothing on Windows is changed.
+# CodeAque: a "Windows" entry. Finds Windows' own boot manager when this entry
+# is chosen, with search --file (and EFI --hint values), so it does not depend
+# on partition numbers. Nothing on Windows is changed.
 set -e
 cat <<'GRUBEOF'
 menuentry "Windows" --class windows --id windows {
     insmod part_gpt
     insmod fat
     insmod chain
-    search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
+    search --no-floppy --file${hints} --set=root /EFI/Microsoft/Boot/bootmgfw.efi
     chainloader /EFI/Microsoft/Boot/bootmgfw.efi
 }
 GRUBEOF
@@ -230,20 +298,21 @@ EOF
 }
 
 mac_entry_script() {
-  cat <<'EOF'
+  local hints="${1:-}"
+  cat <<EOF
 #!/bin/sh
-# CodeAque: a "Mac" entry. Chainloads OpenCore by searching for its file across
-# EFI partitions at start-up, so it does not depend on partition numbers.
-# Nothing on the Mac disk is changed.
+# CodeAque: a "Mac" entry. Chainloads OpenCore when this entry is chosen, by
+# searching for its file (with EFI --hint values first). Nothing on the Mac disk
+# is changed. APFS is never loaded.
 set -e
 cat <<'GRUBEOF'
 menuentry "Mac" --class macos --id mac {
     insmod part_gpt
     insmod fat
     insmod chain
-    if search --no-floppy --file --set=root /EFI/OC/OpenCore.efi ; then
+    if search --no-floppy --file${hints} --set=root /EFI/OC/OpenCore.efi ; then
         chainloader /EFI/OC/OpenCore.efi
-    elif search --no-floppy --file --set=root /EFI/OC/OpenCoreX64.efi ; then
+    elif search --no-floppy --file${hints} --set=root /EFI/OC/OpenCoreX64.efi ; then
         chainloader /EFI/OC/OpenCoreX64.efi
     else
         echo "OpenCore was not found on any disk."
@@ -353,7 +422,7 @@ download_assets() {
   say "Downloading CodeAque boot art ..."
   mkdir -p "$tmp/theme" "$tmp/ply"
   local f
-  for f in background.png background-1366x768.png theme.txt \
+  for f in background.png theme.txt \
            select_c.png select_n.png select_s.png select_e.png select_w.png \
            select_ne.png select_nw.png select_se.png select_sw.png; do
     curl -fsSL -o "$tmp/theme/$f" "${REPO_RAW}/${THEME_DIR_REL}/$f"
@@ -463,9 +532,8 @@ backup_once() {
 disable_distro_entries() {
   # Hide Mint's own "Linux Mint" / "Advanced options" / UEFI firmware lines so the
   # menu is just CodeAque, Windows, Mac and Recovery. Scripts are made non-executable,
-  # not deleted, and --undo puts the old mode back. 30_os-prober is switched off so
-  # Windows is not listed twice; our Windows / Mac entries use search --file instead
-  # (more reliable on a disk with several EFI partitions).
+  # not deleted, and --undo puts the old mode back. 30_os-prober is switched off so it cannot probe the Mac APFS disk
+  # or add a second Windows line; our Windows / Mac entries use search --file instead.
   local bk g b
   bk="$(p "$BACKUP_DIR")"
   mkdir -p "$bk"
@@ -498,21 +566,19 @@ install_theme() {
   th="$(p "$GRUB_THEME_DIR")"
   mkdir -p "$th"
   cp "$ASSET_DIR/background.png" "$th/background.png"
-  if [ -f "$ASSET_DIR/background-1366x768.png" ]; then
-    cp "$ASSET_DIR/background-1366x768.png" "$th/background-1366x768.png"
-  fi
   cp "$ASSET_DIR"/select_*.png "$th/"
   local side
   for side in n s e w ne nw se sw c; do
     cp "$ASSET_DIR/select_c.png" "$th/terminal_box_${side}.png"
   done
   theme_txt > "$th/theme.txt"
+  # ASCII-only .pf2 files stay readable at 36pt but are much smaller to load.
   if have grub-mkfont; then
     local font s
     for font in /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf; do
       if [ -f "$font" ]; then
         for s in 20 24 36; do
-          grub-mkfont -n CodeAque -s "$s" -o "$th/codeaque-$s.pf2" "$font" >/dev/null 2>&1 || true
+          grub-mkfont -n CodeAque -s "$s" --range=0x20-0x7e -o "$th/codeaque-$s.pf2" "$font" >/dev/null 2>&1 || true
         done
         break
       fi
@@ -521,12 +587,16 @@ install_theme() {
 }
 
 install_grub_scripts() {
-  mkdir -p "$(dirname "$(p "$GRUB_D_CFG")")" "$(p /etc/grub.d)"
+  mkdir -p "$(dirname "$(p "$GRUB_D_CFG")")" "$(p /etc/grub.d)" "$(p "$BACKUP_DIR")"
   grub_defaults_txt > "$(p "$GRUB_D_CFG")"
   chmod 644 "$(p "$GRUB_D_CFG")"
+  local hints=""
+  if [ -z "$ROOT" ]; then
+    hints="$(grub_efi_hints || true)"
+  fi
   menu_entry_script > "$(p "$MENU_SCRIPT")"
-  windows_entry_script > "$(p "$WIN_SCRIPT")"
-  mac_entry_script > "$(p "$MAC_SCRIPT")"
+  windows_entry_script "$hints" > "$(p "$WIN_SCRIPT")"
+  mac_entry_script "$hints" > "$(p "$MAC_SCRIPT")"
   chmod 755 "$(p "$MENU_SCRIPT")" "$(p "$WIN_SCRIPT")" "$(p "$MAC_SCRIPT")"
   # Also set the same keys in /etc/default/grub so they are visible there, without
   # losing any other settings. The grub.d file is what update-grub actually uses last.
@@ -537,14 +607,20 @@ install_grub_scripts() {
     sed -i \
       -e 's/^GRUB_TIMEOUT_STYLE=/#&/' \
       -e 's/^GRUB_TIMEOUT=/#&/' \
+      -e 's/^GRUB_RECORDFAIL_TIMEOUT=/#&/' \
       -e 's/^GRUB_DISABLE_OS_PROBER=/#&/' \
       -e 's/^GRUB_GFXMODE=/#&/' \
       -e 's/^GRUB_THEME=/#&/' \
       -e 's/^GRUB_DEFAULT=/#&/' \
+      -e 's/^GRUB_TERMINAL_OUTPUT=/#&/' \
+      -e 's/^GRUB_GFXPAYLOAD_LINUX=/#&/' \
+      -e 's/^GRUB_PRELOAD_MODULES=/#&/' \
       "$dg"
-    if ! grep -q 'GRUB_DISABLE_OS_PROBER=false' "$dg"; then
-      printf '\n# Set by CodeAque boot menu (see also %s)\nGRUB_DISABLE_OS_PROBER=false\n' "$GRUB_D_CFG" >> "$dg"
-    fi
+  fi
+  if [ "$LIGHT" = 1 ]; then
+    touch "$(p "$LIGHT_FLAG")"
+  else
+    rm -f "$(p "$LIGHT_FLAG")"
   fi
 }
 
@@ -606,7 +682,11 @@ run_update_grub() {
     cfg="$(p "$GRUB_CFG")"
     mkdir -p "$(dirname "$cfg")"
     {
-      echo "set theme=${GRUB_THEME_DIR}/theme.txt"
+      if [ "$LIGHT" != 1 ]; then
+        echo "set theme=${GRUB_THEME_DIR}/theme.txt"
+      else
+        echo "terminal_output console"
+      fi
       echo "set timeout=10"
       echo "set timeout_style=menu"
       echo "set default=codeaque"
@@ -638,6 +718,14 @@ STUB
     return 1
   fi
   update-grub
+  # Prefer the EFI GOP video driver only. Probing every video backend
+  # (insmod all_video) can hang for minutes on an RX 580 after Windows.
+  # Drop APFS (and leftover NTFS) modules so GRUB does not probe the Mac disk
+  # while drawing the menu.
+  if [ -f "$GRUB_CFG" ]; then
+    sed -i 's/insmod all_video/insmod efi_gop/g' "$GRUB_CFG"
+    sed -i '/insmod apfs/d;/insmod ntfs/d' "$GRUB_CFG"
+  fi
 }
 
 summarise() {
@@ -659,16 +747,18 @@ summarise() {
     grep -q 'submenu "Recovery"' "$cfg" && rec_entry=yes
     grep -q 'themes/codeaque' "$cfg" && theme_line=yes
   fi
+  local mode="pictured menu"
+  [ "$LIGHT" = 1 ] && mode="plain text (--light)"
   cat <<EOF
 
 ----------------------------------------
-CodeAque boot menu is installed.
+CodeAque boot menu is installed ($mode).
 ----------------------------------------
 The start-up menu shows:
 
   • CodeAque     (this Linux, starts after 10 seconds if you do nothing)
-  • Windows      (finds Windows' boot manager at start-up)
-  • Mac          (finds OpenCore at start-up)
+  • Windows      (finds Windows' boot manager only when you pick it)
+  • Mac          (finds OpenCore only when you pick it)
   • Recovery     (a submenu — recovery mode and older kernels)
 
 CodeAque entry:     $ca_entry
@@ -683,12 +773,16 @@ Loading screen (Plymouth):  ${PLYMOUTH_STATUS:-not run}
 
 If Windows or OpenCore was not seen during install, that is often normal —
 those files live on EFI partitions this script does not mount. The menu
-entries still search for them when the computer starts.
+entries still search for them when you pick that line.
 
 This script did not change the firmware boot order and did not install
 GRUB onto any other disk. If the computer still goes straight into
 Windows or the OpenCore picker, restart, tap Del, set Boot Option #1
 to "ubuntu", then press F10 to save.
+
+If the menu is slow to appear (a long black screen, especially after
+Windows), install the plain-text menu instead:
+  curl -fsSL ${REPO_RAW}/scripts/install-bootmenu.sh | sudo bash -s -- --light
 
 To put the old menu back:
   curl -fsSL ${REPO_RAW}/scripts/install-bootmenu.sh | sudo bash -s -- --undo
@@ -708,13 +802,22 @@ do_install() {
       exit 1
     fi
   fi
-  ensure_assets
   backup_once
-  install_theme
+  if [ "$LIGHT" = 1 ]; then
+    # Plain text: do not install the theme pictures.
+    rm -rf "$(p "$GRUB_THEME_DIR")"
+  else
+    ensure_assets
+    install_theme
+  fi
   install_grub_scripts
   disable_distro_entries
   run_update_grub
-  install_plymouth
+  if [ "$LIGHT" != 1 ]; then
+    install_plymouth
+  else
+    PLYMOUTH_STATUS="skipped (--light uses a plain text menu)"
+  fi
   summarise
 }
 
@@ -790,15 +893,19 @@ do_selftest() {
   grep -q 'menuentry "Windows"' "$cfg"
   grep -q 'menuentry "Mac"' "$cfg"
   grep -q 'submenu "Recovery"' "$cfg"
-  grep -q 'search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi' "$cfg"
-  grep -q 'search --no-floppy --file --set=root /EFI/OC/OpenCore.efi' "$cfg"
+  grep -qE 'search --no-floppy --file( --hint [^ ]+)* --set=root /EFI/Microsoft/Boot/bootmgfw.efi' "$cfg"
+  grep -qE 'search --no-floppy --file( --hint [^ ]+)* --set=root /EFI/OC/OpenCore.efi' "$cfg"
   grep -q 'chainloader /EFI/OC/OpenCore.efi' "$cfg"
   grep -q 'themes/codeaque' "$cfg"
   test -f "$tmp/boot/grub/themes/codeaque/theme.txt"
   test -f "$tmp/boot/grub/themes/codeaque/background.png"
   grep -q 'Starting CodeAque in %ds' "$tmp/boot/grub/themes/codeaque/theme.txt"
   grep -q 'GRUB_TIMEOUT=10' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
-  grep -q 'GRUB_DISABLE_OS_PROBER=false' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  grep -q 'GRUB_DISABLE_OS_PROBER=true' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  grep -q 'GRUB_GFXMODE=1920x1080,1280x1024,auto' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  grep -q 'GRUB_PRELOAD_MODULES="part_gpt part_msdos ext2 fat"' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  # Search for Windows / Mac must be inside the menuentry, not at the top of grub.cfg.
+  awk 'BEGIN{out=0} /^menuentry "Windows"/{inw=1} inw&&/search --no-floppy --file/{ok=1} inw&&/^}/{inw=0} /^search --no-floppy --file/{if(!inw)out=1} END{exit (ok&&!out)?0:1}' "$cfg"
   test ! -x "$tmp/etc/grub.d/10_linux"
   test ! -x "$tmp/etc/grub.d/30_os-prober"
   test ! -x "$tmp/etc/grub.d/30_uefi-firmware"
@@ -810,11 +917,31 @@ do_selftest() {
   CODEAQUE_BOOTMENU_ROOT="$tmp" CODEAQUE_BOOTMENU_ASSETS="$here/bootmenu-theme" \
     CODEAQUE_BOOTMENU_SKIP_UPDATE=1 bash "$here/install-bootmenu.sh" >/dev/null
   grep -q 'GRUB_DEFAULT=0' "$tmp/var/lib/codeaque-bootmenu/grub"
+  # --light: plain text, no theme, same entries, then back to pictured, then undo.
+  CODEAQUE_BOOTMENU_ROOT="$tmp" CODEAQUE_BOOTMENU_ASSETS="$here/bootmenu-theme" \
+    CODEAQUE_BOOTMENU_SKIP_UPDATE=1 bash "$here/install-bootmenu.sh" --light >/dev/null
+  grep -q 'GRUB_TERMINAL_OUTPUT=console' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  grep -q 'GRUB_DISABLE_OS_PROBER=true' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  ! grep -q '^GRUB_THEME=' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  ! grep -q 'set theme=' "$tmp/boot/grub/grub.cfg"
+  grep -q 'terminal_output console' "$tmp/boot/grub/grub.cfg"
+  grep -q 'menuentry "CodeAque"' "$tmp/boot/grub/grub.cfg"
+  grep -q 'menuentry "Windows"' "$tmp/boot/grub/grub.cfg"
+  grep -q 'menuentry "Mac"' "$tmp/boot/grub/grub.cfg"
+  test -f "$tmp/var/lib/codeaque-bootmenu/light"
+  test ! -d "$tmp/boot/grub/themes/codeaque"
+  grep -q 'GRUB_DEFAULT=0' "$tmp/var/lib/codeaque-bootmenu/grub"
+  CODEAQUE_BOOTMENU_ROOT="$tmp" CODEAQUE_BOOTMENU_ASSETS="$here/bootmenu-theme" \
+    CODEAQUE_BOOTMENU_SKIP_UPDATE=1 bash "$here/install-bootmenu.sh" >/dev/null
+  grep -q 'GRUB_THEME=' "$tmp/etc/default/grub.d/zzz-codeaque-boot.cfg"
+  test ! -f "$tmp/var/lib/codeaque-bootmenu/light"
+  test -f "$tmp/boot/grub/themes/codeaque/background.png"
   # Undo puts things back.
   CODEAQUE_BOOTMENU_ROOT="$tmp" CODEAQUE_BOOTMENU_ASSETS="$here/bootmenu-theme" \
     CODEAQUE_BOOTMENU_SKIP_UPDATE=1 bash "$here/install-bootmenu.sh" --undo >/dev/null
   test ! -e "$tmp/etc/grub.d/06_codeaque"
   test ! -e "$tmp/boot/grub/themes/codeaque"
+  test ! -e "$tmp/var/lib/codeaque-bootmenu/light"
   test -x "$tmp/etc/grub.d/10_linux"
   test -x "$tmp/etc/grub.d/30_os-prober"
   grep -q 'GRUB_TIMEOUT_STYLE=hidden' "$tmp/etc/default/grub"
@@ -845,6 +972,7 @@ case "${1:-}" in
   --help|-h) usage ;;
   --undo) do_undo ;;
   --selftest) do_selftest ;;
+  --light) LIGHT=1; do_install ;;
   ""|--install) do_install ;;
   *)
     err "Unknown option: $1"
