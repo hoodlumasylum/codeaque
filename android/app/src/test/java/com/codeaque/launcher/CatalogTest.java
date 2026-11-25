@@ -548,6 +548,26 @@ public class CatalogTest {
                     && (k.items.isEmpty() || k.items.stream().noneMatch(it -> Catalog.grokBotPkg(it.pkg) || it.packages.contains("ai.x.grok.bot"))),
                     "Kids mode never lists the Grok Bot package, even if approved");
         }
+        // 0.10.86: Nova Class tile on Featured, the default adult home, and the Kids Nova row
+        check(c.get(0).items.contains(Catalog.NOVA_CLASS) && "Nova Class".equals(Catalog.NOVA_CLASS.label)
+                && "sparkle".equals(Catalog.NOVA_CLASS.icon)
+                && Catalog.NOVA_CLASS_PKG.equals(Catalog.NOVA_CLASS.storePackage())
+                && Catalog.NOVA_CLASS_APK.equals(Catalog.NOVA_CLASS.webUrl)
+                && Catalog.NOVA_CLASS_APK.equals("https://github.com/hoodlumasylum/nova/releases/latest/download/Nova.apk"),
+                "Nova Class on Featured, package plus latest APK download");
+        check(Catalog.opensStore(Catalog.NOVA_CLASS, false) == false && !Catalog.opensStore(Catalog.NOVA_CLASS, true),
+                "uninstalled Nova Class opens the GitHub APK, not Play Store");
+        check(!Catalog.kidsBlocked(Catalog.NOVA_CLASS), "Nova Class is allowed in Kids mode");
+        check("nova-face-cutout.png".equals(Catalog.modeAsset(Catalog.NOVA_CLASS)), "Nova Class uses Nova gold face art");
+        java.util.List<Catalog.Category> kids86 = Catalog.kidsMode();
+        check(Catalog.indexOf(kids86, "knova") >= 0
+                && kids86.get(Catalog.indexOf(kids86, "knova")).items.contains(Catalog.NOVA_CLASS)
+                && kids86.get(Catalog.indexOf(kids86, "knova")).items.get(0) == Catalog.NOVA_CLASS,
+                "Kids Nova row starts with Nova Class");
+        check(Catalog.indexOf(adult85, "novaclass") >= 0
+                && adult85.get(Catalog.indexOf(adult85, "novaclass")).items.contains(Catalog.NOVA_CLASS),
+                "default adult home has a Nova Class row");
+
         check(Catalog.indexOf(c, "trilogies") > 0 && Catalog.indexOf(c, "coop") > 0 && Catalog.indexOf(c, "roblox") > 0, "Trilogies, Co-op, Roblox tabs");
         check(Catalog.TRILOGY_ITEMS.length >= 40 && Catalog.COOP_ITEMS.length >= 20 && Catalog.ROBLOX_ITEMS.length == 12, "verified lists");
         boolean piggy = false, strucid = false;

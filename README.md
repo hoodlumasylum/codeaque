@@ -31,7 +31,18 @@ Pick a game from a wall of big covers, press **A** (or **Enter**), and it starts
 
 (The screenshots use made-up demo games. With no games yet you get a friendly empty screen: `docs/screenshot-empty.png`.)
 
+## What's new in 0.10.86
+
+**A Nova Class tile on the Android launcher.** The tile uses Nova's own gold face art (no third-party logos). If the Nova Class app is installed (package `com.codeaque.nova`), the tile opens it. If it is not, it opens the latest [Nova.apk](https://github.com/hoodlumasylum/nova/releases/latest/download/Nova.apk) from the Nova GitHub releases page (`releases/latest`, not a fixed tag).
+
+On Android, the tile is on the Featured row (classic home), on its own Nova Class row on the default adult (kids-style) home, and at the start of the Nova row in Kids mode, so students can open the class app from there.
+
+The Android APK in this release is 0.10.86 (versionCode 184).
+
+Untested: unit tests for the catalogue (package, latest APK URL, gold-face art, Featured / adult home / Kids row, and that an uninstalled tile does not go to Play Store) passed here. This has not been run on Code's Android phone, has not launched a live Nova Class install, and has not downloaded the APK from a phone.
+
 ## What's new in 0.10.85
+
 
 **A Grok Bot tile on the PC console home and the Android launcher.** The tile uses CodeAque's own chat glyph (not a third-party logo). It is hidden in Kids mode on both platforms. CodeAque never handles a Grok Bot login or API key — you sign in inside the official app yourself.
 

@@ -198,6 +198,12 @@ public final class Catalog {
     /** 0.10.85: official Grok Bot Android app (Play Store package ai.x.grok.bot). Hidden in Kids mode.
      *  Generic chat glyph, no third-party logo. Play Store page if the app is not installed. */
     public static final Item GROK_BOT = app("Grok Bot", "chat", "ai.x.grok.bot");
+    /** 0.10.86: Nova Class, the separate teaching app (package com.codeaque.nova).
+     *  Opens the app when installed; otherwise the latest GitHub APK (Nova.apk on releases/latest).
+     *  Uses Nova's own gold face art (bundled nova-face-cutout.png), no third-party logos. */
+    public static final String NOVA_CLASS_PKG = "com.codeaque.nova";
+    public static final String NOVA_CLASS_APK = "https://github.com/hoodlumasylum/nova/releases/latest/download/Nova.apk";
+    public static final Item NOVA_CLASS = web("Nova Class", "sparkle", NOVA_CLASS_APK, NOVA_CLASS_PKG);
 
     /** 0.10.2: GeForce NOW on Featured: the app when installed, else its Play page (the Cloud row keeps the web version). */
     public static final Item GEFORCE_NOW = app("GeForce NOW", "cloud", "com.nvidia.geforcenow");
@@ -594,7 +600,7 @@ public final class Catalog {
         if (!emuItems.isEmpty()) c.add(new Category("kemu", "Emulators", "invader", emuItems.toArray(new Item[0])));
         c.add(new Category("kthemes", "Themes", "palette", KIDS_THEMES));
         c.add(new Category("kwifi", "Wi-Fi & Update", "wifi", KIDS_WIFI, KIDS_UPDATE));
-        c.add(new Category("knova", "Nova", "sparkle", NOVA_PANEL, NOVA_SHOW, NOVA_LISTEN_HIDDEN));
+        c.add(new Category("knova", "Nova", "sparkle", NOVA_CLASS, NOVA_PANEL, NOVA_SHOW, NOVA_LISTEN_HIDDEN));
         c.add(new Category("kparent", "Grown-ups", "gear", KIDS_PARENT));
         return c;
     }
@@ -603,6 +609,7 @@ public final class Catalog {
                                             boolean projector, boolean bootanim, Item[] robloxItems) {
         List<Category> c = new ArrayList<>();
         addGameTabs(c, KidsPlay.ADULT, robloxItems != null ? robloxItems : ROBLOX_ITEMS, true);
+        c.add(new Category("novaclass", "Nova Class", "sparkle", NOVA_CLASS));   // 0.10.86
         c.add(new Category("grokbot", "Grok Bot", "chat", GROK_BOT));   // 0.10.85: default adult home (Featured is skipped here)
         List<Category> full = categories(games, apps, emus, roms, projector, bootanim);
         for (Category row : full) {
@@ -661,6 +668,7 @@ public final class Catalog {
         if (it == COOP_MODE) return "mode-coop.png";
         if (it == ROBLOX_MODE) return "mode-experiences.png";
         if (it == BOXSET_MODE) return "mode-boxset.png";
+        if (it == NOVA_CLASS) return "nova-face-cutout.png";
         return null;
     }
     public static final Item TRILOGY_MODE = act("Trilogy Mode", "pad", "goto:trilogies");
@@ -806,7 +814,7 @@ public final class Catalog {
         // 0.10.1: Roblox and Minecraft first on the home (their own icon when installed, else the Play Store page + CodeAque's icon)
         c.add(new Category("steam", "Featured", "display", KIDS_ON, SETTINGS_TILE, INSTALL_KIDS, ROBLOX, MINECRAFT, PLAY_STORE, GEFORCE_NOW, MARVEL_RIVALS, app("Steam Link", "display", "com.valvesoftware.steamlink"),
                 app("Steam", "display", "com.valvesoftware.android.steam.community"),
-                TRILOGY_MODE, COOP_MODE, ROBLOX_MODE, BOXSET_MODE, GROK_BOT));
+                TRILOGY_MODE, COOP_MODE, ROBLOX_MODE, BOXSET_MODE, GROK_BOT, NOVA_CLASS));
         // 0.10.1 Kids: official Google Play listings only, each checked as PEGI 3 or PEGI 7 in the UK (Nov 2026).
         // Their own icon when installed, otherwise CodeAque's generic icon + label and the Play page. No bundled art.
         c.add(new Category("kids", "Kids", "pad", KIDS));
